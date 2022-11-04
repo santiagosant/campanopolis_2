@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MainCameraMixer.cs"
  * 
@@ -9,7 +9,7 @@
  * 
  */
 
-#if UNITY_2017_1_OR_NEWER
+#if !ACIgnoreTimeline
 
 using UnityEngine.Playables;
 
@@ -22,13 +22,28 @@ namespace AC
 	internal sealed class MainCameraMixer : PlayableBehaviour
 	{
 
+		#region Variables
+
+		private _Camera lastFrameCamera;
+		private bool callCustomEvents;
+		private bool setsCameraAfterRunning;
+
+		#endregion
+
+
 		#region PublicFunctions
 
 		public override void OnGraphStop (Playable playable)
 		{
-			if (MainCamera != null)
+			if (MainCamera)
 			{
+				lastFrameCamera = null;
 				MainCamera.ReleaseTimelineOverride ();
+
+				if (callCustomEvents && lastFrameCamera != KickStarter.mainCamera.attachedCamera)
+				{
+					KickStarter.eventManager.Call_OnSwitchCamera(lastFrameCamera, KickStarter.mainCamera.attachedCamera, 0f);
+				}
 			}
 		}
 
@@ -53,6 +68,13 @@ namespace AC
 				ScriptPlayable <MainCameraPlayableBehaviour> clip = (ScriptPlayable <MainCameraPlayableBehaviour>) playable.GetInput (i);
 
 				MainCameraPlayableBehaviour shot = clip.GetBehaviour ();
+
+				if (shot != null)
+				{
+					callCustomEvents = shot.callCustomEvents;
+					setsCameraAfterRunning = shot.setsCameraAfterRunning;
+				}
+
 				if (shot != null && 
 					shot.IsValid &&
 					playable.GetPlayState() == PlayState.Playing &&
@@ -72,7 +94,6 @@ namespace AC
 					}
 				}
 			}
-
 			// Figure out which clip is incoming
 			bool incomingIsB = clipB.weight >= 1 || clipB.localTime < clipB.duration / 2;
 			if (activeInputs == 2)
@@ -114,6 +135,25 @@ namespace AC
 			}
 
 			MainCamera.SetTimelineOverride (cameraA, cameraB, camWeightB, shakeIntensity);
+
+			if (callCustomEvents)
+			{
+				_Camera thisFrameCamera = (incomingIsB) ? cameraB : cameraA;
+				if (thisFrameCamera == null)
+				{
+					thisFrameCamera = KickStarter.mainCamera.attachedCamera;
+				}
+				if (thisFrameCamera != lastFrameCamera)
+				{
+					KickStarter.eventManager.Call_OnSwitchCamera (lastFrameCamera, thisFrameCamera, 0f);
+					lastFrameCamera = thisFrameCamera;
+				}
+			}
+
+			if (setsCameraAfterRunning && incomingIsB && camWeightB >= 1f && cameraB && KickStarter.mainCamera.attachedCamera != cameraB)
+			{
+				KickStarter.mainCamera.SetGameCamera (cameraB);
+			}
 		}
 
 		#endregion

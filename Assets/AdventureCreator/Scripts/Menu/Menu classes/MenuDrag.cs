@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuDrag.cs"
  * 
@@ -44,9 +44,6 @@ namespace AC
 		private string fullText;
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			label = "Button";
@@ -99,7 +96,7 @@ namespace AC
 				return;
 			}
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			label = CustomGUILayout.TextField ("Button text:", label, apiPrefix + ".label", "The text that's displayed on-screen");
 			anchor = (TextAnchor) CustomGUILayout.EnumPopup ("Text alignment:", anchor, apiPrefix + ".anchor", "The text alignment");
 			textEffects = (TextEffects) CustomGUILayout.EnumPopup ("Text effect:", textEffects, apiPrefix + ".textEffects", "The special FX applied to the text");
@@ -114,7 +111,7 @@ namespace AC
 
 			ChangeCursorGUI (menu);
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -128,7 +125,7 @@ namespace AC
 			}
 			else
 			{
-				if (elementName != "")
+				if (!string.IsNullOrEmpty (elementName))
 				{
 					MenuElement element = MenuManager.GetElementWithName (_menu.title, elementName);
 					if (element != null)
@@ -144,22 +141,21 @@ namespace AC
 			base.DrawOutline (isSelected, _menu);
 		}
 
-		#endif
+#endif
+
+
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
+		}
 
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
-			fullText = TranslateLabel (label, languageNumber);
+			fullText = TranslateLabel (languageNumber);
 		}
 
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -181,28 +177,22 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element's slot, or the whole element if it only has one slot</returns>
-		 */
 		public override string GetLabel (int slot, int languageNumber)
 		{
-			return TranslateLabel (label, languageNumber);
+			return TranslateLabel (languageNumber);
 		}
 		
 		
 		protected override void AutoSize ()
 		{
-			if (label == "" && backgroundTexture != null)
+			if (string.IsNullOrEmpty (label) && backgroundTexture)
 			{
 				GUIContent content = new GUIContent (backgroundTexture);
 				AutoSize (content);
 			}
 			else
 			{
-				GUIContent content = new GUIContent (TranslateLabel (label, Options.GetLanguage ()));
+				GUIContent content = new GUIContent (TranslateLabel (Options.GetLanguage ()));
 				AutoSize (content);
 			}
 		}
@@ -272,10 +262,11 @@ namespace AC
 			Rect dragRectAbsolute = dragRect;
 			if (sizeType != AC_SizeType.AbsolutePixels)
 			{
-				dragRectAbsolute = new Rect (dragRect.x * AdvGame.GetMainGameViewSize(true).x / 100f,
-											 dragRect.y * AdvGame.GetMainGameViewSize(true).y / 100f,
-											 dragRect.width * AdvGame.GetMainGameViewSize(true).x / 100f,
-											 dragRect.height * AdvGame.GetMainGameViewSize(true).y / 100f);
+				Vector2 sizeFactor = KickStarter.mainCamera.GetPlayableScreenArea (false).size;
+				dragRectAbsolute = new Rect (dragRect.x * sizeFactor.x / 100f,
+											 dragRect.y * sizeFactor.y / 100f,
+											 dragRect.width * sizeFactor.x / 100f,
+											 dragRect.height * sizeFactor.y / 100f);
 			}
 			
 			if (dragType == DragElementType.EntireMenu)
@@ -320,35 +311,32 @@ namespace AC
 
 			if (sizeType != AC_SizeType.AbsolutePixels)
 			{
-				positionRect.x = dragRect.x / 100f * AdvGame.GetMainGameViewSize(true).x;
-				positionRect.y = dragRect.y / 100f * AdvGame.GetMainGameViewSize(true).y;
+				positionRect.x = dragRect.x / 100f * KickStarter.mainCamera.GetPlayableScreenArea (false).width;
+				positionRect.y = dragRect.y / 100f * KickStarter.mainCamera.GetPlayableScreenArea (false).height;
 
-				positionRect.width = dragRect.width / 100f * AdvGame.GetMainGameViewSize(true).x;
-				positionRect.height = dragRect.height / 100f * AdvGame.GetMainGameViewSize(true).y;
+				positionRect.width = dragRect.width / 100f * KickStarter.mainCamera.GetPlayableScreenArea (false).width;
+				positionRect.height = dragRect.height / 100f * KickStarter.mainCamera.GetPlayableScreenArea (false).height;
 			}
 
 			return (positionRect);
 		}
 
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (_mouseState == MouseState.SingleClick)
 			{
 				StartDrag (_menu);
 				KickStarter.playerInput.SetActiveDragElement (this);
 				base.ProcessClick (_menu, _slot, _mouseState);
+				return true;
 			}
+
+			return false;
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -363,6 +351,12 @@ namespace AC
 			
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -406,7 +400,9 @@ namespace AC
 		}
 
 		#endif
-				
+
+		#endregion
+			
 	}
 	
 }

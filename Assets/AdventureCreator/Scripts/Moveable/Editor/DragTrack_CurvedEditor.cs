@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -12,7 +14,7 @@ namespace AC
 		{
 			DragTrack_Curved _target = (DragTrack_Curved) target;
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Track shape:", EditorStyles.boldLabel);
 			
 			_target.radius = CustomGUILayout.FloatField ("Radius:", _target.radius, "", "The track's radius");
@@ -32,11 +34,9 @@ namespace AC
 			}
 			_target.discSize = CustomGUILayout.Slider ("Gizmo size:", _target.discSize, 0f, 2f, "", "The size of the track's ends, as seen in the Scene window");
 			
+			CustomGUILayout.EndVertical ();
 			
-
-			EditorGUILayout.EndVertical ();
-			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("End-colliders", EditorStyles.boldLabel);
 			
 			if (!_target.Loops)
@@ -48,7 +48,7 @@ namespace AC
 				_target.colliderMaterial = (PhysicMaterial) CustomGUILayout.ObjectField <PhysicMaterial> ("Material:", _target.colliderMaterial, false, "", "Physics Material to give the track's end colliders");
 			}
 			
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			SnapDataGUI (_target, true);
 			
@@ -74,17 +74,14 @@ namespace AC
 			Handles.color = _target.handleColour;
 			Handles.DrawWireArc (_target.transform.position, _target.transform.forward, _target.transform.right, _target.MaxAngle, _target.radius);
 
-			if (_target.doSnapping)
+			foreach (TrackSnapData trackSnapData in _target.allTrackSnapData)
 			{
-				foreach (TrackSnapData trackSnapData in _target.allTrackSnapData)
-				{
-					DrawSnapHandles (trackSnapData, _target);
-				}
+				DrawTrackRegions (trackSnapData, _target);
 			}
 		}
 
 
-		private void DrawSnapHandles (TrackSnapData trackSnapData, DragTrack_Curved curvedTrack)
+		private void DrawTrackRegions (TrackSnapData trackSnapData, DragTrack_Curved curvedTrack)
 		{
 			float minPositionAlong = Mathf.Clamp01 (trackSnapData.PositionAlong - trackSnapData.Width);
 			float maxPositionAlong = Mathf.Clamp01 (trackSnapData.PositionAlong + trackSnapData.Width);
@@ -110,6 +107,8 @@ namespace AC
 			endUp = RotatePointAroundPivot (curvedTrack.transform.up, Vector3.zero, maxRot);
 			Vector3 maxPositionAlongWorld = curvedTrack.GetGizmoPosition (maxPositionAlong);
 			Handles.DrawSolidDisc (maxPositionAlongWorld, endUp, curvedTrack.discSize / 4f);
+
+			trackSnapData.DrawConnectionHandles(curvedTrack);
 		}
 
 
@@ -121,3 +120,5 @@ namespace AC
 	}
 
 }
+
+#endif

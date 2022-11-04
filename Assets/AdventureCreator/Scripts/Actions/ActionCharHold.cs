@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharHold.cs"
  * 
@@ -31,59 +31,54 @@ namespace AC
 		public GameObject objectToHold;
 
 		public bool isPlayer;
+		public int playerID = -1;
+		public int playerParameterID = -1;
+
 		public Char _char;
 		protected Char runtimeChar;
 
-		public bool rotate90; // Deprecated
 		public Vector3 localEulerAngles;
 		public int localEulerAnglesParameterID = -1;
 
 		protected GameObject loadedObject = null;
-		
+
+		public AnimationCurve ikTransitionCurve = AnimationCurve.Linear (0f, 0f, 1f, 1f);
+		protected enum CharHoldMethod { ParentObjectToHand, MoveHandWithIK };
+		[SerializeField] protected CharHoldMethod charHoldMethod = CharHoldMethod.ParentObjectToHand;
+		protected enum IKHoldMethod { SetTarget, Release, ReleaseInstantly };
+		[SerializeField] protected IKHoldMethod ikHoldMethod = IKHoldMethod.SetTarget;
+
 		public Hand hand;
-		
-		
-		public ActionCharHold ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Hold object";
-			description = "Parents a GameObject to a Character's hand Transform, as chosen in the Character's inspector. The local transforms of the GameObject will be cleared. Note that this action only works with 3D characters.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Hold object"; }}
+		public override string Description { get { return "Parents a GameObject to a Character's hand Transform, as chosen in the Character's inspector. The local transforms of the GameObject will be cleared. Note that this action only works with 3D characters."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			runtimeChar = AssignFile <Char> (_charID, _char);
 			objectToHold = AssignFile (parameters, objectToHoldParameterID, objectToHoldID, objectToHold);
 
 			if (objectToHold != null && !objectToHold.activeInHierarchy)
 			{
-				loadedObject = (GameObject) Instantiate (objectToHold);
+				loadedObject = (GameObject) Object.Instantiate (objectToHold);
 			}
 
 			if (isPlayer)
 			{
-				runtimeChar = KickStarter.player;
+				runtimeChar = AssignPlayer (playerID, parameters, playerParameterID);
 			}
-
-			Upgrade ();
+			else
+			{
+				runtimeChar = AssignFile<Char> (_charID, _char);
+			}
 
 			localEulerAngles = AssignVector3 (parameters, localEulerAnglesParameterID, localEulerAngles);
 		}
 
 
-		private void Upgrade ()
-		{
-			if (rotate90)
-			{
-				localEulerAngles = new Vector3 (0f, 0f, 90f);
-				rotate90 = false;
-			}
-		}
-
-
-		private GameObject GetObjectToHold ()
+		protected GameObject GetObjectToHold ()
 		{
 			if (loadedObject)
 			{
@@ -92,46 +87,108 @@ namespace AC
 			return objectToHold;
 		}
 
-		
+
 		public override float Run ()
 		{
-			if (runtimeChar)
+			return RunSelf (false);
+		}
+
+
+		private float RunSelf (bool isSkipping)
+		{
+			if (runtimeChar != null)
 			{
 				if (runtimeChar.GetAnimEngine () != null && runtimeChar.GetAnimEngine ().ActionCharHoldPossible ())
 				{
-					if (runtimeChar.HoldObject (GetObjectToHold (), hand))
+					if (charHoldMethod == CharHoldMethod.MoveHandWithIK && runtimeChar.GetAnimEngine ().IKEnabled)
 					{
-						GetObjectToHold ().transform.localEulerAngles = localEulerAngles;
+						if (GetObjectToHold () == null && ikHoldMethod == IKHoldMethod.SetTarget) return 0f;
+
+						switch (hand)
+						{
+							case Hand.Left:
+								ApplyIK (runtimeChar.LeftHandIKController, isSkipping);
+								break;
+
+							case Hand.Right:
+								ApplyIK (runtimeChar.RightHandIKController, isSkipping);
+								break;
+
+							default:
+								break;
+						}
+					}
+					else if (charHoldMethod == CharHoldMethod.ParentObjectToHand)
+					{
+						if (runtimeChar.HoldObject (GetObjectToHold (), hand))
+						{
+							GetObjectToHold ().transform.localEulerAngles = localEulerAngles;
+						}
 					}
 				}
 			}
 			else
 			{
-				LogWarning ("Could not create animation engine!");
+				LogWarning ("No character assigned!");
 			}
 			
 			return 0f;
+		}
+
+
+		public override void Skip ()
+		{
+			RunSelf (true);
+		}
+
+
+		private void ApplyIK (IKLimbController ikLimbController, bool isSkipping = false)
+		{
+			switch (ikHoldMethod)
+			{
+				case IKHoldMethod.SetTarget:
+					ikLimbController.AddTarget (GetObjectToHold ().transform, ikTransitionCurve, isSkipping);
+					break;
+
+				case IKHoldMethod.Release:
+					ikLimbController.Clear (isSkipping);
+					break;
+
+				case IKHoldMethod.ReleaseInstantly:
+					ikLimbController.Clear (true);
+					break;
+			}
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
 			if (isPlayer)
 			{
-				if (Application.isPlaying)
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
 				{
-					_char = KickStarter.player;
+					playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+					if (playerParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
 				}
-				else if (AdvGame.GetReferences ().settingsManager)
+
+				if (playerParameterID < 0)
 				{
-					_char = AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
-				}
-				else
-				{
-					EditorGUILayout.HelpBox ("A Settings Manager and player must be defined", MessageType.Warning);
+					if (playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						if (playerPrefab != null)
+						{
+							_char = (Application.isPlaying) ? playerPrefab.GetSceneInstance () : playerPrefab.playerOb;
+						}
+					}
+					else
+					{
+						_char = (Application.isPlaying) ? KickStarter.player : AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
+					}
 				}
 			}
 			else
@@ -142,32 +199,53 @@ namespace AC
 				_char = IDToField <Char> (_char, _charID, true);
 			}
 			
-			if (_char)
+			if (_char != null)
 			{
 				if (_char.GetAnimEngine () && _char.GetAnimEngine ().ActionCharHoldPossible ())
 				{
-					objectToHoldParameterID = Action.ChooseParameterGUI ("Object to hold:", parameters, objectToHoldParameterID, ParameterType.GameObject);
-					if (objectToHoldParameterID >= 0)
+					if (_char.GetAnimEngine ().IKEnabled)
 					{
-						objectToHoldID = 0;
-						objectToHold = null;
+						charHoldMethod = (CharHoldMethod) EditorGUILayout.EnumPopup ("Hold method:", charHoldMethod);
+						if (charHoldMethod == CharHoldMethod.MoveHandWithIK)
+						{
+							ikHoldMethod = (IKHoldMethod)EditorGUILayout.EnumPopup ("IK command:", ikHoldMethod);
+						}
 					}
 					else
 					{
-						objectToHold = (GameObject) EditorGUILayout.ObjectField ("Object to hold:", objectToHold, typeof (GameObject), true);
-						
-						objectToHoldID = FieldToID (objectToHold, objectToHoldID);
-						objectToHold = IDToField (objectToHold, objectToHoldID, false);
+						charHoldMethod = CharHoldMethod.ParentObjectToHand;
+					}
+
+					if (charHoldMethod == CharHoldMethod.ParentObjectToHand || ikHoldMethod == IKHoldMethod.SetTarget)
+					{
+						objectToHoldParameterID = Action.ChooseParameterGUI ("Object to hold:", parameters, objectToHoldParameterID, ParameterType.GameObject);
+						if (objectToHoldParameterID >= 0)
+						{
+							objectToHoldID = 0;
+							objectToHold = null;
+						}
+						else
+						{
+							objectToHold = (GameObject)EditorGUILayout.ObjectField ("Object to hold:", objectToHold, typeof (GameObject), true);
+
+							objectToHoldID = FieldToID (objectToHold, objectToHoldID);
+							objectToHold = IDToField (objectToHold, objectToHoldID, false);
+						}
 					}
 					
 					hand = (Hand) EditorGUILayout.EnumPopup ("Hand:", hand);
 
-					Upgrade ();
-
-					localEulerAnglesParameterID = Action.ChooseParameterGUI ("Object local angles:", parameters, localEulerAnglesParameterID, ParameterType.Vector3);
-					if (localEulerAnglesParameterID < 0)
+					if (charHoldMethod == CharHoldMethod.ParentObjectToHand)
 					{
-						localEulerAngles = EditorGUILayout.Vector3Field ("Object local angles:", localEulerAngles);
+						localEulerAnglesParameterID = Action.ChooseParameterGUI ("Object local angles:", parameters, localEulerAnglesParameterID, ParameterType.Vector3);
+						if (localEulerAnglesParameterID < 0)
+						{
+							localEulerAngles = EditorGUILayout.Vector3Field ("Object local angles:", localEulerAngles);
+						}
+					}
+					else if (charHoldMethod == CharHoldMethod.MoveHandWithIK && ikHoldMethod == IKHoldMethod.SetTarget)
+					{
+						ikTransitionCurve = EditorGUILayout.CurveField ("Transition curve:", ikTransitionCurve);
 					}
 				}
 				else
@@ -179,16 +257,14 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("This Action requires a Character before more options will show.", MessageType.Info);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
-				if (!isPlayer && _char != null && _char.GetComponent <NPC>())
+				if (!isPlayer && _char != null && !_char.IsPlayer)
 				{
 					AddSaveScript <RememberNPC> (_char);
 				}
@@ -220,9 +296,34 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
-		#endif
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer)
+			{
+				if (_char && _char.gameObject == _gameObject) return true;
+				if (_charID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			if (objectToHoldParameterID < 0)
+			{
+				if (objectToHold && objectToHold == _gameObject) return true;
+				if (objectToHoldID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
+		}
+
+		#endif
 
 
 		/**
@@ -235,7 +336,7 @@ namespace AC
 		 */
 		public static ActionCharHold CreateNew (Char characterToUpdate, GameObject objectToHold, Hand handToUse, Vector3 localEulerAngles = default(Vector3))
 		{
-			ActionCharHold newAction = (ActionCharHold) CreateInstance <ActionCharHold>();
+			ActionCharHold newAction = CreateNew<ActionCharHold> ();
 			newAction._char = characterToUpdate;
 			newAction.objectToHold = objectToHold;
 			newAction.hand = handToUse;

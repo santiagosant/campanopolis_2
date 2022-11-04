@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Expression.cs"
  * 
@@ -28,6 +28,8 @@ namespace AC
 	public class Expression
 	{
 
+		#region Variables
+
 		/** A unique identifier */
 		public int ID;
 		/** The name used in speech tokens */
@@ -35,6 +37,10 @@ namespace AC
 		/** A portrait graphic to display in MenuGraphic elemets */
 		public CursorIconBase portraitIcon = new CursorIconBase ();
 
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -57,17 +63,24 @@ namespace AC
 			}
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		#if UNITY_EDITOR
 
 		public void ShowGUI ()
 		{
 			label = EditorGUILayout.TextField ("Name:", label);
+			CustomGUILayout.TokenLabel ("[expression:" + label + "]");
 			portraitIcon.ShowGUI (false);
-			GUILayout.Box ("", GUILayout.ExpandWidth (true), GUILayout.Height(1));
+			GUILayout.Box (string.Empty, GUILayout.ExpandWidth (true), GUILayout.Height(1));
 		}
 
 		#endif
+
+		#endregion
 
 	}
 

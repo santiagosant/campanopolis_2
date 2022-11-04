@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSendMessage.cs"
  * 
@@ -26,7 +26,11 @@ namespace AC
 		
 		public int constantID = 0;
 		public int parameterID = -1;
+
 		public bool isPlayer;
+		public int playerID = -1;
+		public int playerParameterID = -1;
+
 		public GameObject linkedObject;
 		protected GameObject runtimeLinkedObject;
 
@@ -44,25 +48,19 @@ namespace AC
 		public int customValue;
 
 		public bool ignoreWhenSkipping = false;
+
+
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Send message"; }}
+		public override string Description { get { return "Sends a given message to a GameObject. Can be either a message commonly-used by Adventure Creator (Interact, TurnOn, etc) or a custom one, with an integer argument."; }}
 		
 		
-		public ActionSendMessage ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Send message";
-			description = "Sends a given message to a GameObject. Can be either a message commonly-used by Adventure Creator (Interact, TurnOn, etc) or a custom one, with an integer argument.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player != null)
-				{
-					runtimeLinkedObject = KickStarter.player.gameObject;
-				}
+				Player player = AssignPlayer (playerID, parameters, playerParameterID);
+				runtimeLinkedObject = (player != null) ? player.gameObject : null;
 			}
 			else
 			{
@@ -74,7 +72,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeLinkedObject != null)
 			{
@@ -95,11 +93,11 @@ namespace AC
 					{
 						if (!sendValue)
 						{
-							runtimeLinkedObject.SendMessage (customMessage);
+							runtimeLinkedObject.SendMessage (customMessage, SendMessageOptions.DontRequireReceiver);
 						}
 						else
 						{
-							runtimeLinkedObject.SendMessage (customMessage, customValue);
+							runtimeLinkedObject.SendMessage (customMessage, customValue, SendMessageOptions.DontRequireReceiver);
 						}
 					}
 				}
@@ -111,9 +109,13 @@ namespace AC
 					}
 					else
 					{
-						runtimeLinkedObject.SendMessage (messageToSend.ToString ());
+						runtimeLinkedObject.SendMessage (messageToSend.ToString (), SendMessageOptions.DontRequireReceiver);
 					}
 				}
+			}
+			else
+			{
+				LogWarning ("Cannot send message - no receiving object set!");
 			}
 			
 			return 0f;
@@ -129,30 +131,21 @@ namespace AC
 		}
 		
 		
-		public override ActionEnd End (List<AC.Action> actions)
-		{
-			// If the linkedObject is an immediately-starting ActionList, don't end the cutscene
-			if (runtimeLinkedObject && messageToSend == MessageToSend.Interact)
-			{
-				Cutscene tempAction = runtimeLinkedObject.GetComponent<Cutscene>();
-				if (tempAction != null && tempAction.triggerTime <= 0f)
-				{
-					ActionEnd actionEnd = new ActionEnd ();
-					actionEnd.resultAction = ResultAction.RunCutscene;
-					return actionEnd;
-				}
-			}
-			
-			return (base.End (actions));
-		}
-		
-		
 		#if UNITY_EDITOR
 		
 		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Send to Player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+					if (playerParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				parameterID = Action.ChooseParameterGUI ("Object to affect:", parameters, parameterID, ParameterType.GameObject);
 				if (parameterID >= 0)
@@ -172,7 +165,7 @@ namespace AC
 			messageToSend = (MessageToSend) EditorGUILayout.EnumPopup ("Message to send:", messageToSend);
 			if (messageToSend == MessageToSend.Custom)
 			{
-				customMessageParameterID = Action.ChooseParameterGUI ("Method name:", parameters, customMessageParameterID, ParameterType.String);
+				customMessageParameterID = Action.ChooseParameterGUI ("Method name:", parameters, customMessageParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (customMessageParameterID < 0)
 				{
 					customMessage = EditorGUILayout.TextField ("Method name:", customMessage);
@@ -191,14 +184,15 @@ namespace AC
 			
 			affectChildren = EditorGUILayout.Toggle ("Send to children too?", affectChildren);
 			ignoreWhenSkipping = EditorGUILayout.Toggle ("Ignore when skipping?", ignoreWhenSkipping);
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
-			AssignConstantID (linkedObject, constantID, parameterID);
+			if (!isPlayer)
+			{
+				AssignConstantID (linkedObject, constantID, parameterID);
+			}
 		}
 		
 		
@@ -233,7 +227,28 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (linkedObject && linkedObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			if (isPlayer && gameObject && gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -247,7 +262,7 @@ namespace AC
 		 */
 		public static ActionSendMessage CreateNew (GameObject receivingObject, string messageName, bool affectChildren = false, bool ignoreWhenSkipping = false)
 		{
-			ActionSendMessage newAction = (ActionSendMessage) CreateInstance <ActionSendMessage>();
+			ActionSendMessage newAction = CreateNew<ActionSendMessage> ();
 			newAction.linkedObject = receivingObject;
 			newAction.messageToSend = MessageToSend.Custom;
 			newAction.customMessage = messageName;
@@ -269,7 +284,7 @@ namespace AC
 		 */
 		public static ActionSendMessage CreateNew (GameObject receivingObject, string messageName, int parameterValue, bool affectChildren = false, bool ignoreWhenSkipping = false)
 		{
-			ActionSendMessage newAction = (ActionSendMessage) CreateInstance <ActionSendMessage>();
+			ActionSendMessage newAction = CreateNew<ActionSendMessage> ();
 			newAction.linkedObject = receivingObject;
 			newAction.messageToSend = MessageToSend.Custom;
 			newAction.customMessage = messageName;

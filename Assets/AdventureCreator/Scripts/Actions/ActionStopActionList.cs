@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionStopActionList.cs"
  * 
@@ -10,6 +10,7 @@
  */
 
 using System.Collections.Generic;
+using UnityEngine;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -32,17 +33,15 @@ namespace AC
 		public int constantID = 0;
 		public int parameterID = -1;
 
+		public bool killAllInstances = false;
 
-		public ActionStopActionList ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Kill";
-			description = "Instantly stops a scene or asset-based ActionList from running.";
-		}
 
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Kill"; }}
+		public override string Description { get { return "Instantly stops a scene or asset-based ActionList from running."; }}
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (listSource == ListSource.InScene)
 			{
@@ -51,15 +50,15 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (listSource == ListSource.InScene && runtimeActionList != null)
 			{
-				KickStarter.actionListManager.EndList (runtimeActionList);
+				runtimeActionList.Kill ();
 			}
 			else if (listSource == ListSource.AssetFile && invActionList != null)
 			{
-				KickStarter.actionListAssetManager.EndAssetList (invActionList, this);
+				KickStarter.actionListAssetManager.EndAssetList (invActionList, this, killAllInstances);
 			}
 			
 			return 0f;
@@ -68,7 +67,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			listSource = (ListSource) EditorGUILayout.EnumPopup ("Source:", listSource);
 			if (listSource == ListSource.InScene)
@@ -90,13 +89,15 @@ namespace AC
 			else if (listSource == ListSource.AssetFile)
 			{
 				invActionList = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList asset:", invActionList, typeof (ActionListAsset), true);
+				if (invActionList != null && invActionList.canRunMultipleInstances)
+				{
+					killAllInstances = EditorGUILayout.Toggle ("Kill all instances?", killAllInstances);
+				}
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID <ActionList> (actionList, constantID, parameterID);
 		}
@@ -114,7 +115,26 @@ namespace AC
 			}
 			return string.Empty;
 		}
+
 		
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0 && listSource == ListSource.InScene)
+			{
+				if (actionList && actionList.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (listSource == ListSource.AssetFile && invActionList == actionListAsset)
+				return true;
+			return base.ReferencesAsset (actionListAsset);
+		}
+
 		#endif
 
 
@@ -125,7 +145,7 @@ namespace AC
 		 */
 		public static ActionStopActionList CreateNew (ActionList actionList)
 		{
-			ActionStopActionList newAction = (ActionStopActionList) CreateInstance <ActionStopActionList>();
+			ActionStopActionList newAction = CreateNew<ActionStopActionList> ();
 			newAction.listSource = ListSource.InScene;
 			newAction.actionList = actionList;
 			return newAction;
@@ -139,7 +159,7 @@ namespace AC
 		 */
 		public static ActionStopActionList CreateNew (ActionListAsset actionListAsset)
 		{
-			ActionStopActionList newAction = (ActionStopActionList) CreateInstance <ActionStopActionList>();
+			ActionStopActionList newAction = CreateNew<ActionStopActionList> ();
 			newAction.listSource = ListSource.AssetFile;
 			newAction.invActionList = actionListAsset;
 			return newAction;

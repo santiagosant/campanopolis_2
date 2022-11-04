@@ -6,10 +6,16 @@ namespace AC
 	public struct PopupSelectData
 	{
 
+		#region Variables
+
 		public int ID;
 		public string label;
 		public int rootIndex;
 
+		#endregion
+
+
+		#region Constructors
 
 		public PopupSelectData (int _ID, string _label, int _rootIndex)
 		{
@@ -18,14 +24,20 @@ namespace AC
 			rootIndex = _rootIndex;
 		}
 
+		#endregion
+
+
+		#region GetSet
 
 		public string EditorLabel
 		{
 			get
 			{
-				return ID.ToString () + ": " + label;
+				return label;
 			}
 		}
+
+		#endregion
 
 	}
 }

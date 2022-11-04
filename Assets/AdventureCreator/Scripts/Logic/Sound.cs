@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Sound.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 */
 	[AddComponentMenu("Adventure Creator/Logic/Sound")]
 	[RequireComponent (typeof (AudioSource))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_sound.html")]
-	#endif
 	public class Sound : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The type of sound, so far as volume levels go (SFX, Music, Other) */
 		[HideInInspector] public SoundType soundType;
@@ -35,138 +35,61 @@ namespace AC
 		/** If True, then the GameObject this is attached to will not be destroyed when changing scene */
 		[HideInInspector] public bool surviveSceneChange = false;
 
-		private float maxVolume = 1f;
-		private float smoothVolume = 1f;
-		private float smoothUpdateSpeed = 20f;
+		protected float maxVolume = 1f;
+		protected float smoothVolume = 1f;
+		protected float smoothUpdateSpeed = 20f;
 
-		private float fadeTime;
-		private float originalFadeTime;
-		private FadeType fadeType;
+		protected float fadeTime;
+		protected float originalFadeTime;
+		protected FadeType fadeType;
 
-		private Options options;
-		protected AudioSource audioSource;
-		private float otherVolume = 1f;
+		protected Options options;
+		protected AudioSource _audioSource;
+		protected float otherVolume = 1f;
 
-		private float originalRelativeVolume;
-		private float targetRelativeVolume;
-		private float relativeChangeTime;
-		private float originalRelativeChangeTime;
+		protected float originalRelativeVolume;
+		protected float targetRelativeVolume;
+		protected float relativeChangeTime;
+		protected float originalRelativeChangeTime;
+		private bool applicationIsPaused;
+		protected bool gameIsPaused;
+
+		#endregion
+
+
+		#region UnityStandards
+
+		protected virtual void OnEnable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+			EventManager.OnInitialiseScene += OnInitialiseScene;
+			EventManager.OnChangeVolume += OnChangeVolume;
+			EventManager.OnEnterGameState += OnEnterGameState;
+
+			if (KickStarter.stateHandler) gameIsPaused = KickStarter.stateHandler.IsPaused ();
+		}
 
 		
-		private void Awake ()
-		{
-			Initialise ();
-		}
-
-
-		private void OnEnable ()
+		protected void Start ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void Start ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
-
-
-		private void OnDisable ()
+		protected virtual void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
+			EventManager.OnInitialiseScene -= OnInitialiseScene;
+			EventManager.OnChangeVolume -= OnChangeVolume;
+			EventManager.OnEnterGameState -= OnEnterGameState;
 		}
 
 
-		protected void Initialise ()
+		private void OnApplicationPause (bool pauseStatus)
 		{
-			if (surviveSceneChange)
-			{
-				if (transform.root != null && transform.root != gameObject.transform)
-				{
-					transform.SetParent (null);
-				}
-				DontDestroyOnLoad (this);
-			}
-			
-			if (GetComponent <AudioSource>())
-			{
-				audioSource = GetComponent <AudioSource>();
-
-				if (audioSource.playOnAwake)
-				{
-					audioSource.playOnAwake = false;
-				}
-			}
-
-			audioSource.ignoreListenerPause = playWhilePaused;
-			AdvGame.AssignMixerGroup (audioSource, soundType);
+			applicationIsPaused = pauseStatus;
 		}
 
-
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
-		{
-			// Search for duplicates carried over from scene change
-			ConstantID ownConstantID = GetComponent <ConstantID>();
-			if (ownConstantID != null)
-			{
-				Sound[] allSceneSounds = FindObjectsOfType (typeof (Sound)) as Sound[];
-				foreach (Sound otherSound in allSceneSounds)
-				{
-					if (otherSound != this)
-					{
-						ConstantID otherConstantID = otherSound.GetComponent <ConstantID>();
-						if (otherConstantID != null && otherConstantID.constantID == ownConstantID.constantID)
-						{
-							if (otherSound.IsPlaying ())
-	                        {
-	                        	DestroyImmediate (gameObject);
-	                        }
-	                        else
-	                        {
-								DestroyImmediate (otherSound.gameObject);
-	                        }
-							return;
-						}
-					}
-				}
-			}
-		}
-
-
-		/**
-		 * Initialises the AudioSource's volume, when the scene begins.
-		 */
-		public void AfterLoading ()
-		{
-			if (audioSource == null && GetComponent <AudioSource>())
-			{
-				audioSource = GetComponent <AudioSource>();
-			}
-
-			if (audioSource)
-			{
-				audioSource.ignoreListenerPause = playWhilePaused;
-				
-				if (audioSource.playOnAwake && audioSource.clip)
-				{
-					FadeIn (0.5f, audioSource.loop);
-				}
-				else
-				{
-					SetMaxVolume ();
-				}
-
-				SnapSmoothVolume ();
-			}
-			else
-			{
-				ACDebug.LogWarning ("Sound object " + this.name + " has no AudioSource component.", this);
-			}
-		}
-		
 
 		/**
 		 * Updates the AudioSource's volume.
@@ -175,11 +98,11 @@ namespace AC
 		public virtual void _Update ()
 		{
 			float deltaTime = Time.deltaTime;
-			if (KickStarter.stateHandler.gameState == GameState.Paused)
+			if (gameIsPaused)
 			{
 				if (playWhilePaused)
 				{
-					deltaTime = Time.fixedDeltaTime;
+					deltaTime = Time.unscaledDeltaTime;
 				}
 				else
 				{
@@ -191,7 +114,6 @@ namespace AC
 			{
 				relativeChangeTime -= deltaTime;
 				float i = (originalRelativeChangeTime - relativeChangeTime) / originalRelativeChangeTime; // 0 -> 1
-				
 				if (relativeChangeTime <= 0f)
 				{
 					relativeVolume = targetRelativeVolume;
@@ -246,32 +168,12 @@ namespace AC
 			}
 		}
 
-
-		private void SetSmoothVolume ()
-		{
-			if (!Mathf.Approximately (smoothVolume, maxVolume))
-			{
-				if (smoothUpdateSpeed > 0)
-				{
-					smoothVolume = Mathf.Lerp (smoothVolume, maxVolume, (KickStarter.stateHandler.gameState == GameState.Paused) ? Time.fixedDeltaTime : Time.deltaTime * smoothUpdateSpeed);
-				}
-				else
-				{
-					SnapSmoothVolume ();
-				}
-			}
-		}
+		#endregion
 
 
-		private void SnapSmoothVolume ()
-		{
-			smoothVolume = maxVolume;
-		}
-		
+		#region PublicFunctions
 
-		/**
-		 * Plays the AudioSource's current AudioClip.
-		 */
+		/** Plays the AudioSource's current AudioClip. */
 		public void Interact ()
 		{
 			fadeTime = 0f;
@@ -303,6 +205,8 @@ namespace AC
 			audioSource.volume = 0f;
 			audioSource.timeSamples = _timeSamples;
 			audioSource.Play ();
+
+			KickStarter.eventManager.Call_OnPlaySound (this, audioSource, audioSource.clip, _fadeTime);
 		}
 		
 
@@ -318,6 +222,8 @@ namespace AC
 				fadeType = FadeType.fadeOut;
 				
 				SetMaxVolume ();
+
+				KickStarter.eventManager.Call_OnStopSound (this, audioSource, audioSource.clip, _fadeTime);
 			}
 			else
 			{
@@ -340,22 +246,7 @@ namespace AC
 		}
 
 
-		#if !(UNITY_5 || UNITY_2017_1_OR_NEWER)
-		/**
-		 * <summary>Fixes a Unity 4 issue whereby an AudioSource does not play while paused unless it is re-played from the current point.</summary>
-		 */
-		public void ContinueFix ()
-		{
-			float startPoint = audioSource.time;
-			Play ();
-			audioSource.time = startPoint;
-		}
-		#endif
-
-
-		/**
-		 * <summary>Plays the AudioSource's current AudioClip, without starting over if it was paused or changing its "loop" variable.</summary>
-		 */
+		/** Plays the AudioSource's current AudioClip, without starting over if it was paused or changing its "loop" variable. */
 		public void Play ()
 		{
 			if (audioSource == null)
@@ -364,7 +255,15 @@ namespace AC
 			}
 			fadeTime = 0f;
 			SetMaxVolume ();
+			SnapSmoothVolume ();
+			if (audioSource)
+			{
+				audioSource.volume = smoothVolume;
+			}
+
 			audioSource.Play ();
+
+			KickStarter.eventManager.Call_OnPlaySound (this, audioSource, audioSource.clip, 0f);
 		}
 		
 
@@ -428,13 +327,11 @@ namespace AC
 		{
 			maxVolume = relativeVolume;
 
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			if (KickStarter.settingsManager.volumeControl == VolumeControl.AudioMixerGroups)
 			{
 				SetFinalVolume ();
 				return;
 			}
-			#endif
 
 			if (Options.optionsData != null)
 			{
@@ -465,12 +362,10 @@ namespace AC
 		 */
 		public void SetVolume (float volume)
 		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			if (KickStarter.settingsManager.volumeControl == VolumeControl.AudioMixerGroups)
 			{
 				volume = 1f;
 			}
-			#endif
 
 			maxVolume = relativeVolume * volume;
 			otherVolume = volume;
@@ -500,29 +395,17 @@ namespace AC
 		}
 
 
-		private void SetFinalVolume ()
-		{
-			if (KickStarter.dialog.AudioIsPlaying ())
-			{
-				if (soundType == SoundType.SFX)
-				{
-					maxVolume *= 1f - KickStarter.speechManager.sfxDucking;
-				}
-				else if (soundType == SoundType.Music)
-				{
-					maxVolume *= 1f - KickStarter.speechManager.musicDucking;
-				}
-			}
-		}
-
-
 		/**
-		 * Abrubtply stops the currently-playing sound.
+		 * Abruptly stops the currently-playing sound.
 		 */
 		public void Stop ()
 		{
+			AudioClip oldClip = audioSource.clip;
+
 			fadeTime = 0f;
 			audioSource.Stop ();
+
+			KickStarter.eventManager.Call_OnStopSound (this, audioSource, oldClip, 0f);
 		}
 
 
@@ -532,27 +415,28 @@ namespace AC
 		 */
 		public bool IsFading ()
 		{
-			return (fadeTime > 0f) ? true : false;
+			return (fadeTime > 0f);
 		}
 
-
+		
 		/**
 		 * <summary>Checks if sound is playing.</summary>
 		 * <returns>True if sound is playing</summary>
 		 */
 		public bool IsPlaying ()
 		{
-			if (audioSource == null)
+			if (audioSource)
 			{
-				Initialise ();
-			}
-
-			if (audioSource != null)
-			{
-				if (KickStarter.stateHandler.IsPaused () && !playWhilePaused)
+				if (gameIsPaused && !playWhilePaused)
 				{
 					// Special case, since in Unity 2018 isPlaying returns false if paused
 					return (audioSource.time > 0f);
+				}
+				
+				if (applicationIsPaused && audioSource.time > 0f)
+				{
+					// Special case, since isPlaying returns false if the application itself is paused
+					return true;
 				}
 
 				return audioSource.isPlaying;
@@ -568,7 +452,7 @@ namespace AC
 		 */
 		public bool IsPlaying (AudioClip clip)
 		{
-			if (audioSource != null && clip != null && audioSource.clip != null && audioSource.clip == clip && audioSource.isPlaying)
+			if (audioSource && clip && audioSource.clip == clip && audioSource.isPlaying)
 			{
 				return true;
 			}
@@ -613,25 +497,6 @@ namespace AC
 		}
 
 
-		private void TurnOn ()
-		{
-			audioSource.timeSamples = 0;
-			Play ();
-		}
-
-
-		private void TurnOff ()
-		{
-			FadeOut (0.2f);
-		}
-
-
-		private void Kill ()
-		{
-			Stop ();
-		}
-
-
 		/**
 		 * <summary>Updates a SoundData class with its own variables that need saving.</summary>
 		 * <param name = "soundData">The original SoundData class</param>
@@ -658,7 +523,7 @@ namespace AC
 			soundData.relativeChangeTime = relativeChangeTime;
 			soundData.originalRelativeChangeTime = originalRelativeChangeTime;
 
-			if (audioSource.clip != null)
+			if (audioSource.clip)
 			{
 				soundData.clipID = AssetLoader.GetAssetInstanceID (audioSource.clip);
 			}
@@ -674,7 +539,6 @@ namespace AC
 		{
 			if (soundData.isPlaying)
 			{
-				audioSource.clip = AssetLoader.RetrieveAsset (audioSource.clip, soundData.clipID);
 				PlayAtPoint (soundData.isLooping, soundData.samplePoint);
 			}
 			else
@@ -697,6 +561,173 @@ namespace AC
 			relativeChangeTime = soundData.relativeChangeTime;
 			originalRelativeChangeTime = soundData.originalRelativeChangeTime;
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void OnEnterGameState (GameState gameState)
+		{
+			gameIsPaused = (gameState == GameState.Paused);
+		}
+
+
+		protected void OnInitialiseScene ()
+		{
+			if (surviveSceneChange)
+			{
+				if (transform.root && transform.root != gameObject.transform)
+				{
+					transform.SetParent (null);
+				}
+				DontDestroyOnLoad (this);
+			}
+
+			if (audioSource)
+			{
+				//audioSource.playOnAwake = false;
+				audioSource.ignoreListenerPause = playWhilePaused;
+			}
+
+			// Search for duplicates carried over from scene change
+			ConstantID ownConstantID = GetComponent<ConstantID> ();
+			if (ownConstantID && GetComponentInParent <Player>() == null)
+			{
+				foreach (Sound otherSound in KickStarter.stateHandler.Sounds)
+				{
+					if (otherSound != this && otherSound.GetComponentInParent <Player>() == null)
+					{
+						ConstantID otherConstantID = otherSound.GetComponent<ConstantID> ();
+						if (otherConstantID && otherConstantID.constantID == ownConstantID.constantID)
+						{
+							if (otherSound.IsPlaying ())
+							{
+								//DestroyImmediate (gameObject);
+								KickStarter.sceneChanger.ScheduleForDeletion (otherSound.gameObject);
+								return;
+							}
+							else
+							{
+								//DestroyImmediate (otherSound.gameObject);
+								KickStarter.sceneChanger.ScheduleForDeletion (otherSound.gameObject);
+							}
+						}
+					}
+				}
+			}
+		}
+
+
+		protected void OnChangeVolume (SoundType _soundType, float newVolume)
+		{ 
+			if (soundType == _soundType)
+			{
+				if (audioSource)
+				{
+					audioSource.ignoreListenerPause = playWhilePaused;
+
+					if (audioSource.playOnAwake && audioSource.clip)
+					{
+						FadeIn (0.5f, audioSource.loop);
+					}
+					else
+					{
+						SetMaxVolume ();
+					}
+
+					SnapSmoothVolume ();
+				}
+				else
+				{
+					ACDebug.LogWarning ("Sound object " + this.name + " has no AudioSource component.", this);
+				}
+			}
+		}
+
+
+		protected void SetSmoothVolume ()
+		{
+			if (!Mathf.Approximately (smoothVolume, maxVolume))
+			{
+				if (smoothUpdateSpeed > 0)
+				{
+					smoothVolume = Mathf.Lerp (smoothVolume, maxVolume, gameIsPaused ? Time.fixedDeltaTime : Time.deltaTime * smoothUpdateSpeed);
+				}
+				else
+				{
+					SnapSmoothVolume ();
+				}
+			}
+		}
+
+
+		protected void SnapSmoothVolume ()
+		{
+			smoothVolume = maxVolume;
+		}
+
+
+		protected void SetFinalVolume ()
+		{
+			if (KickStarter.dialog.AudioIsPlaying ())
+			{
+				if (soundType == SoundType.SFX)
+				{
+					maxVolume *= 1f - KickStarter.speechManager.sfxDucking;
+				}
+				else if (soundType == SoundType.Music)
+				{
+					maxVolume *= 1f - KickStarter.speechManager.musicDucking;
+				}
+			}
+		}
+
+
+		protected void TurnOn ()
+		{
+			audioSource.timeSamples = 0;
+			Play ();
+		}
+
+
+		protected void TurnOff ()
+		{
+			FadeOut (0.2f);
+		}
+
+
+		protected void Kill ()
+		{
+			Stop ();
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The AudioSource that AudioClip assets are played from */
+		public AudioSource audioSource
+		{
+			get
+			{
+				if (_audioSource == null)
+				{
+					_audioSource = GetComponent<AudioSource> ();
+
+					if (_audioSource)
+					{
+						_audioSource.playOnAwake = false;
+						_audioSource.ignoreListenerPause = playWhilePaused;
+						AdvGame.AssignMixerGroup (_audioSource, soundType);
+					}
+				}
+				return _audioSource;
+			}
+		}
+
+		#endregion
 
 	}
 	

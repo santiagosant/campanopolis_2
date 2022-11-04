@@ -1,10 +1,6 @@
-﻿#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-#define CAN_USE_JSON
-#endif
-
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+﻿//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 using UnityEngine;
 using System;
@@ -13,6 +9,7 @@ using System.Collections.Generic;
 namespace AC
 {
 
+	/** A format handler that serializes data into Json format */
 	public class FileFormatHandler_Json : iFileFormatHandler
 	{
 
@@ -31,36 +28,35 @@ namespace AC
 		}
 
 
-		public string SerializeObject <T> (object dataObject)
+		public virtual string SerializeObject <T> (object dataObject)
 		{
-			#if CAN_USE_JSON
 			return JsonUtility.ToJson (dataObject);
-			#else
-			return "";
-			#endif
 		}
 
 
-		public T DeserializeObject <T> (string dataString)
+		public virtual T DeserializeObject <T> (string dataString)
 		{
 			return (T) DeserializeObjectJson <T> (dataString);
 		}
 
 
-		protected object DeserializeObjectJson <T> (string jsonString)
+		protected virtual object DeserializeObjectJson <T> (string jsonString)
 		{
-			#if CAN_USE_JSON
-
 			object jsonData = JsonUtility.FromJson (jsonString, typeof (T));
 
-				#if ALLOW_VIDEO
-				if (jsonData is VideoPlayerData && !jsonString.Contains ("isPlaying"))
-				{
-					return null;
-				}
-				#endif
+			#if ALLOW_VIDEO
+			if (jsonData is VideoPlayerData && !jsonString.Contains ("isPlaying"))
+			{
+				return null;
+			}
+			#endif
 
 			// Dirty hack, but with Unity's Json utility we can't check if the data type is correct
+
+			if (jsonData is ActionListParamData && !jsonString.Contains ("paramData"))
+			{
+				return null;
+			}
 			if (jsonData is AnimatorData && !jsonString.Contains ("layerWeightData"))
 			{
 				return null;
@@ -105,6 +101,10 @@ namespace AC
 			{
 				return null;
 			}
+			if (jsonData is ParticleSystemData && !jsonString.Contains ("isPaused"))
+			{
+				return null;
+			}
 			if (jsonData is ShapeableData && !jsonString.Contains ("_activeKeyIDs"))
 			{
 				return null;
@@ -113,12 +113,14 @@ namespace AC
 			{
 				return null;
 			}
-			#if UNITY_2017_1_OR_NEWER
 			if (jsonData is TimelineData && !jsonString.Contains ("timelineAssetID"))
 			{
 				return null;
 			}
-			#endif
+			if (jsonData is TrackData && !jsonString.Contains ("enabledStates"))
+			{
+				return null;
+			}
 			if (jsonData is TransformData && !jsonString.Contains ("bringBack"))
 			{
 				return null;
@@ -127,22 +129,28 @@ namespace AC
 			{
 				return null;
 			}
+			if (jsonData is VariablesData && !jsonString.Contains ("variablesData"))
+			{
+				return null;
+			}
+			#if ALLOW_VIDEO
+			if (jsonData is VideoPlayerData && !jsonString.Contains ("clipAssetID"))
+			{
+				return null;
+			}
+			#endif
 			if (jsonData is VisibilityData && !jsonString.Contains ("useDefaultTintMap"))
 			{
 				return null;
 			}
 			return jsonData;
-
-			#else
-			return null;
-			#endif
 		}
 
 
-		public string SerializeAllRoomData (List<SingleLevelData> dataObjects)
+		public virtual string SerializeAllRoomData (List<SingleLevelData> dataObjects)
 		{
 			// Can't serialize a list, so split by delimeter
-			string serializedString = "";
+			string serializedString = string.Empty;
 			if (dataObjects != null && dataObjects.Count > 0)
 			{
 				for (int i=0; i<dataObjects.Count; i++)
@@ -158,7 +166,7 @@ namespace AC
 		}
 
 
-		public List<SingleLevelData> DeserializeAllRoomData (string dataString)
+		public virtual List<SingleLevelData> DeserializeAllRoomData (string dataString)
 		{
 			// Can't serialize a list, so split by delimeter
 			List<SingleLevelData> allLevelData = new List<SingleLevelData>();
@@ -173,7 +181,7 @@ namespace AC
 		}
 
 
-		public T LoadScriptData <T> (string dataString) where T : RememberData
+		public virtual T LoadScriptData <T> (string dataString) where T : RememberData
 		{
 			return DeserializeObject <T> (dataString);
 		}

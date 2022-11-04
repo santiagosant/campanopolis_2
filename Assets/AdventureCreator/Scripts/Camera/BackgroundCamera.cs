@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"BackgroundCamera.cs"
  * 
@@ -19,16 +19,20 @@ namespace AC
 	 * It should not normally render anything other than a BackgroundImage.
 	 */
 	[RequireComponent (typeof (Camera))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_background_camera.html")]
-	#endif
 	public class BackgroundCamera : MonoBehaviour
 	{
+
+		#region Variables
 		
-		private Camera _camera;
+		protected Camera _camera;
+
+		#endregion
+
+
+		#region UnityStandards		
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
 			_camera = GetComponent <Camera>();
 			
@@ -37,7 +41,47 @@ namespace AC
 		}
 
 
-		private void SetCorrectLayer ()
+		protected void OnEnable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+		}
+
+
+		protected void Start ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+		}
+
+
+		protected void OnDisable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/**
+		 * Updates the Camera's Rect.
+		 * 
+		 */
+		public void UpdateRect ()
+		{
+			if (_camera == null)
+			{
+				_camera = GetComponent <Camera>();
+			}
+			_camera.rect = KickStarter.CameraMain.rect;
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void SetCorrectLayer ()
 		{
 			if (KickStarter.settingsManager)
 			{
@@ -56,40 +100,12 @@ namespace AC
 			}
 		}
 
-
-		private void OnEnable ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
+		#endregion
 
 
-		private void Start ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
+		#region Instance
 
-
-		private void OnDisable ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
-		}
-		
-
-		/**
-		 * Updates the Camera's Rect.
-		 * 
-		 */
-		public void UpdateRect ()
-		{
-			if (_camera == null)
-			{
-				_camera = GetComponent <Camera>();
-			}
-			_camera.rect = KickStarter.CameraMain.rect;
-		}
-
-
-		private static BackgroundCamera instance;
+		protected static BackgroundCamera instance;
 		public static BackgroundCamera Instance
 		{
 			get
@@ -109,6 +125,8 @@ namespace AC
 				return instance;
 			}
 		}
+
+		#endregion
 		
 	}
 	

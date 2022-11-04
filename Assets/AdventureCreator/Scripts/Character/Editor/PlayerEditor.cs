@@ -1,11 +1,13 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
 {
 
 	[CustomEditor (typeof (Player))]
-	public class PlayerEditor : CharEditor
+	public class PlayerEditor : NPCEditor
 	{
 
 		public override void OnInspectorGUI ()
@@ -13,12 +15,18 @@ namespace AC
 			Player _target = (Player) target;
 			
 			SharedGUIOne (_target);
-			SharedGUITwo (_target);
 
 			SettingsManager settingsManager = AdvGame.GetReferences ().settingsManager;
+			if (settingsManager != null && settingsManager.playerSwitching == PlayerSwitching.Allow)
+			{
+				NPC_GUI (_target);
+			}
+
+			SharedGUITwo (_target);
+
 			if (settingsManager && (settingsManager.hotspotDetection == HotspotDetection.PlayerVicinity || settingsManager.playerSwitching == PlayerSwitching.Allow))
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.LabelField ("Player settings", EditorStyles.boldLabel);
 
 				if (settingsManager.hotspotDetection == HotspotDetection.PlayerVicinity)
@@ -28,60 +36,82 @@ namespace AC
 
 				if (settingsManager.playerSwitching == PlayerSwitching.Allow)
 				{
-					_target.associatedNPCPrefab = (NPC) CustomGUILayout.ObjectField <NPC> ("Associated NPC prefab:", _target.associatedNPCPrefab, false, "", "The NPC counterpart of the Player, used as a stand-in when switching the active Player prefab");
+					_target.autoSyncHotspotState = CustomGUILayout.Toggle ("Auto-sync Hotspot state?", _target.autoSyncHotspotState, "", "If True, then any attached Hotspot will be made inactive while this character is the current active Player");
 				}
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			if (Application.isPlaying && _target.gameObject.activeInHierarchy)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.LabelField ("Current inventory", EditorStyles.boldLabel);
 
 				bool isCarrying = false;
 
-				if (KickStarter.runtimeInventory != null && KickStarter.runtimeInventory.localItems != null)
+				if (KickStarter.saveSystem != null)
 				{
-					for (int i=0; i<KickStarter.runtimeInventory.localItems.Count; i++)
+					if ((_target.IsLocalPlayer () ||
+						KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow ||
+						_target.ID == KickStarter.saveSystem.CurrentPlayerID ||
+						KickStarter.settingsManager.shareInventory))
 					{
-						InvItem invItem = KickStarter.runtimeInventory.localItems[i];
-
-						if (invItem != null)
+						if (KickStarter.runtimeInventory != null &&	KickStarter.runtimeInventory.localItems != null)
 						{
-							isCarrying = true;
+							if (ListItems (KickStarter.runtimeInventory.PlayerInvCollection))
+							{
+								isCarrying = true;
+							}
+						}
 
-							EditorGUILayout.BeginHorizontal ();
-							EditorGUILayout.LabelField ("Item:", GUILayout.Width (80f));
-							if (invItem.canCarryMultiple)
+						if (KickStarter.inventoryManager != null && KickStarter.runtimeDocuments != null && KickStarter.runtimeDocuments.GetCollectedDocumentIDs () != null)
+						{
+							for (int i=0; i<KickStarter.runtimeDocuments.GetCollectedDocumentIDs ().Length; i++)
 							{
-								EditorGUILayout.LabelField (invItem.label, EditorStyles.boldLabel, GUILayout.Width (135f));
-								EditorGUILayout.LabelField ("Count:", GUILayout.Width (50f));
-								EditorGUILayout.LabelField (invItem.count.ToString (), GUILayout.Width (44f));
+								Document document = KickStarter.inventoryManager.GetDocument (KickStarter.runtimeDocuments.GetCollectedDocumentIDs ()[i]);
+
+								if (document != null)
+								{
+									isCarrying = true;
+
+									EditorGUILayout.BeginHorizontal ();
+									EditorGUILayout.LabelField ("Document:", GUILayout.Width (80f));
+									EditorGUILayout.LabelField (document.Title, EditorStyles.boldLabel);
+									EditorGUILayout.EndHorizontal ();
+								}
 							}
-							else
+						}
+
+						if (KickStarter.inventoryManager != null && KickStarter.runtimeObjectives != null)
+						{
+							ObjectiveInstance[] objectiveInstances = KickStarter.runtimeObjectives.GetObjectives ();
+							foreach (ObjectiveInstance objectiveInstance in objectiveInstances)
 							{
-								EditorGUILayout.LabelField (invItem.label, EditorStyles.boldLabel);
+								EditorGUILayout.BeginHorizontal ();
+								EditorGUILayout.LabelField ("Objective:", GUILayout.Width (80f));
+								EditorGUILayout.LabelField (objectiveInstance.Objective.GetTitle () + ": " + objectiveInstance.CurrentState.GetLabel (), EditorStyles.boldLabel);
+								EditorGUILayout.EndHorizontal ();
 							}
-							EditorGUILayout.EndHorizontal ();
 						}
 					}
-				}
-
-				if (KickStarter.inventoryManager != null && KickStarter.runtimeDocuments != null && KickStarter.runtimeDocuments.GetCollectedDocumentIDs () != null)
-				{
-					for (int i=0; i<KickStarter.runtimeDocuments.GetCollectedDocumentIDs ().Length; i++)
+					else
 					{
-						Document document = KickStarter.inventoryManager.GetDocument (KickStarter.runtimeDocuments.GetCollectedDocumentIDs ()[i]);
-
-						if (document != null)
+						PlayerData playerData = KickStarter.saveSystem.GetPlayerData (_target.ID);
+						if (playerData != null)
 						{
-							isCarrying = true;
+							if (ListItems (InvCollection.LoadData (playerData.inventoryData)))
+							{
+								isCarrying = true;
+							}
 
-							EditorGUILayout.BeginHorizontal ();
-							EditorGUILayout.LabelField ("Document:", GUILayout.Width (80f));
-							EditorGUILayout.LabelField (document.Title, EditorStyles.boldLabel);
-							EditorGUILayout.EndHorizontal ();
+							if (!string.IsNullOrEmpty (playerData.collectedDocumentData))
+							{
+								EditorGUILayout.LabelField ("Documents:", playerData.collectedDocumentData);
+							}
+							if (!string.IsNullOrEmpty (playerData.playerObjectivesData))
+							{
+								EditorGUILayout.LabelField ("Objectives:", playerData.playerObjectivesData);
+							}
 						}
 					}
 				}
@@ -91,12 +121,43 @@ namespace AC
 					EditorGUILayout.HelpBox ("This Player is not carrying any items.", MessageType.Info);
 				}
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 			
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
 
+
+		private bool ListItems (InvCollection invCollection)
+		{
+			bool isCarrying = false;
+			foreach (InvInstance invInstance in invCollection.InvInstances)
+			{
+				if (InvInstance.IsValid (invInstance))
+				{
+					isCarrying = true;
+
+					EditorGUILayout.BeginHorizontal ();
+					EditorGUILayout.LabelField ("Item:", GUILayout.Width (80f));
+					if (invInstance.InvItem.canCarryMultiple)
+					{
+						EditorGUILayout.LabelField (invInstance.InvItem.label, EditorStyles.boldLabel, GUILayout.Width (135f));
+						EditorGUILayout.LabelField ("Count:", GUILayout.Width (50f));
+						EditorGUILayout.LabelField (invInstance.Count.ToString (), GUILayout.Width (44f));
+					}
+					else
+					{
+						EditorGUILayout.LabelField (invInstance.InvItem.label, EditorStyles.boldLabel);
+					}
+					EditorGUILayout.EndHorizontal ();
+				}
+			}
+
+			return isCarrying;
+		}
+
 	}
 
 }
+
+#endif

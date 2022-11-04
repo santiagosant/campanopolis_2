@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActiveList.cs"
  * 
@@ -11,16 +11,20 @@
 
 using UnityEngine;
 using System.Collections.Generic;
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
 namespace AC
 {
 	
-	/**
-	 * A container for data about ActionLists and ActionListAssets that have been run.  It stores information about what to skip, pause-points and current parameter data.
-	 */
+	/** A container for data about ActionLists and ActionListAssets that have been run.  It stores information about what to skip, pause-points and current parameter data. */
 	public class ActiveList
 	{
-		
+
+		#region Variables
+
 		/** The ActionList this references */
 		public ActionList actionList;
 		/** The ActionListAsset this references */
@@ -31,15 +35,17 @@ namespace AC
 		public bool inSkipQueue;
 
 		private bool isRunning;
-		private bool isConversationOverride;
 		private int[] resumeIndices;
 		private Conversation conversationOnEnd;
 		private string parameterData;
+		private bool gamePausedWhenStarted;
+
+		#endregion
 
 
-		/**
-		 * The default Constructor.
-		 */
+		#region Constructors
+
+		/** The default Constructor. */
 		public ActiveList ()
 		{
 			actionList = null;
@@ -48,7 +54,8 @@ namespace AC
 			inSkipQueue = false;
 			isRunning = false;
 			resumeIndices = new int[0];
-			parameterData = "";
+			parameterData = string.Empty;
+			gamePausedWhenStarted = (KickStarter.stateHandler != null) ? KickStarter.stateHandler.IsPaused () : false;
 		}
 
 
@@ -67,9 +74,9 @@ namespace AC
 				conversationOnEnd = actionList.conversation;
 			}
 
-			if (actionList is RuntimeActionList)
+			RuntimeActionList runtimeActionList = actionList as RuntimeActionList;
+			if (runtimeActionList != null)
 			{
-				RuntimeActionList runtimeActionList = (RuntimeActionList) actionList;
 				actionListAsset = runtimeActionList.assetSource;
 			}
 			else
@@ -81,9 +88,14 @@ namespace AC
 			startIndex = _startIndex;
 			isRunning = true;
 			resumeIndices = new int[0];
-			parameterData = "";
+			parameterData = string.Empty;
+			gamePausedWhenStarted = (KickStarter.stateHandler != null) ? KickStarter.stateHandler.IsPaused () : false;
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks whether or not the associated ActionList is running.</summary>
@@ -100,22 +112,12 @@ namespace AC
 
 
 		/**
-		 * <summary>Checks whether the class is used to override a Conversation's dialogue options within its own ActionList.</summary>
-		 * <returns>True if the class is used to override a Conversation's dialogue options within its own ActionList.</returns>
-		 */
-		public bool IsConversationOverride ()
-		{
-			return isConversationOverride;
-		}
-
-
-		/**
 		 * <summary>Checks whether the class contains any useful information. If not, the ActionListManager will delete it.</summary>
 		 * <returns>True if the class contains any useful information</returns>
 		 */
 		public bool IsNecessary ()
 		{
-			if (IsRunning () || isConversationOverride || inSkipQueue || resumeIndices.Length > 0)
+			if (IsRunning () || inSkipQueue || resumeIndices.Length > 0)
 			{
 				return true;
 			}
@@ -129,7 +131,6 @@ namespace AC
 		public void ClearNecessity ()
 		{
 			resumeIndices = new int[0];
-			isConversationOverride = false;
 		}
 
 
@@ -140,13 +141,14 @@ namespace AC
 		public void Reset (bool removeFromSkipQueue)
 		{
 			isRunning = false;
-		
+			
 			if (actionList != null)
 			{
 				actionList.ResetList ();
-				if (actionList is RuntimeActionList)
+
+				RuntimeActionList runtimeActionList = actionList as RuntimeActionList;
+				if (runtimeActionList != null)
 				{
-					RuntimeActionList runtimeActionList = (RuntimeActionList) actionList;
 					runtimeActionList.DestroySelf ();
 				}
 			}
@@ -247,6 +249,13 @@ namespace AC
 		}
 
 
+		/** Updates the internal record of the ActionList's current parameter data **/
+		public void UpdateParameterData ()
+		{
+			parameterData = actionList.GetParameterData ();
+		}
+
+
 		/**
 		 * <summary>Checks if the associated ActionList is capable of unfreezing pause Menus.</summary>
 		 * <returns>True if the associated ActionList is capable of unfreezing pause Menus.</returns>
@@ -255,54 +264,7 @@ namespace AC
 		{
 			if (actionListAsset != null && actionListAsset.unfreezePauseMenus && actionListAsset.actionListType == ActionListType.PauseGameplay)
 			{
-				return true;
-			}
-			return false;
-		}
-
-
-		/**
-		 * <summary>Resets the associated ActionList and records the index of an ActionConversation instance, if it is within the ActionList's list of Actions.</summary>
-		 * <param name = "actionConversation">The ActionConversation to search for</param>
-		 */
-		public void SetConversationOverride (ActionConversation actionConversation)
-		{
-			if (actionList != null)
-			{
-				foreach (Action action in actionList.actions)
-				{
-					if (action == actionConversation)
-					{
-						startIndex = actionList.actions.IndexOf (action);
-						isConversationOverride = true;
-						Reset (true);
-						return;
-					}
-				}
-			}
-		}
-
-
-		/**
-		 * <summary>Attempts to resume a Conversation, if the associated ActionList overrides it's handling.</summary>
-		 * <returns>True if the ActionList was overriding a Conversation</returns>
-		 */
-		public bool ResumeConversationOverride ()
-		{
-			if (isConversationOverride)
-			{
-				isConversationOverride = false;
-
-				if (actionListAsset != null)
-				{
-					actionList = AdvGame.RunActionListAsset (actionListAsset, startIndex, true);
-				}
-				else if (actionList != null)
-				{
-					actionList.Interact (startIndex, true);
-				}
-
-				return true;
+				return gamePausedWhenStarted;
 			}
 			return false;
 		}
@@ -314,20 +276,7 @@ namespace AC
 		 */
 		public Conversation GetConversationOnEnd ()
 		{
-			if (conversationOnEnd != null)
-			{
-				if (KickStarter.stateHandler)
-				{
-					KickStarter.stateHandler.gameState = GameState.Cutscene;
-				}
-				else
-				{
-					ACDebug.LogWarning ("Could not set correct GameState!");
-				}
-
-				return conversationOnEnd;
-			}
-			return null;
+			return conversationOnEnd;
 		}
 
 
@@ -349,7 +298,8 @@ namespace AC
 		public void Resume (RuntimeActionList runtimeActionList = null, bool rerunPausedActions = false)
 		{
 			if (runtimeActionList != null)
-			{
+			{ 
+				isRunning = true;
 				actionList = runtimeActionList;
 				runtimeActionList.Resume (startIndex, resumeIndices, parameterData, rerunPausedActions);
 			}
@@ -357,6 +307,8 @@ namespace AC
 			{
 				actionList.Resume (startIndex, resumeIndices, parameterData, rerunPausedActions);
 			}
+
+			gamePausedWhenStarted = (KickStarter.stateHandler != null) ? KickStarter.stateHandler.IsPaused () : false;
 		}
 
 
@@ -382,43 +334,49 @@ namespace AC
 		 */
 		public string GetSaveData (SubScene subScene)
 		{
-			string ID = "";
-			string convID = "";
+			string ID = string.Empty;
+			string convID = string.Empty;
 
 			if (IsRunning ())
 			{
 				// Unless ActionLists can be saved mid-stream, don't save info about those currently-running
-				return "";
+				return string.Empty;
 			}
 
-			string parameterData = "";
-			if (actionListAsset != null)
+			string parameterData = string.Empty;
+			if (actionListAsset)
 			{
 				ID = AdvGame.PrepareStringForSaving (actionListAsset.name);
 			}
-			else if (actionList != null)
+			else if (actionList)
 			{
-				if (actionList.GetComponent <ConstantID>())
+				ConstantID actionListID = actionList.GetComponent <ConstantID>();
+
+				if (actionListID)
 				{
-					ID = actionList.GetComponent <ConstantID>().constantID.ToString ();
+					ID = actionListID.constantID.ToString ();
 
 					if (subScene == null && UnityVersionHandler.ObjectIsInActiveScene (actionList.gameObject))
 					{
 						// OK
 					}
-					else if (subScene != null && UnityVersionHandler.GetSceneInfoFromGameObject (actionList.gameObject).Matches (subScene.SceneInfo))
+					else if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Number && subScene && UnityVersionHandler.GetSceneIndexFromGameObject (actionList.gameObject) == subScene.SceneIndex)
+					{
+						// OK
+					}
+					else if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name && subScene && UnityVersionHandler.GetSceneNameFromGameObject (actionList.gameObject) == subScene.SceneName)
 					{
 						// OK
 					}
 					else
 					{
-						return "";
+						return string.Empty;
 					}
 				}
 				else
 				{
 					ACDebug.LogWarning ("Data for the ActionList '" + actionList.gameObject.name + "' was not saved because it has no Constant ID.", actionList.gameObject);
-					return "";
+					return string.Empty;
 				}
 			}
 
@@ -427,36 +385,18 @@ namespace AC
 				parameterData = actionList.GetParameterData ();
 			}
 
-			if (conversationOnEnd != null && conversationOnEnd.GetComponent <ConstantID>())
+			if (conversationOnEnd && conversationOnEnd.GetComponent <ConstantID>())
 			{
 				convID = conversationOnEnd.GetComponent <ConstantID>().ToString ();
 			}
 
 			return (ID + SaveSystem.colon +
-			        ConvertIndicesToString () + SaveSystem.colon +
-			        startIndex + SaveSystem.colon +
-			        ((inSkipQueue) ? 1 : 0) + SaveSystem.colon +
-			        ((isRunning) ? 1 : 0) + SaveSystem.colon +
-			        convID + SaveSystem.colon +
-			        parameterData);
-		}
-
-
-		private string ConvertIndicesToString ()
-		{
-			string data = "";
-			if (resumeIndices != null && resumeIndices.Length > 0)
-			{
-				for (int i=0; i<resumeIndices.Length; i++)
-				{
-					data += resumeIndices[i];
-					if (i < (resumeIndices.Length - 1))
-					{
-						data += "]";
-					}
-				}
-			}
-			return data;
+					ConvertIndicesToString () + SaveSystem.colon +
+					startIndex + SaveSystem.colon +
+					((inSkipQueue) ? 1 : 0) + SaveSystem.colon +
+					((isRunning) ? 1 : 0) + SaveSystem.colon +
+					convID + SaveSystem.colon +
+					parameterData);
 		}
 
 
@@ -464,11 +404,10 @@ namespace AC
 		 * <summary>Restores the class's data from a saved string.</summary>
 		 * <param name = "data">The saved string to restore from</param>
 		 * <param name = "subScene">If set, only data for a given subscene will be loaded. If null, only data for the active scene will be loaded</param>
-		 * <returns>True if the data was successfully restored</returns>
 		 */
-		public bool LoadData (string dataString, SubScene subScene = null)
+		public void LoadData (string dataString, SubScene subScene = null)
 		{
-			if (string.IsNullOrEmpty (dataString)) return false;
+			if (string.IsNullOrEmpty (dataString)) return;
 
 			string[] dataArray = dataString.Split (SaveSystem.colon[0]);
 
@@ -510,39 +449,102 @@ namespace AC
 			int.TryParse (dataArray[5], out convID);
 			if (convID != 0)
 			{
-				conversationOnEnd = Serializer.returnComponent <Conversation> (convID, (subScene != null) ? subScene.gameObject : null);
+				if (subScene != null)
+				{
+					conversationOnEnd = ConstantID.GetComponent <Conversation> (convID, subScene.gameObject.scene);
+				}
+				else
+				{
+					conversationOnEnd = ConstantID.GetComponent <Conversation> (convID);
+				}
 			}
 
 			// Parameter data
 			parameterData = dataArray[6];
 
 			// ActionList
-			int ID = 0;
-			if (int.TryParse (listName, out ID))
+			if (!string.IsNullOrEmpty (listName))
 			{
-				// Scene
-				ConstantID constantID = Serializer.returnComponent <ConstantID> (ID, (subScene != null) ? subScene.gameObject : null);
-				if (constantID != null && constantID.GetComponent <ActionList>() != null)
+				// Asset file
+				#if AddressableIsPresent
+				if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
 				{
-					actionList = constantID.GetComponent <ActionList>();
-					return true;
+					Addressables.LoadAssetAsync<ActionListAsset> (listName).Completed += OnCompleteLoad;
+				}
+				else
+				#endif
+				{
+					ActionListAsset tempAsset = ScriptableObject.CreateInstance<ActionListAsset> ();
+					actionListAsset = AssetLoader.RetrieveAsset<ActionListAsset> (tempAsset, listName);
+
+					if (actionListAsset == null || actionListAsset == tempAsset)
+					{
+						ACDebug.LogWarning ("Could not restore data related to the ActionList asset '" + listName + "' - to restore it correctly, the asset must be placed in a folder named Resources.");
+					}
+					else
+					{
+						KickStarter.actionListAssetManager.AddToList (this);
+					}
 				}
 			}
 			else
 			{
-				// Asset file
-				ActionListAsset tempAsset = ScriptableObject.CreateInstance <ActionListAsset> ();
-				actionListAsset = AssetLoader.RetrieveAsset <ActionListAsset> (tempAsset, listName);
-				if (actionListAsset != null && actionListAsset != tempAsset)
+				int ID = 0;
+				if (int.TryParse (listName, out ID))
 				{
-					return true;
+					// Scene
+					ConstantID constantID = (subScene != null)
+						? ConstantID.GetComponent (ID, subScene.gameObject.scene)
+						: ConstantID.GetComponent (ID);
+				
+					if (constantID)
+					{
+						actionList = constantID.GetComponent <ActionList>();
+						if (actionList)
+						{
+							KickStarter.actionListManager.AddToList (this);
+						}
+					}
 				}
-
-				ACDebug.LogWarning ("Could not restore data related to the ActionList asset '" + listName + "' - to restore it correctly, the asset must be placed in a folder named Resources.");
 			}
-			return false;
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected string ConvertIndicesToString ()
+		{
+			string data = string.Empty;
+			if (resumeIndices != null && resumeIndices.Length > 0)
+			{
+				for (int i=0; i<resumeIndices.Length; i++)
+				{
+					data += resumeIndices[i];
+					if (i < (resumeIndices.Length - 1))
+					{
+						data += "]";
+					}
+				}
+			}
+			return data;
+		}
+
+		#endregion
+
+
+		#if AddressableIsPresent
+
+		private void OnCompleteLoad (AsyncOperationHandle<ActionListAsset> obj)
+		{
+			if (obj.Result == null) return;
+			actionListAsset = obj.Result;
+			KickStarter.actionListAssetManager.AddToList (this);
 		}
 		
+		#endif
+
 	}
 
 }

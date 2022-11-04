@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberConversation.cs"
  * 
@@ -20,9 +20,7 @@ namespace AC
 	 * Attach this script to Conversation objects in the scene with DialogOption states you wish to save.
 	 */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Conversation")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_conversation.html")]
-	#endif
 	public class RememberConversation : Remember
 	{
 
@@ -36,7 +34,7 @@ namespace AC
 			conversationData.objectID = constantID;
 			conversationData.savePrevented = savePrevented;
 
-			if (_Conversation != null)
+			if (_Conversation)
 			{
 				List<bool> optionStates = new List<bool>();
 				List<bool> optionLocks = new List<bool>();
@@ -76,7 +74,7 @@ namespace AC
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (_Conversation != null)
+			if (_Conversation)
 			{
 				bool[] optionStates = StringToBoolArray (data._optionStates);
 				bool[] optionLocks = StringToBoolArray (data._optionLocks);

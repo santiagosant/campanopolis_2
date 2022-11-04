@@ -1,11 +1,11 @@
-﻿#if UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2018_2_OR_NEWER
+﻿#if UNITY_STANDALONE && !UNITY_2018_2_OR_NEWER
 #define ALLOW_MOVIETEXTURES
 #endif
 
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuGraphic.cs"
  * 
@@ -24,15 +24,13 @@ using UnityEditor;
 namespace AC
 {
 
-	/**
-	 * A MenuElement that provides a space for animated or still images.
-	 */
+	/** A MenuElement that provides a space for animated or still images. */
 	public class MenuGraphic : MenuElement
 	{
 
 		/** The Unity UI Image this is linked to (Unity UI Menus only) */
 		public Image uiImage;
-		/** The type of graphic that is shown (Normal, DialogPortrait, DocumentTexture) */
+		/** The type of graphic that is shown (Normal, DialoguePortrait, DocumentTexture, ObjectiveTexture) */
 		public AC_GraphicType graphicType = AC_GraphicType.Normal;
 		/** The CursorIconBase that stores the graphic and animation data */
 		public CursorIconBase graphic;
@@ -42,17 +40,15 @@ namespace AC
 		private enum UIImageType { Image, RawImage };
 
 		private Texture localTexture;
+		private AC.Char portraitCharacterOverride;
 
+		private Rect speechRect = new Rect ();
 		private Sprite sprite;
 		private Speech speech;
-		private bool speechIsAnimating;
-		private Rect speechRect;
+		private CursorIconBase portrait;
 		private bool isDuppingSpeech;
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiImage = null;
@@ -98,11 +94,7 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObjects.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			if (uiImageType == UIImageType.Image)
 			{
@@ -115,18 +107,13 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of a slot</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the slot</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
-			if (uiImageType == UIImageType.Image && uiImage != null)
+			if (uiImageType == UIImageType.Image && uiImage)
 			{
 				return uiImage.rectTransform;
 			}
-			else if (uiImageType == UIImageType.RawImage && uiRawImage != null)
+			else if (uiImageType == UIImageType.RawImage && uiRawImage)
 			{
 				return uiRawImage.rectTransform;
 			}
@@ -141,7 +128,7 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuGraphic)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			
 			if (source != MenuSource.AdventureCreator)
 			{
@@ -154,8 +141,8 @@ namespace AC
 				{
 					uiRawImage = LinkedUiGUI <RawImage> (uiRawImage, "Linked Raw Image:", source);
 				}
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 			}
 			
 			graphicType = (AC_GraphicType) CustomGUILayout.EnumPopup ("Graphic type:", graphicType, apiPrefix + ".graphicType", "The type of graphic that is shown");
@@ -163,12 +150,35 @@ namespace AC
 			{
 				graphic.ShowGUI (false, false, "Texture:", CursorRendering.Software, apiPrefix + ".graphic", "The texture to display");
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
-		
+
 		#endif
+
+		
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiImageType == UIImageType.Image && uiImage && uiImage.gameObject == gameObject) return true;
+			if (uiImageType == UIImageType.RawImage && uiRawImage && uiRawImage.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiImageType == UIImageType.Image && uiImage && uiImage.gameObject == gameObject)
+			{
+				return 0;
+			}
+			if (uiImageType == UIImageType.RawImage && uiRawImage && uiRawImage.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
 
 
 		/**
@@ -190,14 +200,15 @@ namespace AC
 			if (!isDuppingSpeech && KickStarter.dialog.GetLatestSpeech () != null)
 			{
 				speech = KickStarter.dialog.GetLatestSpeech ();
+
+				if (parentMenu != null && !speech.MenuCanShow (parentMenu))
+				{
+					speech = null;
+				}
 			}
 		}
 		
 
-		/**
-		 * <summary>Assigns the element to a specific Speech line.</summary>
-		 * <param name = "_speech">The Speech line to assign the element to</param>
-		 */
 		public override void SetSpeech (Speech _speech)
 		{
 			isDuppingSpeech = true;
@@ -205,9 +216,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * Clears any speech text on display.
-		 */
 		public override void ClearSpeech ()
 		{
 			if (graphicType == AC_GraphicType.DialoguePortrait)
@@ -241,11 +249,19 @@ namespace AC
 			switch (graphicType)
 			{
 				case AC_GraphicType.DialoguePortrait:
-					UpdateSpeechLink ();
-					if (speech != null)
+					if (portraitCharacterOverride)
 					{
-						localTexture = speech.GetPortrait ();
-						speechIsAnimating = speech.IsAnimating ();
+						portrait = portraitCharacterOverride.GetPortrait ();
+						localTexture = portrait.texture;
+					}
+					else
+					{
+						UpdateSpeechLink ();
+						if (speech != null && speech.GetSpeakingCharacter ())
+						{
+							portrait = speech.GetSpeakingCharacter ().GetPortrait ();
+							localTexture = portrait.texture;
+						}
 					}
 					break;
 
@@ -254,11 +270,33 @@ namespace AC
 					{
 						if (localTexture != KickStarter.runtimeDocuments.ActiveDocument.texture)
 						{
-							Texture2D docTex = KickStarter.runtimeDocuments.ActiveDocument.texture;
-							sprite = UnityEngine.Sprite.Create (docTex, new Rect (0f, 0f, docTex.width, docTex.height), new Vector2 (0.5f, 0.5f));
+							if (KickStarter.runtimeDocuments.ActiveDocument.texture)
+							{
+								Texture2D docTex = KickStarter.runtimeDocuments.ActiveDocument.texture;
+								sprite = Sprite.Create (docTex, new Rect (0f, 0f, docTex.width, docTex.height), new Vector2 (0.5f, 0.5f));
+							}
+							else
+							{
+								sprite = null;
+							}
 						}
 						localTexture = KickStarter.runtimeDocuments.ActiveDocument.texture;
 					}
+					break;
+
+				case AC_GraphicType.ObjectiveTexture:
+					if (Application.isPlaying && KickStarter.runtimeObjectives.SelectedObjective != null)
+					{
+						if (localTexture != KickStarter.runtimeObjectives.SelectedObjective.Objective.texture && KickStarter.runtimeObjectives.SelectedObjective.Objective.texture)
+						{
+							Texture2D objTex = KickStarter.runtimeObjectives.SelectedObjective.Objective.texture;
+							sprite = UnityEngine.Sprite.Create (objTex, new Rect (0f, 0f, objTex.width, objTex.height), new Vector2 (0.5f, 0.5f));
+						}
+						localTexture = KickStarter.runtimeObjectives.SelectedObjective.Objective.texture;
+					}
+					break;
+
+				default:
 					break;
 			}
 
@@ -266,13 +304,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -287,15 +318,33 @@ namespace AC
 					break;
 
 				case AC_GraphicType.DialoguePortrait:
-					if (localTexture != null)
+					if (localTexture)
 					{
-						if (speechIsAnimating)
+						if (portrait.isAnimated)
 						{
-							if (speech != null)
+							Char character = portraitCharacterOverride;
+							if (character == null && speech != null && speech.speaker)
 							{
-								speechRect = speech.GetAnimatedRect ();
+								character = speech.speaker;
 							}
-							GUI.DrawTextureWithTexCoords (ZoomRect (relativeRect, zoom), localTexture, speechRect);
+
+							if (character)
+							{
+								if (character.isLipSyncing)
+								{
+									speechRect = portrait.GetAnimatedRect (character.GetLipSyncFrame ());
+								}
+								else if (character.isTalking)
+								{
+									speechRect = portrait.GetAnimatedRect ();
+								}
+								else
+								{
+									speechRect = portrait.GetAnimatedRect (0);
+								}
+
+								GUI.DrawTextureWithTexCoords (ZoomRect (relativeRect, zoom), localTexture, speechRect);
+							}
 						}
 						else
 						{
@@ -305,7 +354,8 @@ namespace AC
 					break;
 
 				case AC_GraphicType.DocumentTexture:
-					if (localTexture != null)
+				case AC_GraphicType.ObjectiveTexture:
+					if (localTexture)
 					{
 						GUI.DrawTexture (ZoomRect (relativeRect, zoom), localTexture, ScaleMode.StretchToFill, true, 0f);
 					}
@@ -314,11 +364,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
 		public override void RecalculateSize (MenuSource source)
 		{
 			graphic.Reset ();
@@ -329,48 +374,63 @@ namespace AC
 
 		private void SetUIGraphic ()
 		{
-			if (uiImageType == UIImageType.Image && uiImage != null)
+			if (!Application.isPlaying) return;
+
+			if (uiImageType == UIImageType.Image && uiImage)
 			{
-				if (graphicType == AC_GraphicType.Normal)
+				switch (graphicType)
 				{
-					uiImage.sprite = graphic.GetAnimatedSprite (true);
-				}
-				else if (graphicType == AC_GraphicType.DocumentTexture)
-				{
-					uiImage.sprite = sprite;
-				}
-				else if (graphicType == AC_GraphicType.DialoguePortrait)
-				{
-					if (speech != null)
-					{
-						uiImage.sprite = speech.GetPortraitSprite ();
-					}
+					case AC_GraphicType.Normal:
+						uiImage.sprite = graphic.GetAnimatedSprite (true);
+						break;
+
+					case AC_GraphicType.DialoguePortrait:
+						if (speech != null && portraitCharacterOverride == null)
+						{
+							uiImage.sprite = speech.GetPortraitSprite ();
+						}
+						else if (portraitCharacterOverride != null)
+						{
+							uiImage.sprite = portraitCharacterOverride.GetPortraitSprite ();
+						}
+						break;
+
+					case AC_GraphicType.DocumentTexture:
+					case AC_GraphicType.ObjectiveTexture:
+						uiImage.sprite = sprite;
+						break;
+
+					default:
+						break;
 				}
 				UpdateUIElement (uiImage);
 			}
-			if (uiImageType == UIImageType.RawImage && uiRawImage != null)
+			if (uiImageType == UIImageType.RawImage && uiRawImage)
 			{
-				if (graphicType == AC_GraphicType.Normal)
+				switch (graphicType)
 				{
-					if (graphic.texture != null && graphic.texture is RenderTexture)
-					{
-						uiRawImage.texture = graphic.texture;
-					}
-					else
-					{
-						uiRawImage.texture = graphic.GetAnimatedTexture (true);
-					}
-				}
-				else if (graphicType == AC_GraphicType.DocumentTexture)
-				{
-					uiRawImage.texture = localTexture;
-				}
-				else if (graphicType == AC_GraphicType.DialoguePortrait)
-				{
-					if (speech != null)
-					{
-						uiRawImage.texture = speech.GetPortrait ();
-					}
+					case AC_GraphicType.Normal:
+						if (graphic.texture && graphic.texture is RenderTexture)
+						{
+							uiRawImage.texture = graphic.texture;
+						}
+						else
+						{
+							uiRawImage.texture = graphic.GetAnimatedTexture (true);
+						}
+						break;
+
+					case AC_GraphicType.DocumentTexture:
+					case AC_GraphicType.ObjectiveTexture:
+						uiRawImage.texture = localTexture;
+						break;
+
+					case AC_GraphicType.DialoguePortrait:
+						if (speech != null)
+						{
+							uiRawImage.texture = speech.GetPortrait ();
+						}
+						break;
 				}
 				UpdateUIElement (uiRawImage);
 			}
@@ -379,10 +439,19 @@ namespace AC
 		
 		protected override void AutoSize ()
 		{
-			if (graphicType == AC_GraphicType.Normal && graphic.texture != null)
+			if (graphicType == AC_GraphicType.Normal && graphic.texture)
 			{
 				GUIContent content = new GUIContent (graphic.texture);
 				AutoSize (content);
+			}
+		}
+
+
+		public AC.Char PortraitCharacterOverride
+		{
+			set
+			{
+				portraitCharacterOverride = value;
 			}
 		}
 		

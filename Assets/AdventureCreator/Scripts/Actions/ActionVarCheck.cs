@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarCheck.cs"
  * 
@@ -47,8 +47,14 @@ namespace AC
 		public Vector3 vector3Value;
 		public VectorCondition vectorCondition = VectorCondition.EqualTo;
 
+		public GameObject gameObjectValue;
+		protected GameObject runtimeGameObjectValue;
+
+		public Object unityObjectValue;
+		protected Object runtimeUnityObjectValue;
+
 		public VariableLocation location = VariableLocation.Global;
-		private LocalVariables localVariables;
+		protected LocalVariables localVariables;
 
 		public Variables variables;
 		public int variablesConstantID = 0;
@@ -56,8 +62,8 @@ namespace AC
 		public Variables compareVariables;
 		public int compareVariablesConstantID = 0;
 
-		private GVar runtimeVariable;
-		private GVar runtimeCompareVariable;
+		protected GVar runtimeVariable;
+		protected GVar runtimeCompareVariable;
 
 		#if UNITY_EDITOR
 		[SerializeField] protected VariableType placeholderType;
@@ -65,22 +71,20 @@ namespace AC
 		#endif
 
 
-		public ActionVarCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Check";
-			description = "Queries the value of both Global and Local Variables declared in the Variables Manager. Variables can be compared with a fixed value, or with the values of other Variables.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Check"; }}
+		public override string Description { get { return "Queries the value of both Global and Local Variables declared in the Variables Manager. Variables can be compared with a fixed value, or with the values of other Variables."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			intValue = AssignInteger (parameters, checkParameterID, intValue);
 			boolValue = AssignBoolean (parameters, checkParameterID, boolValue);
 			floatValue = AssignFloat (parameters, checkParameterID, floatValue);
 			vector3Value = AssignVector3 (parameters, checkParameterID, vector3Value);
 			stringValue = AssignString (parameters, checkParameterID, stringValue);
+			runtimeGameObjectValue = AssignFile (parameters, checkParameterID, intValue, gameObjectValue);
+			runtimeUnityObjectValue = AssignObject <Object> (parameters, checkParameterID, unityObjectValue);
 
 			runtimeVariable = null;
 			switch (location)
@@ -136,7 +140,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -151,7 +155,7 @@ namespace AC
 		}
 
 		
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (getVarMethod == GetVarMethod.GlobalVariable ||
 				getVarMethod == GetVarMethod.LocalVariable ||
@@ -160,21 +164,21 @@ namespace AC
 				if (runtimeCompareVariable == null)
 				{
 					LogWarning ("The 'Variable: Check' Action halted the ActionList because it cannot find the " + getVarMethod.ToString () + " to compare with.");
-					return GenerateStopActionEnd ();
+					return -1;
 				}
 			}
 
 			if (runtimeVariable != null)
 			{
-				return ProcessResult (CheckCondition (runtimeVariable, runtimeCompareVariable), actions);
+				return CheckCondition (runtimeVariable, runtimeCompareVariable) ? 0 : 1;
 			}
 
 			LogWarning ("The 'Variable: Check' Action halted the ActionList because it cannot find the " + location.ToString () + " Variable with an ID of " + variableID);
-			return GenerateStopActionEnd ();
+			return -1;
 		}
 		
 		
-		private bool CheckCondition (GVar _var, GVar _compareVar)
+		protected bool CheckCondition (GVar _var, GVar _compareVar)
 		{
 			if (_var == null)
 			{
@@ -190,11 +194,11 @@ namespace AC
 
 			if (_var.type == VariableType.Boolean)
 			{
-				int fieldValue = _var.val;
+				int fieldValue = _var.IntegerValue;
 				int compareValue = (int) boolValue;
 				if (_compareVar != null)
 				{
-					compareValue = _compareVar.val;
+					compareValue = _compareVar.IntegerValue;
 				}
 
 				switch (boolCondition)
@@ -204,16 +208,19 @@ namespace AC
 
 					case BoolCondition.NotEqualTo:
 						return (fieldValue != compareValue);
+
+					default:
+						break;
 				}
 			}
 
 			else if (_var.type == VariableType.Integer || _var.type == VariableType.PopUp)
 			{
-				int fieldValue = _var.val;
+				int fieldValue = _var.IntegerValue;
 				int compareValue = intValue;
 				if (_compareVar != null)
 				{
-					compareValue = _compareVar.val;
+					compareValue = _compareVar.IntegerValue;
 				}
 
 				switch (intCondition)
@@ -229,16 +236,19 @@ namespace AC
 
 					case IntCondition.MoreThan:
 						return (fieldValue > compareValue);
+
+					default:
+						break;
 				}
 			}
 
 			else if (_var.type == VariableType.Float)
 			{
-				float fieldValue = _var.floatVal;
+				float fieldValue = _var.FloatValue;
 				float compareValue = floatValue;
 				if (_compareVar != null)
 				{
-					compareValue = _compareVar.floatVal;
+					compareValue = _compareVar.FloatValue;
 				}
 
 				switch (intCondition)
@@ -254,16 +264,19 @@ namespace AC
 
 					case IntCondition.MoreThan:
 						return (fieldValue > compareValue);
+
+					default:
+						break;
 				}
 			}
 
 			else if (_var.type == VariableType.String)
 			{
-				string fieldValue = _var.textVal;
+				string fieldValue = _var.TextValue;
 				string compareValue = AdvGame.ConvertTokens (stringValue);
 				if (_compareVar != null)
 				{
-					compareValue = _compareVar.textVal;
+					compareValue = _compareVar.TextValue;
 				}
 
 				if (!checkCase)
@@ -279,18 +292,100 @@ namespace AC
 
 					case BoolCondition.NotEqualTo:
 						return (fieldValue != compareValue);
+
+					default:
+						break;
+				}
+			}
+
+			else if (_var.type == VariableType.GameObject)
+			{
+				GameObject fieldValue = _var.GameObjectValue;
+				if (_compareVar != null)
+				{
+					runtimeGameObjectValue = _compareVar.GameObjectValue;
+				}
+
+				ConstantID fieldConstantID = fieldValue.GetComponent <ConstantID>();
+				ConstantID runtimeConstantID = runtimeGameObjectValue.GetComponent <ConstantID>();
+
+				switch (boolCondition)
+				{
+					case BoolCondition.EqualTo:
+						if (runtimeGameObjectValue == fieldValue)
+						{
+							return true;
+						}
+						else if (fieldConstantID && runtimeConstantID && fieldConstantID.constantID != 0 && fieldConstantID.constantID == runtimeConstantID.constantID)
+						{
+							return true;
+						}
+						return false;
+
+					case BoolCondition.NotEqualTo:
+						if (runtimeGameObjectValue != fieldValue)
+						{
+							return true;
+						}
+						else if (fieldConstantID && runtimeConstantID && fieldConstantID.constantID != 0 && fieldConstantID.constantID != runtimeConstantID.constantID)
+						{
+							return true;
+						}
+						return false;
+
+					default:
+						break;
+				}
+			}
+
+			else if (_var.type == VariableType.UnityObject)
+			{
+				Object fieldValue = _var.UnityObjectValue;
+				if (_compareVar != null)
+				{
+					runtimeUnityObjectValue = _compareVar.UnityObjectValue;
+				}
+
+				switch (boolCondition)
+				{
+					case BoolCondition.EqualTo:
+						return (runtimeUnityObjectValue == fieldValue);
+
+					case BoolCondition.NotEqualTo:
+						return (runtimeUnityObjectValue != fieldValue);
+
+					default:
+						break;
 				}
 			}
 
 			else if (_var.type == VariableType.Vector3)
 			{
+				if (_compareVar != null)
+				{
+					switch (vectorCondition)
+					{
+						case VectorCondition.EqualTo:
+							return (_var.Vector3Value == _compareVar.Vector3Value);
+
+						case VectorCondition.MagnitudeGreaterThan:
+							return (_var.Vector3Value.sqrMagnitude > _compareVar.Vector3Value.sqrMagnitude);
+
+						default:
+							break;
+					}
+				}
+
 				switch (vectorCondition)
 				{
 					case VectorCondition.EqualTo:
-						return (_var.vector3Val == vector3Value);
+						return (_var.Vector3Value == vector3Value);
 
 					case VectorCondition.MagnitudeGreaterThan:
-						return (_var.vector3Val.magnitude > floatValue);
+						return (_var.Vector3Value.magnitude > floatValue);
+
+					default:
+						break;
 				}
 			}
 			
@@ -300,7 +395,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			location = (VariableLocation) EditorGUILayout.EnumPopup ("Source:", location);
 
@@ -373,8 +468,7 @@ namespace AC
 		}
 
 
-
-		private int ShowVarSelectorGUI (List<GVar> vars, int ID, string label)
+		protected int ShowVarSelectorGUI (List<GVar> vars, int ID, string label)
 		{
 			variableNumber = -1;
 			
@@ -389,7 +483,7 @@ namespace AC
 			if (variableNumber == -1)
 			{
 				// Wasn't found (variable was deleted?), so revert to zero
-				ACDebug.LogWarning ("Previously chosen variable no longer exists!");
+				if (ID > 0) LogWarning ("Previously chosen variable no longer exists!");
 				variableNumber = 0;
 				ID = 0;
 			}
@@ -510,13 +604,41 @@ namespace AC
 					boolCondition = (BoolCondition) EditorGUILayout.EnumPopup ("Condition:", boolCondition);
 					if (getVarMethod == GetVarMethod.EnteredValue)
 					{
-						checkParameterID = Action.ChooseParameterGUI ("String:", parameters, checkParameterID, ParameterType.String);
+						checkParameterID = Action.ChooseParameterGUI ("String:", parameters, checkParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 						if (checkParameterID < 0)
 						{
 							stringValue = EditorGUILayout.TextField ("String:", stringValue);
 						}
 					}
 					checkCase = EditorGUILayout.Toggle ("Case-sensitive?", checkCase);
+					break;
+
+				case VariableType.GameObject:
+					boolCondition = (BoolCondition) EditorGUILayout.EnumPopup ("Condition:", boolCondition);
+					if (getVarMethod == GetVarMethod.EnteredValue)
+					{
+						checkParameterID = Action.ChooseParameterGUI ("GameObject:", parameters, checkParameterID, ParameterType.GameObject);
+						if (checkParameterID < 0)
+						{
+							gameObjectValue = (GameObject) EditorGUILayout.ObjectField ("GameObject:", gameObjectValue, typeof (GameObject), true);
+							intValue = FieldToID (gameObjectValue, intValue);
+							gameObjectValue = IDToField (gameObjectValue, intValue, false);
+						}
+						EditorGUILayout.HelpBox ("A match will be found if the two GameObjects share the same Constant ID value", MessageType.Info);
+					}
+					break;
+
+				case VariableType.UnityObject:
+					boolCondition = (BoolCondition) EditorGUILayout.EnumPopup ("Condition:", boolCondition);
+					if (getVarMethod == GetVarMethod.EnteredValue)
+					{
+						checkParameterID = Action.ChooseParameterGUI ("Object:", parameters, checkParameterID, ParameterType.UnityObject);
+						if (checkParameterID < 0)
+						{
+							unityObjectValue = EditorGUILayout.ObjectField ("Object:", unityObjectValue, typeof (Object), false);
+						}
+						EditorGUILayout.HelpBox ("A match will be found if the two GameObjects share the same Constant ID value", MessageType.Info);
+					}
 					break;
 
 				case VariableType.Vector3:
@@ -599,7 +721,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			switch (location)
 			{
@@ -656,6 +778,20 @@ namespace AC
 
 					case VariableType.PopUp:
 						labelAdd += " " + intCondition.ToString () + " " + vars[variableNumber].GetPopUpForIndex (intValue);
+						break;
+
+					case VariableType.GameObject:
+						if (gameObjectValue)
+						{
+							labelAdd += " " + boolCondition.ToString () + " " + gameObjectValue.name;
+						}
+						break;
+
+					case VariableType.UnityObject:
+						if (unityObjectValue)
+						{
+							labelAdd += " " + unityObjectValue.name;
+						}
 						break;
 
 					default:
@@ -717,12 +853,12 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 			if (location == _location && variableID == varID && parameterID < 0)
 			{
-				if (location != VariableLocation.Component || (variables != null && variables == _variables))
+				if (_location != VariableLocation.Component || (variables != null && variables == _variables) || (_variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
 				{
 					thisCount ++;
 				}
@@ -736,24 +872,95 @@ namespace AC
 			{
 				thisCount ++;
 			}
+			else if (getVarMethod == GetVarMethod.ComponentVariable && _location == VariableLocation.Component && compareVariableID == varID)
+			{
+				if ((compareVariables && compareVariables == _variables) ||
+					(compareVariablesConstantID != 0 && variablesConstantID == compareVariablesConstantID))
+				{
+					thisCount++;
+				}
+			}
 
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+			if (location == _location && variableID == oldVarID && parameterID < 0)
+			{
+				if (_location != VariableLocation.Component || (variables != null && variables == _variables) || (_variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
+				{
+					variableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			if (getVarMethod == GetVarMethod.LocalVariable && _location == VariableLocation.Local && compareVariableID == oldVarID)
+			{
+				compareVariableID = newVarID;
+				thisCount++;
+			}
+			else if (getVarMethod == GetVarMethod.GlobalVariable && _location == VariableLocation.Global && compareVariableID == oldVarID)
+			{
+				compareVariableID = newVarID;
+				thisCount++;
+			}
+			else if (getVarMethod == GetVarMethod.ComponentVariable && _location == VariableLocation.Component && compareVariableID == oldVarID)
+			{
+				if ((compareVariables && compareVariables == _variables) ||
+					(compareVariablesConstantID != 0 && variablesConstantID == compareVariablesConstantID))
+				{
+					compareVariableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (location == VariableLocation.Component)
 			{
+				if (saveScriptsToo && variables && parameterID < 0)
+				{
+					AddSaveScript<RememberVariables> (variables);
+				}
+
 				AssignConstantID <Variables> (variables, variablesConstantID, parameterID);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (gameObjectValue && gameObjectValue == gameObject)
+			{
+				return true;
+			}
+
+			if (parameterID < 0 && location == VariableLocation.Component)
+			{
+				if (variables && variables.gameObject && variables.gameObject == gameObject) return true;
+				if (variablesConstantID == id && id != 0) return true;
+			}
+			if (checkParameterID < 0 && getVarMethod == GetVarMethod.ComponentVariable)
+			{
+				if (compareVariables && compareVariables.gameObject && compareVariables.gameObject == gameObject) return true;
+				if (compareVariablesConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 
 		#endif
 
 
-		private int GetVarNumber (List<GVar> vars, int ID)
+		protected int GetVarNumber (List<GVar> vars, int ID)
 		{
 			int i = 0;
 			foreach (GVar _var in vars)
@@ -776,7 +983,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Global (int globalVariableID, int checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 			newAction.intValue = checkValue;
@@ -792,7 +999,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Global (int globalVariableID, float checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 			newAction.floatValue = checkValue;
@@ -808,7 +1015,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Global (int globalVariableID, bool checkValue = true)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 			newAction.intValue = (checkValue) ? 1 : 0;
@@ -824,7 +1031,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Global (int globalVariableID, Vector3 checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 			newAction.vector3Value = checkValue;
@@ -840,7 +1047,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Global (int globalVariableID, string checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 			newAction.stringValue = checkValue;
@@ -856,7 +1063,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Local (int localVariableID, int checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 			newAction.intValue = checkValue;
@@ -872,7 +1079,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Local (int localVariableID, float checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 			newAction.floatValue = checkValue;
@@ -888,7 +1095,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Local (int localVariableID, bool checkValue = true)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 			newAction.intValue = (checkValue) ? 1 : 0;
@@ -904,7 +1111,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Local (int localVariableID, Vector3 checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 			newAction.vector3Value = checkValue;
@@ -920,7 +1127,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Local (int localVariableID, string checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 			newAction.stringValue = checkValue;
@@ -938,7 +1145,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Component (Variables variables, int componentVariableID, int checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;
@@ -956,7 +1163,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Component (Variables variables, int componentVariableID, float checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;
@@ -974,7 +1181,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Component (Variables variables, int componentVariableID, bool checkValue = true)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;
@@ -992,7 +1199,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Component (Variables variables, int componentVariableID, Vector3 checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;
@@ -1010,7 +1217,7 @@ namespace AC
 		 */
 		public static ActionVarCheck CreateNew_Component (Variables variables, int componentVariableID, string checkValue)
 		{
-			ActionVarCheck newAction = (ActionVarCheck) CreateInstance <ActionVarCheck>();
+			ActionVarCheck newAction = CreateNew<ActionVarCheck> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;

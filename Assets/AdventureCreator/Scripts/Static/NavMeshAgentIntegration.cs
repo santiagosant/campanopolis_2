@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavMeshAgentIntegration.cs"
  * 
@@ -19,30 +19,26 @@
  */
 
 using UnityEngine;
-#if UNITY_5_5_OR_NEWER
 using UnityEngine.AI;
-#endif
 
 namespace AC
 {
 
-	/*
-	 * <summary>This script serves as a bridge between Adventure Creator and Unity's NavMeshAgent component.
-	 *	To use it, add it to your Player / NPC, as well as the NavMeshAgent component.
-	 *	You can then use the fields in the NavMeshAgent Inspector to control the character's movement.
+	/**
+	 * This script serves as a bridge between Adventure Creator and Unity's NavMeshAgent component.
+	 * To use it, add it to your Player / NPC, as well as the NavMeshAgent component.
+	 * You can then use the fields in the NavMeshAgent Inspector to control the character's movement.
 	 *
-	 *	You will also need to make sure your scene's 'Pathfinding method' is set to 'Unity Navigation'.
+	 * You will also need to make sure your scene's 'Pathfinding method' is set to 'Unity Navigation'.
 	 *
-	 *	This script will override AC's movement code with that in the NavMeshAgent.
-	 *	While it is good for most purposes, it is more intended to demonstrate how such a bridge can be built.
-	 *	If you wish to build upon it for more custom gameplay, duplicate the script and make such changes to the copy.
-	 *	You can then add your new script to the character instead.</summary>
+	 * This script will override AC's movement code with that in the NavMeshAgent.
+	 * While it is good for most purposes, it is more intended to demonstrate how such a bridge can be built.
+	 * If you wish to build upon it for more custom gameplay, duplicate the script and make such changes to the copy.
+	 * You can then add your new script to the character instead.
 	 */
 	[AddComponentMenu("Adventure Creator/Navigation/NavMeshAgent Integration")]
 	[RequireComponent (typeof (NavMeshAgent))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_nav_mesh_agent_integration.html")]
-	#endif
 	public class NavMeshAgentIntegration : MonoBehaviour
 	{
 
@@ -55,7 +51,8 @@ namespace AC
 		private Char _char;
 		private bool disableDuringGameplay;
 		private Vector3 targetPosition;
-
+		private float directSpeed;
+		
 
 		private void Awake ()
 		{
@@ -87,13 +84,13 @@ namespace AC
 				 * If this controls a Player, and the game's Movement method is not Point And Click,
 				 * we'll allow regular AC control over movement during gameplay.
 				 */
-				if (_char.IsPlayer && KickStarter.settingsManager != null && KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick)
+				if (_char.IsPlayer && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick)
 				{
 					disableDuringGameplay = true;
 				}
 			}
 
-			if (KickStarter.sceneSettings != null && KickStarter.sceneSettings.navigationMethod != AC_NavigationMethod.UnityNavigation)
+			if (KickStarter.sceneSettings && KickStarter.sceneSettings.navigationMethod != AC_NavigationMethod.UnityNavigation)
 			{
 				ACDebug.LogWarning ("For the NavMeshAgentIntegration script to work, your scene's pathfinding method must be set to 'Unity Navigation'");
 			}
@@ -129,9 +126,35 @@ namespace AC
 					SetMotionControl ();
 					SetCharacterPosition ();
 				}
+				else if (_char.IsPlayer && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod == MovementMethod.Direct)
+				{
+					/*
+					 * Move with the NavMeshAgent, so as to do without colliders
+					 */
+
+					float targetSpeed = 0f;
+					if (_char.charState == CharState.Move)
+					{
+						if (useACForSpeedValues)
+						{
+							targetSpeed = (_char.isRunning) ? (_char.runSpeedScale) : _char.walkSpeedScale;
+						}
+						else
+						{
+							targetSpeed = (_char.isRunning) ? (originalSpeed * runSpeedFactor) : originalSpeed;
+						}
+					}
+
+					navMeshAgent.enabled = true;
+					navMeshAgent.ResetPath ();
+
+					directSpeed = Mathf.Lerp (directSpeed, targetSpeed, Time.deltaTime * _char.acceleration);
+					_char.motionControl = MotionControl.JustTurning;
+					navMeshAgent.Move (_char.TransformForward * directSpeed * Time.deltaTime);
+				}
 				else
 				{
-					/**
+					/*
 					 * We are in regular gameplay, so disable the NavMeshAgent and let AC take full control.
 					 */
 
@@ -141,7 +164,7 @@ namespace AC
 			}
 			else
 			{
-				/**
+				/*
 				 * This code block will be run if we can override the character's movement at all times.
 				 */
 
@@ -156,7 +179,7 @@ namespace AC
 			/*
 			 * Move the character, unless they are spot-turning.
 			 */
-			if (_char != null && !_char.IsTurningBeforeWalking ())
+			if (_char && !_char.IsTurningBeforeWalking ())
 			{
 				/* 
 				 * We could just set the destination as _char.GetTargetPosition(), but this function will return the character's position if they
@@ -196,14 +219,10 @@ namespace AC
 				/*
 				 * Provided the NavMeshAgent is on a NavMesh, set the destination point
 				 */
-				#if UNITY_5 || UNITY_2017_1_OR_NEWER
 				if (navMeshAgent.isOnNavMesh)
 				{
 					navMeshAgent.SetDestination (targetPosition);
 				}
-				#else
-				navMeshAgent.SetDestination (targetPosition);
-				#endif
 			}
 		}
 

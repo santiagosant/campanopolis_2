@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AnimEngine_Sprites2DToolkit.cs"
  * 
@@ -23,11 +23,6 @@ namespace AC
 	public class AnimEngine_Sprites2DToolkit : AnimEngine
 	{
 
-		#if UNITY_EDITOR
-		private bool listExpectedAnimations = false;
-		#endif
-
-
 		public override void Declare (AC.Char _character)
 		{
 			character = _character;
@@ -45,7 +40,7 @@ namespace AC
 				EditorGUILayout.HelpBox ("'tk2DIsPresent' must be listed in your Unity Player Setting's 'Scripting define symbols' for AC's 2D Toolkit integration to work.", MessageType.Warning);
 			}
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Standard 2D animations", EditorStyles.boldLabel);
 
 			character.talkingAnimation = TalkingAnimation.Standard;
@@ -72,11 +67,8 @@ namespace AC
 				character.rotateSprite3D = (RotateSprite3D) CustomGUILayout.EnumPopup ("Rotate sprite to:", character.rotateSprite3D, "", "The method by which the character should face the camera");
 			}
 
-			EditorGUILayout.BeginHorizontal ();
-			EditorGUILayout.LabelField (" ", GUILayout.Width (9));
-			listExpectedAnimations = EditorGUILayout.Foldout (listExpectedAnimations, "List expected animations?");
-			EditorGUILayout.EndHorizontal ();
-			if (listExpectedAnimations)
+			character.listExpectedAnimations = EditorGUILayout.Toggle ("List expected animations?", character.listExpectedAnimations);
+			if (character.listExpectedAnimations)
 			{
 				string result = "\n";
 				result = ShowExpected (character, character.idleAnimSprite, result);
@@ -90,14 +82,54 @@ namespace AC
 				EditorGUILayout.HelpBox ("The following animations are required, based on the settings above:" + result, MessageType.Info);
 			}
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
-			if (GUI.changed)
+			if (GUI.changed && character != null)
 			{
 				EditorUtility.SetDirty (character);
 			}
 
 			#endif
+		}
+
+
+		public override PlayerData SavePlayerData (PlayerData playerData, Player player)
+		{
+			playerData.playerIdleAnim = player.idleAnimSprite;
+			playerData.playerWalkAnim = player.walkAnimSprite;
+			playerData.playerRunAnim = player.runAnimSprite;
+			playerData.playerTalkAnim = player.talkAnimSprite;
+
+			return playerData;
+		}
+
+
+		public override void LoadPlayerData (PlayerData playerData, Player player)
+		{
+			player.idleAnimSprite = playerData.playerIdleAnim;
+			player.walkAnimSprite = playerData.playerWalkAnim;
+			player.talkAnimSprite = playerData.playerTalkAnim;
+			player.runAnimSprite = playerData.playerRunAnim;
+		}
+
+
+		public override NPCData SaveNPCData (NPCData npcData, NPC npc)
+		{
+			npcData.idleAnim = npc.idleAnimSprite;
+			npcData.walkAnim = npc.walkAnimSprite;
+			npcData.talkAnim = npc.talkAnimSprite;
+			npcData.runAnim = npc.runAnimSprite;
+
+			return npcData;
+		}
+
+
+		public override void LoadNPCData (NPCData npcData, NPC npc)
+		{
+			npc.idleAnimSprite = npcData.idleAnim;
+			npc.walkAnimSprite = npcData.walkAnim;
+			npc.talkAnimSprite = npcData.talkAnim;
+			npc.runAnimSprite = npcData.runAnim;
 		}
 
 
@@ -109,7 +141,7 @@ namespace AC
 
 			if (action.method == ActionCharAnim.AnimMethodChar.PlayCustom)
 			{
-				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, ParameterType.String);
+				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (action.clip2DParameterID < 0)
 				{
 					action.clip2D = EditorGUILayout.TextField ("Clip:", action.clip2D);
@@ -134,7 +166,7 @@ namespace AC
 			}
 			else if (action.method == ActionCharAnim.AnimMethodChar.SetStandard)
 			{
-				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, ParameterType.String);
+				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (action.clip2DParameterID < 0)
 				{
 					action.clip2D = EditorGUILayout.TextField ("Clip:", action.clip2D);
@@ -162,11 +194,6 @@ namespace AC
 						}
 					}
 				}
-			}
-
-			if (GUI.changed)
-			{
-				EditorUtility.SetDirty (action);
 			}
 
 			#endif
@@ -260,7 +287,7 @@ namespace AC
 					{
 						if (action.standard == AnimStandard.Walk)
 						{
-							if (action.newSound != null)
+							if (action.newSound)
 							{
 								character.walkSound = action.newSound;
 							}
@@ -271,7 +298,7 @@ namespace AC
 						}
 						else if (action.standard == AnimStandard.Run)
 						{
-							if (action.newSound != null)
+							if (action.newSound)
 							{
 								character.runSound = action.newSound;
 							}
@@ -388,7 +415,7 @@ namespace AC
 				{
 					if (action.standard == AnimStandard.Walk)
 					{
-						if (action.newSound != null)
+						if (action.newSound)
 						{
 							character.walkSound = action.newSound;
 						}
@@ -399,7 +426,7 @@ namespace AC
 					}
 					else if (action.standard == AnimStandard.Run)
 					{
-						if (action.newSound != null)
+						if (action.newSound)
 						{
 							character.runSound = action.newSound;
 						}
@@ -435,7 +462,7 @@ namespace AC
 			
 			if (action.method == AnimMethod.PlayCustom)
 			{
-				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, ParameterType.String);
+				action.clip2DParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clip2DParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (action.clip2DParameterID < 0)
 				{
 					action.clip2D = EditorGUILayout.TextField ("Clip:", action.clip2D);
@@ -454,11 +481,6 @@ namespace AC
 			else if (action.method == AnimMethod.BlendShape)
 			{
 				EditorGUILayout.HelpBox ("BlendShapes are not available in 2D animation.", MessageType.Info);
-			}
-
-			if (GUI.changed)
-			{
-				EditorUtility.SetDirty (action);
 			}
 
 			#endif
@@ -582,7 +604,7 @@ namespace AC
 		}
 
 
-		public override void ActionCharRenderGUI (ActionCharRender action)
+		public override void ActionCharRenderGUI (ActionCharRender action, List<ActionParameter> parameters)
 		{
 			#if UNITY_EDITOR
 			
@@ -597,12 +619,18 @@ namespace AC
 			action.renderLock_direction = (RenderLock) EditorGUILayout.EnumPopup ("Sprite direction:", action.renderLock_direction);
 			if (action.renderLock_direction == RenderLock.Set)
 			{
-				action.direction = (CharDirection) EditorGUILayout.EnumPopup ("New direction:", action.direction);
+				action.directionParameterID = Action.ChooseParameterGUI ("New direction:", parameters, action.directionParameterID, ParameterType.Integer);
+				if (action.directionParameterID < 0)
+				{
+					action.direction = (CharDirection) EditorGUILayout.EnumPopup ("New direction:", action.direction);
+				}
 			}
 
-			if (GUI.changed)
+			EditorGUILayout.Space ();
+			action.setNewDirections = EditorGUILayout.Toggle ("Rebuid directions?", action.setNewDirections);
+			if (action.setNewDirections)
 			{
-				EditorUtility.SetDirty (action);
+				action.spriteDirectionData.ShowGUI ();
 			}
 			
 			#endif
@@ -629,6 +657,11 @@ namespace AC
 			{
 				character.lockDirection = false;
 			}
+
+			if (action.setNewDirections)
+			{
+				character._spriteDirectionData = new SpriteDirectionData (action.spriteDirectionData);
+			}
 		
 			return 0f;
 		}
@@ -654,7 +687,6 @@ namespace AC
 		
 		public override void PlayTalk ()
 		{
-
 			if (character.LipSyncGameObject ())
 			{
 				PlayStandardAnim (character.talkAnimSprite, true, character.GetLipSyncFrame ());
@@ -674,7 +706,7 @@ namespace AC
 
 		private void PlayStandardAnim (string clip, bool includeDirection, int frame)
 		{
-			if (clip != "" && character != null)
+			if (!string.IsNullOrEmpty (clip) && character)
 			{
 				string newClip = clip;
 				

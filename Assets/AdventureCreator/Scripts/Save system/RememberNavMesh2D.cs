@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberNavMesh2D.cs"
  * 
@@ -20,9 +20,7 @@ namespace AC
 	 * This script is attached to NavMesh2D objects who have their "holes" changed during gameplay.
 	 */
 	[AddComponentMenu("Adventure Creator/Save system/Remember NavMesh2D")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_nav_mesh2_d.html")]
-	#endif
 	public class RememberNavMesh2D : Remember
 	{
 
@@ -71,19 +69,23 @@ namespace AC
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (GetComponent <NavigationMesh>())
+			NavigationMesh navMesh = GetComponent <NavigationMesh>();
+			if (navMesh)
 			{
-				NavigationMesh navMesh = GetComponent <NavigationMesh>();
 				navMesh.polygonColliderHoles.Clear ();
-				KickStarter.navigationManager.navigationEngine.ResetHoles (navMesh);
+
+				if (KickStarter.sceneSettings.navMesh == navMesh)
+				{
+					KickStarter.navigationManager.navigationEngine.ResetHoles (navMesh);
+				}
 
 				if (!string.IsNullOrEmpty (data._linkedIDs))
 				{
 					int[] linkedIDs = StringToIntArray (data._linkedIDs);
 					for (int i=0; i<linkedIDs.Length; i++)
 					{
-						PolygonCollider2D polyHole = Serializer.returnComponent <PolygonCollider2D> (linkedIDs[i]);
-						if (polyHole != null)
+						PolygonCollider2D polyHole = ConstantID.GetComponent <PolygonCollider2D> (linkedIDs[i]);
+						if (polyHole)
 						{
 							navMesh.AddHole (polyHole);
 						}

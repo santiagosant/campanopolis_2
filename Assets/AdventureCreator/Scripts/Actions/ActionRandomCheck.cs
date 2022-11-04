@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionRandomCheck.cs"
  * 
@@ -21,12 +21,13 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionRandomCheck : ActionCheckMultiple
+	public class ActionRandomCheck : Action
 	{
 
+		public int numSockets = 2;
 		public bool disallowSuccessive = false;
 		public bool saveToVariable = true;
-		private int ownVarValue = -1;
+		protected int ownVarValue = -1;
 
 		public int parameterID = -1;
 		public int variableID;
@@ -35,20 +36,18 @@ namespace AC
 		public Variables variables;
 		public int variablesConstantID;
 
-		private LocalVariables localVariables;
-		private GVar runtimeVariable = null;
-			
-
-		public ActionRandomCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Check random number";
-			description = "Picks a number at random between zero and a specified integer – the value of which determine which subsequent Action is run next.";
-		}
+		protected LocalVariables localVariables;
+		protected GVar runtimeVariable = null;
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Check random number"; }}
+		public override string Description { get { return "Picks a number at random between zero and a specified integer – the value of which determine which subsequent Action is run next."; }}
+		public override int NumSockets { get { return numSockets; }}
+
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeVariable = null;
 
@@ -82,7 +81,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -97,12 +96,12 @@ namespace AC
 		}
 		
 		
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (numSockets <= 0)
 			{
 				LogWarning ("Could not compute Random check because no values were possible!");
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 
 			int randomResult = Random.Range (0, numSockets);
@@ -112,7 +111,7 @@ namespace AC
 				{
 					if (runtimeVariable != null && runtimeVariable.type == VariableType.Integer)
 					{
-						ownVarValue = runtimeVariable.val;
+						ownVarValue = runtimeVariable.IntegerValue;
 					}
 					else
 					{
@@ -129,17 +128,17 @@ namespace AC
 
 				if (saveToVariable && runtimeVariable != null && runtimeVariable.type == VariableType.Integer)
 				{
-					runtimeVariable.SetValue (ownVarValue);
+					runtimeVariable.IntegerValue = ownVarValue;
 				}
 			}
 
-			return ProcessResult (randomResult, actions);
+			return randomResult;
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			numSockets = EditorGUILayout.DelayedIntField ("# of possible values:", numSockets);
 			numSockets = Mathf.Clamp (numSockets, 1, 100);
@@ -218,7 +217,7 @@ namespace AC
 		}
 
 
-		private void SideMenu ()
+		protected void SideMenu ()
 		{
 			GenericMenu menu = new GenericMenu ();
 
@@ -227,7 +226,7 @@ namespace AC
 		}
 		
 		
-		private void Callback (object obj)
+		protected void Callback (object obj)
 		{
 			switch (obj.ToString ())
 			{
@@ -245,7 +244,7 @@ namespace AC
 		}
 
 
-		private int ShowVarGUI (int ID, bool changeID)
+		protected int ShowVarGUI (int ID, bool changeID)
 		{
 			if (changeID)
 			{
@@ -287,20 +286,36 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 			if (saveToVariable && location == _location && variableID == varID && parameterID < 0)
 			{
-				if (location != VariableLocation.Component || (variables != null && variables == _variables))
+				if (location != VariableLocation.Component || (variables != null && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
 				{
 					thisCount ++;
 				}
 			}
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
- 
+
+
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+			if (saveToVariable && location == _location && variableID == oldVarID && parameterID < 0)
+			{
+				if (location != VariableLocation.Component || (variables != null && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
+				{
+					variableID = newVarID;
+					thisCount++;
+				}
+			}
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
 
 		public override bool ConvertGlobalVariableToLocal (int oldGlobalID, int newLocalID, bool isCorrectScene)
 		{
@@ -324,13 +339,24 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveToVariable &&
 				location == VariableLocation.Component)
 			{
 				AssignConstantID <Variables> (variables, variablesConstantID, parameterID);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (disallowSuccessive && saveToVariable && location == VariableLocation.Component && parameterID < 0)
+			{
+				if (variables && variables.gameObject == gameObject) return true;
+				if (variablesConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 
 		#endif
@@ -344,7 +370,7 @@ namespace AC
 		 */
 		public static ActionRandomCheck CreateNew (int numOutcomes, bool disallowSuccessive)
 		{
-			ActionRandomCheck newAction = (ActionRandomCheck) CreateInstance <ActionRandomCheck>();
+			ActionRandomCheck newAction = CreateNew<ActionRandomCheck> ();
 			newAction.numSockets = numOutcomes;
 			newAction.disallowSuccessive = disallowSuccessive;
 			return newAction;

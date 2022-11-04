@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberVisibility.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 * Fading in and out, due to the SpriteFader component, is also saved.
 	 */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Visibility")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_visibility.html")]
-	#endif
 	public class RememberVisibility : Remember
 	{
+
+		#region Variables
 
 		/** Whether the Renderer is enabled or not when the game begins */
 		public AC_OnOff startState = AC_OnOff.On;
@@ -34,25 +34,34 @@ namespace AC
 		public bool saveColour = false;
 
 		private LimitVisibility limitVisibility;
-		private bool loadedData = false;
 
-		
-		private void Awake ()
+		#endregion
+
+
+		#region UnityStandards
+
+		protected override void Start ()
 		{
-			if (loadedData) return;
+			base.Start ();
 
+			if (loadedData) return;
+			
 			if (GameIsPlaying ())
 			{
-				bool state = (startState == AC_OnOff.On) ? true : false;
+				bool state = startState == AC_OnOff.On;
 
-				if (GetComponent <LimitVisibility>())
+				limitVisibility = GetComponent <LimitVisibility>();
+				if (limitVisibility)
 				{
-					limitVisibility = GetComponent <LimitVisibility>();
-					limitVisibility.isLockedOff = !state;
+					limitVisibility.IsLockedOff = !state;
 				}
-				else if (GetComponent <Renderer>())
+				else
 				{
-					GetComponent <Renderer>().enabled = state;
+					Renderer _renderer = GetComponent <Renderer>();
+					if (_renderer)
+					{
+						_renderer.enabled = state;
+					}
 				}
 
 				if (affectChildren)
@@ -65,6 +74,10 @@ namespace AC
 			}
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Serialises appropriate GameObject values into a string.</summary>
@@ -76,13 +89,13 @@ namespace AC
 			visibilityData.objectID = constantID;
 			visibilityData.savePrevented = savePrevented;
 
-			if (GetComponent <SpriteFader>())
+			SpriteFader spriteFader = GetComponent <SpriteFader>();
+			if (spriteFader)
 			{
-				SpriteFader spriteFader = GetComponent <SpriteFader>();
-				visibilityData.isFading = spriteFader.isFading;
-				if (spriteFader.isFading)
+				visibilityData.isFading = spriteFader.IsFading;
+				if (spriteFader.IsFading)
 				{
-					if (spriteFader.fadeType == FadeType.fadeIn)
+					if (spriteFader.FadeType == FadeType.fadeIn)
 					{
 						visibilityData.isFadingIn = true;
 					}
@@ -91,39 +104,54 @@ namespace AC
 						visibilityData.isFadingIn = false;
 					}
 
-					visibilityData.fadeTime = spriteFader.fadeTime;
-					visibilityData.fadeStartTime = spriteFader.fadeStartTime;
+					visibilityData.fadeTime = spriteFader.FadeTime;
+					visibilityData.fadeStartTime = spriteFader.FadeStartTime;
 				}
 				visibilityData.fadeAlpha = GetComponent <SpriteRenderer>().color.a;
 			}
-			else if (GetComponent <SpriteRenderer>() && saveColour)
+			else if (saveColour)
 			{
-				Color _color = GetComponent <SpriteRenderer>().color;
+				SpriteRenderer spriteRenderer = GetComponent <SpriteRenderer>();
+				Color _color = spriteRenderer.color;
 				visibilityData.colourR = _color.r;
 				visibilityData.colourG = _color.g;
 				visibilityData.colourB = _color.b;
 				visibilityData.colourA = _color.a;
 			}
 
-			if (GetComponent <FollowTintMap>())
+			FollowTintMap followTintMap = GetComponent <FollowTintMap>();
+			if (followTintMap)
 			{
-				visibilityData = GetComponent <FollowTintMap>().SaveData (visibilityData);
+				visibilityData = followTintMap.SaveData (visibilityData);
 			}
 
 			if (limitVisibility)
 			{
-				visibilityData.isOn = !limitVisibility.isLockedOff;
+				visibilityData.isOn = !limitVisibility.IsLockedOff;
 			}
-			else if (GetComponent <Renderer>())
+			else
 			{
-				visibilityData.isOn = GetComponent <Renderer>().enabled;
-			}
-			else if (affectChildren)
-			{
-				foreach (Renderer _renderer in GetComponentsInChildren <Renderer>())
+				Renderer _renderer = GetComponent <Renderer>();
+				if (_renderer)
 				{
 					visibilityData.isOn = _renderer.enabled;
-					break;
+				}
+				else
+				{
+					Canvas canvas = GetComponent <Canvas>();
+					if (canvas)
+					{
+						visibilityData.isOn = canvas.enabled;
+					}
+					else if (affectChildren)
+					{
+						Renderer[] renderers = GetComponentsInChildren <Renderer>();
+						foreach (Renderer childRenderer in renderers)
+						{
+							visibilityData.isOn = childRenderer.enabled;
+							break;
+						}
+					}
 				}
 			}
 
@@ -140,14 +168,13 @@ namespace AC
 			VisibilityData data = Serializer.LoadScriptData <VisibilityData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (GetComponent <SpriteFader>())
+			SpriteFader spriteFader = GetComponent <SpriteFader>();
+			if (spriteFader)
 			{
-				SpriteFader spriteFader = GetComponent <SpriteFader>();
 				if (data.isFading)
 				{
 					if (data.isFadingIn)
@@ -165,29 +192,50 @@ namespace AC
 					spriteFader.SetAlpha (data.fadeAlpha);
 				}
 			}
-			else if (GetComponent <SpriteRenderer>() && saveColour)
+			else
 			{
-				Color _color = new Color (data.colourR, data.colourG, data.colourB, data.colourA);
-				GetComponent <SpriteRenderer>().color = _color;
+				if (saveColour)
+				{
+					SpriteRenderer spriteRenderer = GetComponent <SpriteRenderer>();
+					if (spriteRenderer)
+					{
+						Color _color = new Color (data.colourR, data.colourG, data.colourB, data.colourA);
+						spriteRenderer.color = _color;
+					}
+				}
 			}
 
-			if (GetComponent <FollowTintMap>())
+			FollowTintMap followTintMap = GetComponent <FollowTintMap>();
+			if (followTintMap)
 			{
-				GetComponent <FollowTintMap>().LoadData (data);
+				followTintMap.LoadData (data);
 			}
 
 			if (limitVisibility)
 			{
-				limitVisibility.isLockedOff = !data.isOn;
+				limitVisibility.IsLockedOff = !data.isOn;
 			}
-			else if (GetComponent <Renderer>())
+			else
 			{
-				GetComponent <Renderer>().enabled = data.isOn;
+				Renderer renderer = GetComponent <Renderer>();
+				if (renderer)
+				{
+					renderer.enabled = data.isOn;
+				}
+				else
+				{
+					Canvas canvas = GetComponent <Canvas>();
+					if (canvas)
+					{
+						canvas.enabled = data.isOn;
+					}
+				}
 			}
 
 			if (affectChildren)
 			{
-				foreach (Renderer _renderer in GetComponentsInChildren <Renderer>())
+				Renderer[] renderers = GetComponentsInChildren<Renderer>();
+				foreach (Renderer _renderer in renderers)
 				{
 					_renderer.enabled = data.isOn;
 				}
@@ -195,13 +243,13 @@ namespace AC
 
 			loadedData = true;
 		}
-		
+
+		#endregion
+
 	}
 
 
-	/**
-	 * A data container used by the RememberVisibility script.
-	 */
+	/** A data container used by the RememberVisibility script. */
 	[System.Serializable]
 	public class VisibilityData : RememberData
 	{
@@ -235,9 +283,7 @@ namespace AC
 		/** The Alpha channel of the sprite's colour */
 		public float colourA;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public VisibilityData () { }
 
 	}

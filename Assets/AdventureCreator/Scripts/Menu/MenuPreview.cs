@@ -1,9 +1,4 @@
-﻿#if UNITY_2017_1_OR_NEWER
-#define CAN_USE_TIMELINE
-#endif
-
-using System;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace AC
 {
@@ -12,18 +7,14 @@ namespace AC
 	 * Allows Menus (see: Menu) made in MenuManager to be shown in the Game Window when the game is not running, allowing for real-time previews as they are built.
 	 */
 	[ExecuteInEditMode]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_menu_preview.html")]
-	#endif
 	public class MenuPreview : MonoBehaviour
 	{
 
 		#if UNITY_EDITOR
 
-		#if CAN_USE_TIMELINE
 		private Menu previewSpeechMenu;
 		private int previewTrackID;
-		#endif
 
 		private MenuManager menuManager;
 		private GUIStyle normalStyle;
@@ -58,12 +49,10 @@ namespace AC
 					
 					if (menuManager)
 					{
-						#if CAN_USE_TIMELINE
 						if (previewSpeechMenu != null)
 						{
 							UpdatePreviewMenu (previewSpeechMenu, true);
 						}
-						#endif
 						if (menuManager.GetSelectedMenu () != null)
 						{
 							Menu menu = menuManager.GetSelectedMenu ();
@@ -83,14 +72,13 @@ namespace AC
 				{
 					menuManager = AdvGame.GetReferences ().menuManager;
 
-					if (menuManager && menuManager.drawInEditor)
+					if (menuManager && menuManager.drawInEditor && KickStarter.mainCamera)
 					{
-						#if CAN_USE_TIMELINE
 						if (previewSpeechMenu != null)
 						{
 							DrawPreviewMenu (previewSpeechMenu);
 						}
-						#endif
+
 						if (menuManager.GetSelectedMenu () != null && AdvGame.GetReferences ().viewingMenuManager)
 						{
 							Menu menu = menuManager.GetSelectedMenu ();
@@ -111,6 +99,8 @@ namespace AC
 
 			foreach (MenuElement element in menu.visibleElements)
 			{
+				if (element == null) continue;
+
 				for (int i=0; i<element.GetNumSlots (); i++)
 				{
 					if (menuManager.GetSelectedElement () == element && element.isClickable && i == 0)
@@ -139,7 +129,13 @@ namespace AC
 				return;
 			}
 
-			if (KickStarter.mainCamera != null)
+			if (Event.current.type == EventType.Layout || Event.current.type == EventType.Repaint)
+			{
+				// Required to get MouseDown event
+				UnityEditor.EditorUtility.SetDirty (menu);
+			}
+			
+			if (KickStarter.mainCamera)
 			{
 				KickStarter.mainCamera.DrawBorders ();
 			}
@@ -148,13 +144,20 @@ namespace AC
 
 			if (menu.CanPause () && menu.pauseWhenEnabled && menuManager.pauseTexture)
 			{
-				GUI.DrawTexture (AdvGame.GUIRect (0.5f, 0.5f, 1f, 1f), menuManager.pauseTexture, ScaleMode.ScaleToFit, true, 0f);
+				if (KickStarter.mainCamera)
+				{
+					GUI.DrawTexture (KickStarter.mainCamera.GetPlayableScreenArea (false), menuManager.pauseTexture);
+				}
+				else
+				{
+					GUI.DrawTexture (new Rect (0, 0, ACScreen.width, ACScreen.height), menuManager.pauseTexture);
+				}
 			}
 			
 			if ((menu.positionType == AC_PositionType.FollowCursor || menu.positionType == AC_PositionType.AppearAtCursorAndFreeze || menu.positionType == AC_PositionType.OnHotspot || menu.positionType == AC_PositionType.AboveSpeakingCharacter || menu.positionType == AC_PositionType.AbovePlayer) && AdvGame.GetReferences ().cursorManager && AdvGame.GetReferences ().cursorManager.pointerIcon.texture)
 			{
 				CursorIconBase icon = AdvGame.GetReferences ().cursorManager.pointerIcon;
-				GUI.DrawTexture (AdvGame.GUIBox (new Vector2 (AdvGame.GetMainGameViewSize ().x / 2f, AdvGame.GetMainGameViewSize ().y / 2f), icon.size), icon.texture, ScaleMode.ScaleToFit, true, 0f);
+				GUI.DrawTexture (AdvGame.GUIBox (KickStarter.mainCamera.GetPlayableScreenArea (false).center, icon.size), icon.texture, ScaleMode.ScaleToFit, true, 0f);
 			}
 			
 			menu.StartDisplay ();
@@ -176,7 +179,7 @@ namespace AC
 					}
 				}
 
-				if (UnityEditor.EditorWindow.mouseOverWindow != null && UnityEditor.EditorWindow.mouseOverWindow.ToString () != null && UnityEditor.EditorWindow.mouseOverWindow.ToString ().Contains ("(UnityEditor.GameView)"))
+				if (Event.current.type == EventType.MouseDown && UnityEditor.EditorWindow.mouseOverWindow != null && UnityEditor.EditorWindow.mouseOverWindow.ToString () != null && UnityEditor.EditorWindow.mouseOverWindow.ToString ().Contains ("(UnityEditor.GameView)"))
 				{
 					if (menu.IsPointerOverSlot (element, 0, Event.current.mousePosition + new Vector2 (menu.GetRect ().x, menu.GetRect ().y)))
 					{
@@ -196,18 +199,15 @@ namespace AC
 
 		private void CheckScreenSize (Menu menu)
 		{
-			#if UNITY_5_4_OR_NEWER
 			menu.Recalculate ();
-			#endif
 
-			if (!Mathf.Approximately (screenSize.x, Screen.width) || !Mathf.Approximately (screenSize.y, Screen.height))			
+			if (!Mathf.Approximately (screenSize.x, ACScreen.width) || !Mathf.Approximately (screenSize.y, ACScreen.height))			
 			{
-				screenSize = new Vector2 (Screen.width, Screen.height);
+				screenSize = new Vector2 ( ACScreen.width, ACScreen.height);
 				menu.Recalculate ();
 			}
 		}
 
-		#if CAN_USE_TIMELINE
 
 		/**
 		 * <summary>Begins the preview of a subtitle</summary>
@@ -216,7 +216,7 @@ namespace AC
 		 */
 		public void SetPreviewSpeech (Speech speech, int trackInstanceID)
 		{
-			if (speech != null && KickStarter.menuManager != null && KickStarter.speechManager != null)
+			if (speech != null && KickStarter.menuManager != null && KickStarter.speechManager)
 			{
 				if (previewSpeechMenu == null)
 				{
@@ -228,10 +228,14 @@ namespace AC
 					if (trackInstanceID != previewTrackID)
 					{
 						RemovePreviewSpeechMenu ();
+						previewSpeechMenu = KickStarter.menuManager.CreatePreviewMenu (KickStarter.speechManager.previewMenuName);
 					}
 
-					previewSpeechMenu.SetSpeech (speech);
-					previewTrackID = trackInstanceID;
+					if (previewSpeechMenu != null)
+					{
+						previewSpeechMenu.SetSpeech (speech);
+						previewTrackID = trackInstanceID;
+					}
 				}
 				else
 				{
@@ -262,8 +266,6 @@ namespace AC
 				previewSpeechMenu = null;
 			}
 		}
-
-		#endif
 
 		#endif
 

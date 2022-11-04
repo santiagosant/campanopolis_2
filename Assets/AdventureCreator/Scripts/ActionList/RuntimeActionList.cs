@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RuntimeActionList.cs"
  * 
@@ -23,30 +23,37 @@ namespace AC
 	 * An ActionList subclass used to run ActionListAssets, which exist in asset files outside of the scene.
 	 * When an ActionListAsset is run, its Actions are copied to a new RuntimeActionList and run locally.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_runtime_action_list.html")]
-	#endif
 	public class RuntimeActionList : ActionList
 	{
+
+		#region Variables
 
 		/** The ActionListAsset that this ActionList's Actions are copied from */
 		public ActionListAsset assetSource;
 
+		#endregion
 
-		private void OnEnable ()
+
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
 			EventManager.OnBeforeChangeScene += OnBeforeChangeScene;
 			EventManager.OnAfterChangeScene += OnAfterChangeScene;
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			EventManager.OnBeforeChangeScene -= OnBeforeChangeScene;
 			EventManager.OnAfterChangeScene -= OnAfterChangeScene;
 		}
 
+		#endregion
 
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Downloads and runs the settings and Actions stored within an ActionListAsset.</summary>
@@ -63,9 +70,11 @@ namespace AC
 			useParameters = actionListAsset.useParameters;
 
 			parameters = new List<ActionParameter>();
-			if (useParameters && actionListAsset.parameters != null)
+
+			List<ActionParameter> assetParameters = actionListAsset.GetParameters ();
+			if (assetParameters != null)
 			{
-				foreach (ActionParameter assetParameter in actionListAsset.parameters)
+				foreach (ActionParameter assetParameter in assetParameters)
 				{
 					parameters.Add (new ActionParameter (assetParameter, true));
 				}
@@ -86,20 +95,24 @@ namespace AC
 			conversation = endConversation;
 			actions.Clear ();
 			
-			foreach (AC.Action action in actionListAsset.actions)
+			foreach (Action action in actionListAsset.actions)
 			{
-				ActionEnd _lastResult = action.lastResult;
-
 				if (action != null)
 				{
+					int lastResultIndex = action.LastRunOutput;
+
+					#if AC_ActionListPrefabs
+					Action newAction = JsonAction.CreateCopy (action);
+					#else
 					// Really we should re-instantiate all Actions, but this is 'safer'
 					Action newAction = (actionListAsset.canRunMultipleInstances)
-										? (Object.Instantiate (action) as Action)
+										? Instantiate (action)
 										: action;
-				
+					#endif
+
 					if (doSkip)
 					{
-						newAction.lastResult = _lastResult;
+						newAction.SetLastResult (lastResultIndex);
 					}
 
 					actions.Add (newAction);
@@ -110,13 +123,7 @@ namespace AC
 				}
 			}
 
-			/*if (!useParameters)
-			{
-				foreach (Action action in actions)
-				{
-					action.AssignValues (null);
-				}
-			}*/
+			actionListAsset.AfterDownloading ();
 
 			if (!dontRun)
 			{
@@ -137,15 +144,42 @@ namespace AC
 		}
 
 
+		/**
+		 * Stops the Actions from running and sets the gameState in StateHandler to the correct value.
+		 */
+		public override void Kill ()
+		{
+			StopAllCoroutines ();
+
+			KickStarter.actionListAssetManager.EndAssetList (this);
+			KickStarter.eventManager.Call_OnEndActionList (this, assetSource, isSkipping);
+		}
+
+
+		/**
+		 * Destroys itself.
+		 */
+		public void DestroySelf ()
+		{
+			Destroy (this.gameObject);
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
 		protected override void BeginActionList (int i, bool addToSkipQueue)
 		{
-			KickStarter.eventManager.Call_OnBeginActionList (this, assetSource, i, isSkipping);
-
 			if (KickStarter.actionListAssetManager != null)
 			{
 				KickStarter.actionListAssetManager.AddToList (this, assetSource, addToSkipQueue, i, isSkipping);
+				KickStarter.eventManager.Call_OnBeginActionList (this, assetSource, i, isSkipping);
 
-				ProcessAction (i);
+				if (KickStarter.actionListManager.IsListRegistered (this))
+				{
+					ProcessAction (i);
+				}
 			}
 			else
 			{
@@ -161,34 +195,14 @@ namespace AC
 				ACDebug.LogWarning ("Cannot run " + this.name + " because no ActionListAssetManager was found.", this);
 				return;
 			}
-			KickStarter.actionListAssetManager.AddToList (this, assetSource, true, startIndex);
+			// If resuming, ActiveList should already be present - no need to add to the list
+			// KickStarter.actionListAssetManager.AddToList (this, assetSource, true, startIndex);
 		}
 
 
-		/**
-		 * Stops the Actions from running and sets the gameState in StateHandler to the correct value.
-		 */
-		public override void Kill ()
+		protected override void ReturnLastResultToSource (int index, int i)
 		{
-			StopAllCoroutines ();
-
-			KickStarter.eventManager.Call_OnEndActionList (this, assetSource, isSkipping);
-			KickStarter.actionListAssetManager.EndAssetList (this);
-		}
-
-
-		/**
-		 * Destroys itself.
-		 */
-		public void DestroySelf ()
-		{
-			Destroy (this.gameObject);
-		}
-
-
-		protected new void ReturnLastResultToSource (ActionEnd _lastResult, int i)
-		{
-			assetSource.actions[i].lastResult = _lastResult;
+			assetSource.actions[i].SetLastResult (index);
 		}
 
 
@@ -199,20 +213,47 @@ namespace AC
 		}
 
 
-		private void OnBeforeChangeScene ()
+		protected override void PrintActionComment (Action action)
+		{
+			switch (KickStarter.settingsManager.actionCommentLogging)
+			{
+				case ActionCommentLogging.Always:
+					action.PrintComment (this, assetSource);
+					break;
+
+				case ActionCommentLogging.OnlyIfVisible:
+					if (action.showComment)
+					{
+						action.PrintComment (this, assetSource);
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
+
+
+		protected void OnBeforeChangeScene (string nextSceneName)
 		{
 			if (assetSource.canSurviveSceneChanges && !assetSource.IsSkippable ())
 			{
 				isChangingScene = true;
 			}
+			else
+			{
+				Kill ();
+			}
 		}
 
 
-		private void OnAfterChangeScene (LoadingGame loadingGame)
+		protected void OnAfterChangeScene (LoadingGame loadingGame)
 		{
 			isChangingScene = false;
 		}
-	
+
+		#endregion
+
 	}
 
 }

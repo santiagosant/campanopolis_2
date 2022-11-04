@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AlignToCamera.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 */
 	[ExecuteInEditMode]
 	[AddComponentMenu("Adventure Creator/Camera/Align to camera")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_align_to_camera.html")]
-	#endif
 	public class AlignToCamera : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The _Camera to align the GameObject to */
 		public _Camera cameraToAlignTo;
@@ -39,15 +39,20 @@ namespace AC
 		/** How the object is aligned (YAxisOnly, CopyFullRotation) */
 		public AlignType alignType = AlignType.YAxisOnly;
 
+		#endregion
 
-		private void Awake ()
+
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			Align ();
 		}
 
 
 		#if UNITY_EDITOR
-		private void Update ()
+
+		protected void Update ()
 		{
 			if (!Application.isPlaying)
 			{
@@ -55,13 +60,21 @@ namespace AC
 			}
 		}
 
+		#endif
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		#if UNITY_EDITOR
 
 		/**
 		 * Attempts to place the GameObject in the centre of cameraToAlignTo's view.
 		 */
 		public void CentreToCamera ()
 		{
-			float distanceFromCamera = Vector3.Dot (cameraToAlignTo.transform.forward, transform.position - cameraToAlignTo.transform.position);
+			float distanceFromCamera = Vector3.Dot (cameraToAlignTo.Transform.forward, transform.position - cameraToAlignTo.Transform.position);
 			if (Mathf.Approximately (distanceFromCamera, 0f))
 			{
 				return;
@@ -69,41 +82,46 @@ namespace AC
 
 			if (lockDistance)
 			{
-				Vector3 newPosition = cameraToAlignTo.transform.position + (cameraToAlignTo.transform.forward * distanceFromCamera);
+				Vector3 newPosition = cameraToAlignTo.Transform.position + (cameraToAlignTo.Transform.forward * distanceFromCamera);
 				transform.position = newPosition;
 			}
 		}
+
 		#endif
 
+		#endregion
 
-		private void Align ()
+
+		#region ProtectedFunctions
+
+		protected void Align ()
 		{
 			if (cameraToAlignTo)
 			{
 				if (alignType == AlignType.YAxisOnly)
 				{
-					transform.rotation = Quaternion.Euler (transform.rotation.eulerAngles.x, cameraToAlignTo.transform.rotation.eulerAngles.y, transform.rotation.eulerAngles.z);
+					transform.rotation = Quaternion.Euler (transform.rotation.eulerAngles.x, cameraToAlignTo.Transform.rotation.eulerAngles.y, transform.rotation.eulerAngles.z);
 				}
 				else
 				{
-					transform.rotation = cameraToAlignTo.transform.rotation;
+					transform.rotation = cameraToAlignTo.Transform.rotation;
 				}
 
 				if (lockDistance)
 				{
 					if (distanceToCamera > 0f)
 					{
-						Vector3 relativePosition = transform.position - cameraToAlignTo.transform.position;
+						Vector3 relativePosition = transform.position - cameraToAlignTo.Transform.position;
 						float currentDistance = relativePosition.magnitude;
 						if (!Mathf.Approximately (currentDistance, distanceToCamera))
 						{
 							if (currentDistance > 0f)
 							{
-								transform.position = cameraToAlignTo.transform.position + (relativePosition * distanceToCamera / currentDistance);
+								transform.position = cameraToAlignTo.Transform.position + (relativePosition * distanceToCamera / currentDistance);
 							}
 							else
 							{
-								transform.position = cameraToAlignTo.transform.position + cameraToAlignTo.transform.forward * distanceToCamera;
+								transform.position = cameraToAlignTo.Transform.position + cameraToAlignTo.Transform.forward * distanceToCamera;
 							}
 						}
 
@@ -123,7 +141,7 @@ namespace AC
 					}
 					else if (Mathf.Approximately (distanceToCamera, 0f))
 					{
-						Vector3 relativePosition = transform.position - cameraToAlignTo.transform.position;
+						Vector3 relativePosition = transform.position - cameraToAlignTo.Transform.position;
 						float magnitude = relativePosition.magnitude;
 						if (magnitude > 0f)
 						{
@@ -140,13 +158,15 @@ namespace AC
 		}
 
 
-		private void CalculateScale ()
+		protected void CalculateScale ()
 		{
 			if (scaleFactor == Vector2.zero)
 			{
 				scaleFactor = new Vector2 (transform.localScale.x / distanceToCamera, transform.localScale.y / distanceToCamera);
 			}
 		}
+
+		#endregion
 
 	}
 

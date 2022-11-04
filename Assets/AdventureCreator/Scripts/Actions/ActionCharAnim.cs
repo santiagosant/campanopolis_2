@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharAnim.cs"
  * 
@@ -25,12 +25,15 @@ namespace AC
 
 		public int parameterID = -1;
 		public int constantID = 0;
-		public AnimEngine editingAnimEngine;
+		protected AnimEngine editingAnimEngine;
 
 		public bool isPlayer;
+		public int playerID = -1;
+
 		public Char animChar;
 		protected Char runtimeAnimChar;
 		public AnimationClip clip;
+		public int clipParameterID = -1;
 		public string clip2D;
 		public int clip2DParameterID = -1;
 
@@ -70,19 +73,14 @@ namespace AC
 		public bool hideHead = false;
 		public bool doLoop; // Ignored by official animation engines
 
-		
-		public ActionCharAnim ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Animate";
-			description = "Affects a Character's animation. Can play or stop a custom animation, change a standard animation (idle, walk or run), change a footstep sound, or revert the Character to idle.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Animate"; }}
+		public override string Description { get { return "Affects a Character's animation. Can play or stop a custom animation, change a standard animation (idle, walk or run), change a footstep sound, or revert the Character to idle."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			runtimeAnimChar = AssignFile <Char> (parameters, parameterID, constantID, animChar);
 			newSound = (AudioClip) AssignObject <AudioClip> (parameters, newSoundParameterID, newSound);
 			newSpeed = AssignFloat (parameters, newSpeedParameterID, newSpeed);
 			parameterName = AssignString (parameters, parameterNameID, parameterName);
@@ -90,17 +88,21 @@ namespace AC
 
 			if (isPlayer)
 			{
-				runtimeAnimChar = KickStarter.player;
+				runtimeAnimChar = AssignPlayer (playerID, parameters, parameterID);
+			}
+			else
+			{
+				runtimeAnimChar = AssignFile <Char> (parameters, parameterID, constantID, animChar);
 			}
 
-			if (runtimeAnimChar != null && runtimeAnimChar.GetAnimEngine () != null)
+			if (runtimeAnimChar && runtimeAnimChar.GetAnimEngine () != null)
 			{
 				runtimeAnimChar.GetAnimEngine ().ActionCharAnimAssignValues (this, parameters);
 			}
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeAnimChar != null)
 			{
@@ -122,7 +124,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (runtimeAnimChar != null)
 			{
@@ -142,12 +144,31 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
 			if (isPlayer)
 			{
-				if (Application.isPlaying)
+				if (KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+
+				if (KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					if (parameterID < 0 && playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						animChar = (playerPrefab != null) ? playerPrefab.playerOb : null;
+					}
+					else
+					{
+						animChar = KickStarter.settingsManager.GetDefaultPlayer ();
+					}
+				}
+				else if (Application.isPlaying)
 				{
 					animChar = KickStarter.player;
 				}
@@ -181,17 +202,19 @@ namespace AC
 			if (editingAnimEngine != null)
 			{
 				editingAnimEngine.ActionCharAnimGUI (this, parameters);
+
+				#if !AC_ActionListPrefabs
+				if (GUI.changed && this) EditorUtility.SetDirty (this);
+				#endif
 			}
 			else
 			{
 				EditorGUILayout.HelpBox ("This Action requires a Character before more options will show.", MessageType.Info);
 			}
-
-			AfterRunningOption ();
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (isPlayer)
 			{
@@ -205,7 +228,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (isPlayer)
 			{
@@ -224,7 +247,7 @@ namespace AC
 			{
 				ResetAnimationEngine (animChar.animationEngine, animChar.customAnimationClass);
 
-				if (saveScriptsToo && editingAnimEngine != null && editingAnimEngine.RequiresRememberAnimator (this))
+				if (saveScriptsToo && editingAnimEngine && editingAnimEngine.RequiresRememberAnimator (this))
 				{
 					editingAnimEngine.AddSaveScript (this, animChar.gameObject);
 				}
@@ -234,7 +257,7 @@ namespace AC
 		}
 
 
-		private void ResetAnimationEngine (AnimationEngine animationEngine, string customClassName)
+		protected void ResetAnimationEngine (AnimationEngine animationEngine, string customClassName)
 		{
 			string className = "";
 			if (animationEngine == AnimationEngine.Custom)
@@ -252,7 +275,27 @@ namespace AC
 			}
 		}
 
-		
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (animChar && animChar.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -278,7 +321,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnity_PlayCustom (AC.Char characterToAnimate, string clipName, bool addDirectionalSuffix = false, int layerIndex = 0, float transitionTime = 0f, bool waitUntilFinish = true, bool returnToIdleAfter = true)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.method = AnimMethodChar.PlayCustom;
 
@@ -304,7 +347,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnity_SetStandard (AC.Char characterToAnimate, AnimStandard standardToChange, string newStandardName, AudioClip newSound = null, float newSpeed = 0f)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.method = AnimMethodChar.SetStandard;
 
@@ -333,7 +376,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnity_ResetToIdle (AC.Char characterToAnimate, bool waitForCustomAnimationToFinish = false)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.method = AnimMethodChar.ResetToIdle;
 
@@ -355,7 +398,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_PlayCustom (AC.Char characterToAnimate, string clipName, bool addDirectionalSuffix = false, int layerIndex = 0, float transitionTime = 0f, bool waitUntilFinish = true)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.PlayCustom;
 
@@ -376,7 +419,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (AC.Char characterToAnimate, string parameterName)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -395,7 +438,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, int parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -415,7 +458,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, float parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -435,7 +478,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, bool parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -455,7 +498,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_SpritesUnityComplex_SetStandard (AC.Char characterToAnimate, MecanimCharParameter parameterToChange, string newParameterName)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.SetStandard;
 
@@ -473,7 +516,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_ChangeParameterValue (AC.Char characterToAnimate, string parameterName)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -491,7 +534,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, int parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -510,7 +553,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, float parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -529,7 +572,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_ChangeParameterValue (AC.Char characterToAnimate, string parameterName, bool parameterValue)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.ChangeParameterValue;
 			newAction.parameterName = parameterName;
@@ -549,7 +592,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_SetStandard (AC.Char characterToAnimate, MecanimCharParameter parameterToChange, string newParameterName)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.SetStandard;
 
@@ -570,7 +613,7 @@ namespace AC
 		 */
 		public static ActionCharAnim CreateNew_Mecanim_PlayCustom (AC.Char characterToAnimate, string clipName, int layerIndex = 0, float transitionTime = 0f, bool waitUntilFinish = true)
 		{
-			ActionCharAnim newAction = (ActionCharAnim) CreateInstance <ActionCharAnim>();
+			ActionCharAnim newAction = CreateNew<ActionCharAnim> ();
 			newAction.animChar = characterToAnimate;
 			newAction.methodMecanim = AnimMethodCharMecanim.PlayCustom;
 

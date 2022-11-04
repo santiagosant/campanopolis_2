@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Enums.cs"
  * 
@@ -15,6 +15,7 @@ namespace AC
 	public enum MouseState { Normal, SingleClick, RightClick, DoubleClick, HeldDown, LetGo };
 	public enum DragState { None, Player, Inventory, PreInventory, Menu, ScreenArrows, Moveable, _Camera };
 	public enum GameState { Normal, Cutscene, DialogOptions, Paused };
+	public enum FlagsGameState { Normal = 1 << 0, Cutscene = 1 << 1, DialogOptions = 1 << 2, Paused = 1 << 3 };
 	public enum ActionListType { PauseGameplay, RunInBackground };
 	public enum PlayerSwitching { Allow, DoNotAllow };
 	public enum ResultAction { Continue, Stop, Skip, RunCutscene };
@@ -36,8 +37,8 @@ namespace AC
 	public enum AC_ShiftInventory { ShiftPrevious, ShiftNext };
 	public enum AC_SizeType { Automatic, Manual, AbsolutePixels };
 	public enum AC_InputType { AlphaNumeric, NumbericOnly, AllowSpecialCharacters };
-	public enum AC_LabelType { Normal, Hotspot, DialogueLine, DialogueSpeaker, GlobalVariable, ActiveSaveProfile, InventoryProperty, DocumentTitle };
-	public enum AC_GraphicType { Normal, DialoguePortrait, DocumentTexture };
+	public enum AC_LabelType { Normal, Hotspot, DialogueLine, DialogueSpeaker, GlobalVariable, ActiveSaveProfile, InventoryProperty, DocumentTitle, SelectedObjective, ActiveContainer };
+	public enum AC_GraphicType { Normal, DialoguePortrait, DocumentTexture, ObjectiveTexture };
 	public enum DragElementType { EntireMenu, SingleElement };
 	public enum AC_SaveListType { Save, Load, Import };
 	public enum AC_ButtonClickType { TurnOffMenu, Crossfade, OffsetElementSlot, RunActionList, CustomScript, OffsetJournal, SimulateInput };
@@ -47,13 +48,15 @@ namespace AC
 	public enum AC_CycleType { Language, CustomScript, Variable };
 	public enum AC_ToggleType { Subtitles, CustomScript, Variable };
 	public enum AC_TimerType { Conversation, QuickTimeEventProgress, QuickTimeEventRemaining, LoadingProgress };
-	public enum AC_InventoryBoxType { Default, HotspotBased, CustomScript, DisplaySelected, DisplayLastSelected, Container, CollectedDocuments };
+	public enum AC_InventoryBoxType { Default, HotspotBased, CustomScript, DisplaySelected, DisplayLastSelected, Container, CollectedDocuments, Objectives };
 	public enum CraftingElementType { Ingredients, Output };
 	public enum ConversationDisplayType { TextOnly, IconOnly, IconAndText };
 	public enum SliderDisplayType { FillBar, MoveableBlock };
 	public enum AC_DisplayType { IconOnly, TextOnly, IconAndText };
 
-	public enum AC_TextType { Speech, Hotspot, DialogueOption, InventoryItem, CursorIcon, MenuElement, HotspotPrefix, JournalEntry, InventoryItemProperty, Variable, Character, Document, Custom };
+	public enum AC_TextType { Speech, Hotspot, DialogueOption, InventoryItem, CursorIcon, MenuElement, HotspotPrefix, JournalEntry, InventoryItemProperty, Variable, Character, Document, Custom, Objective, Container };
+	public enum TextTypeFilter { Speech, Hotspot, DialogueOption, InventoryItem, CursorIcon, MenuElement, HotspotPrefix, JournalEntry, InventoryItemProperty, Variable, Character, Document, Custom, Objective, Container, All };
+	public enum AC_TextTypeFlags { Speech=1<<0, Hotspot=1<<1, DialogueOption=1<<2, InventoryItem=1<<3, CursorIcon=1<<4, MenuElement=1<<5, HotspotPrefix=1<<6, JournalEntry=1<<7, InventoryItemProperty=1<<8, Variable=1<<9, Character=1<<10, Document=1<<11, Custom=1<<12, Objective=1<<13 };
 	public enum CursorDisplay { Always, OnlyWhenPaused, Never };
 	public enum LookUseCursorAction { DisplayBothSideBySide, DisplayUseIcon, RightClickCyclesModes };
 	
@@ -77,7 +80,7 @@ namespace AC
 	public enum MovingTurning { WorldSpace, ScreenSpace, TopDown, Unity2D };
 
 	public enum InteractionIcon { Use, Examine, Talk };
-	public enum InventoryHandling { ChangeCursor, ChangeHotspotLabel, ChangeCursorAndHotspotLabel };
+	public enum InventoryHandling { ChangeCursor, ChangeHotspotLabel, ChangeCursorAndHotspotLabel, DoNothing };
 	
 	public enum RenderLock { NoChange, Set, Release };
 	public enum LockType { Enabled, Disabled, NoChange };
@@ -107,12 +110,12 @@ namespace AC
 	public enum TransformType { Translate, Rotate, Scale, CopyMarker };
 	
 	public enum VariableLocation { Global, Local, Component };
-	public enum VariableType { Boolean, Integer, String, Float, PopUp, Vector3 };
+	public enum VariableType { Boolean, Integer, String, Float, PopUp, Vector3, GameObject, UnityObject };
 	public enum BoolValue { True=1, False=0 };
 	public enum SetVarMethod { SetValue, IncreaseByValue, SetAsRandom, Formula };
-	public enum SetVarMethodString { EnteredHere=0, SetAsMenuElementText=1 };
+	public enum SetVarMethodString { EnteredHere=0, SetAsMenuElementText=1, CombinedWithOtherString=2 };
 	public enum SetVarMethodIntBool { EnteredHere=0, SetAsMecanimParameter=1 };
-	public enum SetParamMethod { EnteredHere=0, CopiedFromGlobalVariable=1, Random=2, CopiedFromParameter=3 };
+	public enum SetParamMethod { EnteredHere=0, CopiedFromGlobalVariable=1, Random=2, CopiedFromParameter=3, CopiedFromAnimator=4 };
 	public enum GetVarMethod { EnteredValue, GlobalVariable, LocalVariable, ComponentVariable };
 	
 	public enum AC_Direction { None, Up, Down, Left, Right };
@@ -120,7 +123,7 @@ namespace AC
 	public enum ArrowPromptType { KeyOnly, ClickOnly, KeyAndClick };
 	
 	public enum AC_NavigationMethod { UnityNavigation, meshCollider, PolygonCollider, Custom };
-	public enum AC_PathType { Loop, PingPong, ForwardOnly, IsRandom, ReverseOnly };
+	public enum AC_PathType { Loop=0, PingPong=1, ForwardOnly=2, IsRandom=3, ReverseOnly=4 };
 	public enum PathSpeed { Walk=0, Run=1 };
 	
 	public enum SoundType { SFX, Music, Other, Speech };
@@ -146,8 +149,8 @@ namespace AC
 	public enum CharFaceType { Body, Head };
 	public enum InputCheckType { Button, Axis, SingleTapOrClick, DoubleTapOrClick };
 	public enum IntCondition { EqualTo, NotEqualTo, LessThan, MoreThan };
-	public enum RightClickInventory { DeselectsItem, ExaminesItem, DoesNothing };
-	public enum ParameterType { GameObject, InventoryItem, GlobalVariable, LocalVariable, String, Float, Integer, Boolean, UnityObject, Vector3, Document, ComponentVariable };
+	public enum RightClickInventory { DeselectsItem, ExaminesItem, DoesNothing, ExaminesHotspot };
+	public enum ParameterType { GameObject, InventoryItem, GlobalVariable, LocalVariable, String, Float, Integer, Boolean, UnityObject, Vector3, Document, ComponentVariable, PopUp };
 	
 	public enum ChangeNavMeshMethod { ChangeNavMesh, ChangeNumberOfHoles };
 	public enum InvAction { Add, Remove, Replace };
@@ -160,10 +163,10 @@ namespace AC
 	public enum TriggerDetects { Player, AnyObjectWithComponent, AnyObject, SetObject, AnyObjectWithTag };
 	public enum PositionRelativeTo { Nothing, RelativeToActiveCamera, RelativeToPlayer, RelativeToGameObject, EnteredValue, VectorVariable };
 
-	public enum CursorRendering { Software, Hardware };
+	public enum CursorRendering { Software, Hardware, UnityUI };
 	public enum SeeInteractions { ClickOnHotspot, CursorOverHotspot, ViaScriptOnly };
 	public enum SelectInteractions { ClickingMenu, CyclingMenuAndClickingHotspot, CyclingCursorAndClickingHotspot };
-	public enum ChooseSceneBy { Number, Name };
+	public enum ChooseSceneBy { Number=0, Name=1 };
 	public enum ChangeType { Enable, Disable };
 	public enum LipSyncMode { Off, FromSpeechText, ReadPamelaFile, ReadSapiFile, ReadPapagayoFile, FaceFX, Salsa2D, RogoLipSync };
 	public enum LipSyncOutput { Portrait, PortraitAndGameObject, GameObjectTexture };
@@ -174,14 +177,14 @@ namespace AC
 	public enum ActionListEditorScrollWheel { PansWindow, ZoomsWindow };
 	public enum SelectItemMode { Use, Give };
 	public enum WizardMenu { Blank, DefaultAC, DefaultUnityUI };
-	public enum QTEType { SingleKeypress, HoldKey, ButtonMash, SingleAxis };
-	public enum QTEState { None, Win, Lose };
+	public enum QTEType { SingleKeypress, HoldKey, ButtonMash, SingleAxis, ThumbstickRotation };
+	public enum QTEState { None, Win, Lose, Running };
 
 	public enum FilterSpeechLine { Type, Text, Scene, Speaker, Description, ID, All };
-	public enum ActionCategory { ActionList, Camera, Character, Container, Dialogue, Document, Engine, Hotspot, Input, Inventory, Menu, Moveable, Object, Player, Save, Scene, Sound, ThirdParty, Variable, Custom };
+	public enum ActionCategory { ActionList, Camera, Character, Container, Dialogue, Document, Engine, Hotspot, Input, Inventory, Menu, Moveable, Object, Objective, Player, Save, Scene, Sound, ThirdParty, Variable, Custom };
 	public enum VolumeControl { AudioSources, AudioMixerGroups };
 	public enum TurningStyle { Linear, Script, RootMotion };
-	public enum DoubleClickingHotspot { MakesPlayerRun, TriggersInteractionInstantly, DoesNothing };
+	public enum DoubleClickingHotspot { MakesPlayerRun, TriggersInteractionInstantly, DoesNothing, IsRequiredToUse };
 	public enum BoolCondition { EqualTo, NotEqualTo };
 	public enum VectorCondition { EqualTo, MagnitudeGreaterThan };
 
@@ -189,10 +192,10 @@ namespace AC
 	public enum DeleteProfileType { ActiveProfile, SetSlotIndex, SlotIndexFromVariable, SetProfileID };
 	public enum SaveCheck { NumberOfSaveGames, NumberOfProfiles, IsSavingPossible, IsSlotEmpty, DoesProfileExist, DoesProfileNameExist };
 	public enum ManageSaveType { DeleteSave, RenameSave };
-	public enum SelectSaveType { Autosave, SetSlotIndex, SlotIndexFromVariable };
+	public enum SelectSaveType { Autosave, SetSlotIndex, SlotIndexFromVariable, SetSaveID };
 	public enum SaveHandling { LoadGame, ContinueFromLastSave, OverwriteExistingSave, SaveNewGame };
 
-	public enum PlatformType { Desktop, TouchScreen, WebPlayer, Windows, Mac, Linux, iOS, Android };
+	public enum PlatformType { Desktop, TouchScreen, WebGL, Windows, Mac, Linux, iOS, Android };
 	public enum Coord { W, X, Y, Z };
 	public enum RootMotionType { None, TwoD, ThreeD };
 	public enum RotationLock { Free, Locked, Limited };
@@ -206,7 +209,7 @@ namespace AC
 	public enum NavMeshSearchDirection { StraightDownFromCursor, RadiallyOutwardsFromCursor };
 	public enum MovieClipType { FullScreen, OnMaterial, VideoPlayer };
 	public enum SetJournalPage { FirstPage, LastPage, SetHere };
-	public enum InventoryPropertyType { SelectedItem, LastClickedItem, MouseOverItem };
+	public enum InventoryPropertyType { SelectedItem, LastClickedItem, MouseOverItem, CustomScript };
 	public enum UIHideStyle { DisableObject, ClearContent };
 	public enum UISelectableHideStyle { DisableObject, DisableInteractability };
 	public enum Hand { Left, Right };
@@ -236,7 +239,7 @@ namespace AC
 	public enum DoubleClickMovement { MakesPlayerRun = 0, RequiredToWalk = 1, Disabled = 2 };
 	public enum MusicAction { Play, Stop, Crossfade, ResumeLastStopped };
 	public enum AngleSnapping { None=0, NinetyDegrees=1, FortyFiveDegrees=2 };
-	public enum ParallaxReactsTo { Camera, Cursor };
+	public enum ParallaxReactsTo { Camera, Cursor, Transform };
 	public enum DebugWindowDisplays { Never, EditorOnly, EditorAndBuild };
 	public enum SpeechProximityLimit { NoLimit, LimitByDistanceToPlayer, LimitByDistanceToCamera };
 	public enum SpeechIDRecycling { NeverRecycle, AlwaysRecycle, RecycleHighestOnly };
@@ -250,5 +253,36 @@ namespace AC
 
 	public enum DragMovementCalculation { DragVector=0, CursorPosition=1 };
 	public enum MainCameraForwardDirection { MainCameraComponent, CameraComponent };
+	public enum ObjectiveStateType { Active=1, Complete=2, Fail=3 };
+	public enum ObjectiveDisplayType { All, ActiveOnly, CompleteOnly, FailedOnly }
+	public enum SelectedObjectiveLabelType { Title, Description, StateLabel, StateDescription, StateType };
+	public enum HotspotInteractionType { NotFound, Use, Examine, Inventory, UnhandledInventory, UnhandledUse };
+
+	public enum CSVFormat { Standard, Legacy };
+	public enum InventoryItemCountDisplay { OnlyIfMultiple, Always, Never, OnlyIfStackable };
+	public enum ClickMarkerPosition { ColliderContactPoint, PlayerDestination };
+	public enum CameraFadePauseBehaviour { Cancel, Hold, Hide, Continue };
+	public enum TeleportPlayerStartMethod { SceneDefault, BasedOnPrevious, EnteredHere };
+	public enum ReferenceSpeechFiles { ByDirectReference, ByNamingConvention, ByAssetBundle, ByAddressable };
+	public enum PlayerStartActiveOption { NoLimit, ActivePlayerOnly, InactivePlayersOnly };
+	public enum DebugLogType { Info, Warning, Error };
+	public enum OffScreenRelease { GrabPoint, TransformCentre, DoNotRelease };
+	public enum MergeMatchingIDs { NoMerging, MergeSpeechOnly, MergeIfTypesMatch, AlwaysMerge };
+	public enum SliderOrientation { Horizontal, Vertical };
+
+	public enum DragTrackDirection { NoRestriction, ForwardOnly, BackwardOnly };
+	public enum ContainerTransfer { DoNotTransfer, TransferToPlayer, TransferToOtherContainer };
+	public enum OccupiedSlotBehaviour { ShiftItems=0, SwapItems=1, FailTransfer=2, Overwrite=3 };
+	public enum ContainerSelectMode { MoveToInventory, MoveToInventoryAndSelect, SelectItemOnly, CustomScript };
+	public enum ActionCommentLogging { Never, OnlyIfVisible, Always };
+	public enum ItemStackingMode { All=0, Single=1, Stack=2 };
+	public enum AspectRatioEnforcement { NoneEnforced, Fixed, Range };
+	public enum SaveScreenshots { Never, Always, ExceptWhenAutosaving };
+	public enum CentrePointOverrides { FacingAndIconPosition, FacingPositionOnly, IconPositionOnly };
+	public enum IfSkipWhileScrolling { DisplayFullText, SkipToNextWaitToken, EndLine, DoNothing };
+	public enum SpeechScrollAudioSource { SFX, Speech };
+	public enum ElementSlotMapping { List, FixedSlotIndex, FixedOptionID };
+	public enum PathSnapping { None, SnapToStart, SnapToNode, SnapToNearest }
+	public enum IndexPrefixDisplay { None, GlobalOrder, DisplayOrder };
 
 }

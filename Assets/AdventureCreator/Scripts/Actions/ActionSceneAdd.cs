@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSceneAdd.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -25,106 +26,252 @@ namespace AC
 		public enum SceneAddRemove { Add, Remove };
 		public SceneAddRemove sceneAddRemove = SceneAddRemove.Add;
 		public bool runCutsceneOnStart;
-
+		public bool runCutsceneIfAlreadyOpen;
+		
 		public ChooseSceneBy chooseSceneBy = ChooseSceneBy.Number;
 		public int sceneNumber;
 		public int sceneNumberParameterID = -1;
 		public string sceneName;
 		public int sceneNameParameterID = -1;
 
-		private bool waitedOneMoreFrame = false;
+		protected bool awaitingCallback = false;
+		private int numIterations;
 
 
-		public ActionSceneAdd ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Scene;
-			title = "Add or remove";
-			description = "Adds or removes a scene without affecting any other open scenes.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Scene; }}
+		public override string Title { get { return "Add or remove"; }}
+		public override string Description { get { return "Adds or removes a scene without affecting any other open scenes."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			sceneNumber = AssignInteger (parameters, sceneNumberParameterID, sceneNumber);
 			sceneName = AssignString (parameters, sceneNameParameterID, sceneName);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			SceneInfo sceneInfo = new SceneInfo (chooseSceneBy, AdvGame.ConvertTokens (sceneName), sceneNumber);
-
 			if (!isRunning)
 			{
-				waitedOneMoreFrame = false;
+				numIterations = 0;
+				awaitingCallback = false;
 				isRunning = true;
+				AddEventHooks ();
 
 				if (KickStarter.sceneSettings.OverridesCameraPerspective ())
 				{
 					ACDebug.LogError ("The current scene overrides the default camera perspective - this feature should not be used in conjunction with multiple-open scenes.");
 				}
 
-				if (sceneAddRemove == SceneAddRemove.Add)
+				switch (KickStarter.settingsManager.referenceScenesInSave)
 				{
-					if (KickStarter.sceneChanger.AddSubScene (sceneInfo))
-					{
-						return defaultPauseTime;
-					}
-				}
-				else if (sceneAddRemove == SceneAddRemove.Remove)
-				{
-					KickStarter.sceneChanger.RemoveScene (sceneInfo);
+					case ChooseSceneBy.Name:
+						return UpdateSceneByName ();
+
+					case ChooseSceneBy.Number:
+					default:
+						return UpdateSceneByNumber ();
 				}
 			}
 			else
 			{
-				if (!waitedOneMoreFrame)
+				numIterations++;
+				if (awaitingCallback && numIterations < 50) // Failsafe
 				{
-					waitedOneMoreFrame = true;
 					return defaultPauseTime;
 				}
+				
+				isRunning = false;
+			}
 
-				if (sceneAddRemove == SceneAddRemove.Add)
-				{
-					bool found = false;
-					foreach (SubScene subScene in KickStarter.sceneChanger.GetSubScenes ())
+			RemoveEventHooks ();
+			return 0f;
+		}
+
+
+		private float UpdateSceneByName ()
+		{
+			string runtimeSceneName = (chooseSceneBy == ChooseSceneBy.Name) ? sceneName : KickStarter.sceneChanger.IndexToName (sceneNumber);
+			if (string.IsNullOrEmpty (runtimeSceneName)) return 0f;
+
+			switch (sceneAddRemove)
+			{
+				case SceneAddRemove.Add:
+					if (KickStarter.sceneChanger.AddSubScene (runtimeSceneName))
 					{
-						if (subScene.SceneInfo.Matches (sceneInfo))
-						{
-							found = true;
+						awaitingCallback = true;
+						return defaultPauseTime;
+					}
 
-							if (runCutsceneOnStart && subScene.SceneSettings != null && subScene.SceneSettings.cutsceneOnStart != null)
+					if (runCutsceneIfAlreadyOpen && runCutsceneOnStart)
+					{
+						foreach (SubScene subScene in KickStarter.sceneChanger.SubScenes)
+						{
+							if (subScene.SceneName == runtimeSceneName)
 							{
-								subScene.SceneSettings.cutsceneOnStart.Interact ();
+								PlayStartCutscene (subScene.SceneSettings);
+								break;
 							}
 						}
 					}
+					break;
 
-					if (!found)
-					{
-						LogWarning ("Adding a non-AC scene additively!  A GameEngine prefab must be placed in scene '" + sceneInfo.GetLabel () + "'.");
-					}
-				}
+				case SceneAddRemove.Remove:
+					KickStarter.sceneChanger.RemoveScene (runtimeSceneName);
+					awaitingCallback = true;
+					return defaultPauseTime;
 
-				isRunning = false;
+				default:
+					break;
 			}
 
 			return 0f;
 		}
 
 
+		private float UpdateSceneByNumber ()
+		{
+			int runtimeSceneIndex = (chooseSceneBy == ChooseSceneBy.Name) ? KickStarter.sceneChanger.NameToIndex (sceneName) : sceneNumber;
+			if (runtimeSceneIndex < 0) return 0f;
+
+			switch (sceneAddRemove)
+			{
+				case SceneAddRemove.Add:
+					if (KickStarter.sceneChanger.AddSubScene (runtimeSceneIndex))
+					{
+						awaitingCallback = true;
+						return defaultPauseTime;
+					}
+
+					if (runCutsceneIfAlreadyOpen && runCutsceneOnStart)
+					{
+						foreach (SubScene subScene in KickStarter.sceneChanger.SubScenes)
+						{
+							if (subScene.SceneIndex == runtimeSceneIndex)
+							{
+								PlayStartCutscene (subScene.SceneSettings);
+								break;
+							}
+						}
+					}
+					break;
+
+				case SceneAddRemove.Remove:
+					KickStarter.sceneChanger.RemoveScene (runtimeSceneIndex);
+					awaitingCallback = true;
+					return defaultPauseTime;
+
+				default:
+					break;
+			}
+
+			return 0f;
+		}
+
+
+		private void AddEventHooks ()
+		{
+			UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+			UnityEngine.SceneManagement.SceneManager.sceneUnloaded += OnSceneUnloaded;
+		}
+
+
+		private void RemoveEventHooks ()
+		{
+			UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+			UnityEngine.SceneManagement.SceneManager.sceneUnloaded -= OnSceneUnloaded;
+		}
+
+
+		private void OnSceneLoaded (Scene scene, LoadSceneMode loadSceneMode)
+		{
+			if (sceneAddRemove == SceneAddRemove.Add)
+			{
+				bool found = false;
+
+				foreach (SubScene subScene in KickStarter.sceneChanger.SubScenes)
+				{
+					if (subScene.gameObject.scene == scene)
+					{
+						found = true;
+
+						if (runCutsceneOnStart)
+						{
+							PlayStartCutscene (subScene.SceneSettings);
+						}
+
+						break;
+					}
+				}
+
+				if (!found)
+				{
+					switch (KickStarter.settingsManager.referenceScenesInSave)
+					{
+						case ChooseSceneBy.Name:
+							string runtimeSceneName = (chooseSceneBy == ChooseSceneBy.Name) ? sceneName : KickStarter.sceneChanger.IndexToName (sceneNumber);
+							LogWarning ("Could not find SubScene class for scene " + runtimeSceneName + " - is it added to Unity's Build Settings?\nIf this is a non-AC scene, add a SubScene component to it and check 'Self Initialise'.");
+							break;
+
+						case ChooseSceneBy.Number:
+						default:
+							int runtimeSceneIndex = (chooseSceneBy == ChooseSceneBy.Name) ? KickStarter.sceneChanger.NameToIndex (sceneName) : sceneNumber;
+							LogWarning ("Could not find SubScene class for scene " + runtimeSceneIndex + " - is it added to Unity's Build Settings?\nIf this is a non-AC scene, add a SubScene component to it and check 'Self Initialise'.");
+							break;
+					}
+				}
+
+				awaitingCallback = false;
+			}
+		}
+
+
+		private void PlayStartCutscene (SceneSettings sceneSettings)
+		{
+			if (sceneSettings == null) return;
+
+			switch (sceneSettings.actionListSource)
+			{
+				case ActionListSource.InScene:
+					if (sceneSettings.cutsceneOnStart)
+					{
+						sceneSettings.cutsceneOnStart.Interact ();
+					}
+					break;
+
+				case ActionListSource.AssetFile:
+					if (sceneSettings.actionListAssetOnStart)
+					{
+						sceneSettings.actionListAssetOnStart.Interact ();
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
+
+
+		private void OnSceneUnloaded (Scene scene)
+		{
+			if (sceneAddRemove == SceneAddRemove.Remove)
+			{
+				awaitingCallback = false;
+			}
+		}
+
+
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
 			sceneAddRemove = (SceneAddRemove) EditorGUILayout.EnumPopup ("Method:", sceneAddRemove);
 
 			chooseSceneBy = (ChooseSceneBy) EditorGUILayout.EnumPopup ("Choose scene by:", chooseSceneBy);
 			if (chooseSceneBy == ChooseSceneBy.Name)
 			{
-				sceneNameParameterID = Action.ChooseParameterGUI ("Scene name:", parameters, sceneNameParameterID, ParameterType.String);
+				sceneNameParameterID = Action.ChooseParameterGUI ("Scene name:", parameters, sceneNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (sceneNameParameterID < 0)
 				{
 					sceneName = EditorGUILayout.TextField ("Scene name:", sceneName);
@@ -142,16 +289,26 @@ namespace AC
 			if (sceneAddRemove == SceneAddRemove.Add)
 			{
 				runCutsceneOnStart = EditorGUILayout.Toggle ("Run 'Cutscene on start'?", runCutsceneOnStart);
+				if (runCutsceneOnStart)
+				{
+					runCutsceneIfAlreadyOpen = EditorGUILayout.Toggle ("Run if already open?", runCutsceneIfAlreadyOpen);
+				}
 			}
-			#else
-			EditorGUILayout.HelpBox ("This Action is only available for Unity 5.3 or greater.", MessageType.Info);
-			#endif
-
-			AfterRunningOption ();
+			else if (sceneAddRemove == SceneAddRemove.Remove && endings[0].resultAction != ResultAction.Stop)
+			{
+				if (isAssetFile)
+				{
+					EditorGUILayout.HelpBox ("If the active scene is removed, further Actions can only be run if the ActionList asset's 'Survive scene changes?' property is checked.", MessageType.Info);
+				}
+				else
+				{
+					EditorGUILayout.HelpBox ("If the active scene is removed, further Actions cannot be run - consider using an ActionList asset instead.", MessageType.Warning);
+				}
+			}
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (chooseSceneBy == ChooseSceneBy.Name)
 			{
@@ -169,13 +326,13 @@ namespace AC
 		 * <param name = "runCutsceneOnStart">If True, the new scene's OnStart cutscene will be triggered</param>
 		 * <returns>The generated Action</returns>
 		 */
-		public static ActionSceneAdd CreateNew_Add (SceneInfo newSceneInfo, bool runCutsceneOnStart)
+		public static ActionSceneAdd CreateNew_Add (int newSceneIndex, bool runCutsceneOnStart)
 		{
-			ActionSceneAdd newAction = (ActionSceneAdd) CreateInstance <ActionSceneAdd>();
+			ActionSceneAdd newAction = CreateNew<ActionSceneAdd> ();
 			newAction.sceneAddRemove = SceneAddRemove.Add;
-			newAction.sceneName = newSceneInfo.name;
-			newAction.sceneNumber = newSceneInfo.number;
-			newAction.chooseSceneBy = string.IsNullOrEmpty (newSceneInfo.name) ? ChooseSceneBy.Number : ChooseSceneBy.Name;
+			newAction.sceneName = string.Empty;
+			newAction.sceneNumber = newSceneIndex;
+			newAction.chooseSceneBy = ChooseSceneBy.Number;
 			newAction.runCutsceneOnStart = runCutsceneOnStart;
 			return newAction;
 		}
@@ -183,19 +340,53 @@ namespace AC
 
 		/**
 		 * <summary>Creates a new instance of the 'Scene: Add or remove' Action, set to remove an open scene</summary>
-		 * <param name = "removeSceneInfo">Data about the scene to remove</param>
+		 * <param name = "removeSceneIndex">Data about the scene to remove</param>
 		 * <returns>The generated Action</returns>
 		 */
-		public static ActionSceneAdd CreateNew_Remove (SceneInfo removeSceneInfo)
+		public static ActionSceneAdd CreateNew_Remove (int removeSceneIndex)
 		{
-			ActionSceneAdd newAction = (ActionSceneAdd) CreateInstance <ActionSceneAdd>();
+			ActionSceneAdd newAction = CreateNew<ActionSceneAdd> ();
 			newAction.sceneAddRemove = SceneAddRemove.Remove;
-			newAction.sceneName = removeSceneInfo.name;
-			newAction.sceneNumber = removeSceneInfo.number;
-			newAction.chooseSceneBy = string.IsNullOrEmpty (removeSceneInfo.name) ? ChooseSceneBy.Number : ChooseSceneBy.Name;
+			newAction.sceneName = string.Empty;
+			newAction.sceneNumber = removeSceneIndex;
+			newAction.chooseSceneBy = ChooseSceneBy.Number;
 			return newAction;
 		}
-		
+
+
+		/**
+		 * <summary>Creates a new instance of the 'Scene: Add or remove' Action, set to add a new scene</summary>
+		 * <param name = "newSceneName">The scene to add</param>
+		 * <param name = "runCutsceneOnStart">If True, the new scene's OnStart cutscene will be triggered</param>
+		 * <returns>The generated Action</returns>
+		 */
+		public static ActionSceneAdd CreateNew_Add (string newSceneName, bool runCutsceneOnStart)
+		{
+			ActionSceneAdd newAction = CreateNew<ActionSceneAdd> ();
+			newAction.sceneAddRemove = SceneAddRemove.Add;
+			newAction.sceneName = newSceneName;
+			newAction.sceneNumber = -1;
+			newAction.chooseSceneBy = ChooseSceneBy.Name;
+			newAction.runCutsceneOnStart = runCutsceneOnStart;
+			return newAction;
+		}
+
+
+		/**
+		 * <summary>Creates a new instance of the 'Scene: Add or remove' Action, set to remove an open scene</summary>
+		 * <param name = "removeSceneName">The scene to remove</param>
+		 * <returns>The generated Action</returns>
+		 */
+		public static ActionSceneAdd CreateNew_Remove (string removeSceneName)
+		{
+			ActionSceneAdd newAction = CreateNew<ActionSceneAdd> ();
+			newAction.sceneAddRemove = SceneAddRemove.Remove;
+			newAction.sceneName = removeSceneName;
+			newAction.sceneNumber = -1;
+			newAction.chooseSceneBy = ChooseSceneBy.Name;
+			return newAction;
+		}
+
 	}
 
 }

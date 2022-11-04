@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavigationEngine_PolygonCollider.cs"
  * 
@@ -24,33 +24,35 @@ namespace AC
 
 	public class NavigationEngine_PolygonCollider : NavigationEngine
 	{
-		
+
 		public static Collider2D[] results = new Collider2D[1];
 
-		private int MAXNODES = 1000;
-		private List<float[,]> allCachedGraphs = new List<float[,]>();
-		private float searchRadius = 0.02f;
+		protected int MAXNODES = 1000;
+		protected List<float[,]> allCachedGraphs = new List<float[,]>();
+		protected float searchRadius = 0.02f;
+		protected float searchStep;
 
-		private Vector2 dir_n = new Vector2 (0f, 1f);
-		private Vector2 dir_s = new Vector2 (0f, -1f);
-		private Vector2 dir_w = new Vector2 (-1f, 0f);
-		private Vector2 dir_e = new Vector2 (1f, 0f);
+		protected Vector2 dir_n = new Vector2 (0f, 1f);
+		protected Vector2 dir_s = new Vector2 (0f, -1f);
+		protected Vector2 dir_w = new Vector2 (-1f, 0f);
+		protected Vector2 dir_e = new Vector2 (1f, 0f);
 
-		private Vector2 dir_ne = new Vector2 (0.71f, 0.71f);
-		private Vector2 dir_se = new Vector2 (0.71f, -0.71f);
-		private Vector2 dir_sw = new Vector2 (-0.71f, -0.71f);
-		private Vector2 dir_nw = new Vector2 (-0.71f, 0.71f);
+		protected Vector2 dir_ne = new Vector2 (0.71f, 0.71f);
+		protected Vector2 dir_se = new Vector2 (0.71f, -0.71f);
+		protected Vector2 dir_sw = new Vector2 (-0.71f, -0.71f);
+		protected Vector2 dir_nw = new Vector2 (-0.71f, 0.71f);
 
-		private Vector2 dir_nne = new Vector2 (0.37f, 0.93f);
-		private Vector2 dir_nee = new Vector2 (0.93f, 0.37f);
-		private Vector2 dir_see = new Vector2 (0.93f, -0.37f);
-		private Vector2 dir_sse = new Vector2 (0.37f, -0.93f);
-		private Vector2 dir_ssw = new Vector2 (-0.37f, -0.93f);
-		private Vector2 dir_sww = new Vector2 (-0.93f, -0.37f);
-		private Vector2 dir_nww = new Vector2 (-0.93f, 0.37f);
-		private Vector2 dir_nnw = new Vector2 (-0.37f, 0.93f);
+		protected Vector2 dir_nne = new Vector2 (0.37f, 0.93f);
+		protected Vector2 dir_nee = new Vector2 (0.93f, 0.37f);
+		protected Vector2 dir_see = new Vector2 (0.93f, -0.37f);
+		protected Vector2 dir_sse = new Vector2 (0.37f, -0.93f);
+		protected Vector2 dir_ssw = new Vector2 (-0.37f, -0.93f);
+		protected Vector2 dir_sww = new Vector2 (-0.93f, -0.37f);
+		protected Vector2 dir_nww = new Vector2 (-0.93f, 0.37f);
+		protected Vector2 dir_nnw = new Vector2 (-0.37f, 0.93f);
 
-		private List<Vector2[]> allVertexData = new List<Vector2[]>();
+		protected List<Vector2[]> allVertexData = new List<Vector2[]>();
+		private ContactFilter2D contactFilter2D = new ContactFilter2D ();
 
 
 		public override void OnReset (NavigationMesh navMesh)
@@ -60,7 +62,7 @@ namespace AC
 			is2D = true;
 			ResetHoles (navMesh);
 
-			if (navMesh != null && navMesh.characterEvasion != CharacterEvasion.None && navMesh.GetComponent <PolygonCollider2D>() != null)
+			if (navMesh && navMesh.characterEvasion != CharacterEvasion.None && navMesh.GetComponent <PolygonCollider2D>())
 			{
 				PolygonCollider2D[] polys = navMesh.PolygonCollider2Ds;
 
@@ -83,7 +85,7 @@ namespace AC
 				}
 			}
 
-			if (navMesh == null && KickStarter.settingsManager != null && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick)
+			if (navMesh == null && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick)
 			{
 				ACDebug.LogWarning ("Could not initialise NavMesh - was one set as the Default in the Scene Manager?");
 			}
@@ -124,7 +126,7 @@ namespace AC
 			}
 
 			CalcSearchRadius (KickStarter.sceneSettings.navMesh);
-
+			
 			AddCharHoles (polys, _char, KickStarter.sceneSettings.navMesh);
 
 			List<Vector3> pointsList3D = new List<Vector3> ();
@@ -156,8 +158,7 @@ namespace AC
 			Vector2[] pointsList = allVertexData[nearestOriginIndex];
 			pointsList = AddEndsToList (pointsList, originPos, targetPos);
 
-			bool useCache = (KickStarter.sceneSettings.navMesh.characterEvasion == CharacterEvasion.None) ? true : false;
-
+			bool useCache = (KickStarter.sceneSettings.navMesh.characterEvasion == CharacterEvasion.None);
 			float[,] weight = pointsToWeight (pointsList, useCache, nearestOriginIndex);
 			int[] precede = buildSpanningTree (0, 1, weight);
 			if (precede == null)
@@ -200,7 +201,7 @@ namespace AC
 		}
 
 
-		private void ResetHoles (NavigationMesh navMesh, bool rebuild)
+		protected void ResetHoles (NavigationMesh navMesh, bool rebuild)
 		{
 			if (navMesh == null) return;
 			CalcSearchRadius (navMesh);
@@ -210,7 +211,7 @@ namespace AC
 
 			for (int p=0; p<polys.Length; p++)
 			{
-				polys[p].pathCount = 1;
+				polys[p].pathCount = navMesh.OriginalPathCount;
 
 				// Holes can only go in the first polygon
 				if (p > 0 || navMesh.polygonColliderHoles.Count == 0)
@@ -226,7 +227,7 @@ namespace AC
 				Vector2 scaleFac = new Vector2 (1f / navMesh.transform.localScale.x, 1f / navMesh.transform.localScale.y);
 				foreach (PolygonCollider2D hole in navMesh.polygonColliderHoles)
 				{
-					if (hole != null)
+					if (hole)
 					{
 						polys[p].pathCount ++;
 						
@@ -272,7 +273,7 @@ namespace AC
 		}
 		
 		
-		private int[] buildSpanningTree (int source, int destination, float[,] weight)
+		protected int[] buildSpanningTree (int source, int destination, float[,] weight)
 		{
 			int n = (int) Mathf.Sqrt (weight.Length);
 			
@@ -330,7 +331,7 @@ namespace AC
 		}
 		
 		
-		private int[] getShortestPath (int source, int destination, int[] precede)
+		protected int[] getShortestPath (int source, int destination, int[] precede)
 		{
 			int i = destination;
 			int finall = 0;
@@ -357,7 +358,7 @@ namespace AC
 		}
 		
 
-		private float[,] pointsToWeight (Vector2[] points, bool useCache = false, int polyIndex = 0)
+		protected float[,] pointsToWeight (Vector2[] points, bool useCache = false, int polyIndex = 0)
 		{
 			int n = points.Length;
 			int m = n;
@@ -390,7 +391,7 @@ namespace AC
 		}
 
 
-		private Vector2 GetNearestToMesh (Vector2 vertex, PolygonCollider2D poly, bool hasMultiple)
+		protected Vector2 GetNearestToMesh (Vector2 vertex, PolygonCollider2D poly, bool hasMultiple)
 		{
 			// Test to make sure starting on the collision mesh
 			RaycastHit2D hit = UnityVersionHandler.Perform2DRaycast
@@ -419,7 +420,7 @@ namespace AC
 			}
 			else if (hasMultiple)
 			{
-				if (hit.collider != null && hit.collider is PolygonCollider2D && hit.collider != poly)
+				if (hit.collider && hit.collider is PolygonCollider2D && hit.collider != poly)
 				{
 					return GetNearestOffMesh (vertex, poly);
 				}
@@ -428,7 +429,7 @@ namespace AC
 		}
 
 
-		private Vector2 GetNearestOffMesh (Vector2 vertex, PolygonCollider2D poly)
+		protected Vector2 GetNearestOffMesh (Vector2 vertex, PolygonCollider2D poly)
 		{
 			Transform t = KickStarter.sceneSettings.navMesh.transform;
 			float minDistance = -1;
@@ -465,13 +466,14 @@ namespace AC
 		}
 
 		
-		private Vector2[] AddEndsToList (Vector2[] points, Vector2 originPos, Vector2 targetPos, bool checkForDuplicates = true)
+		protected Vector2[] AddEndsToList (Vector2[] points, Vector2 originPos, Vector2 targetPos, bool checkForDuplicates = true)
 		{
 			List<Vector2> newPoints = new List<Vector2>();
 
 			foreach (Vector2 point in points)
 			{
-				if ((point != originPos && point != targetPos) || !checkForDuplicates)
+				// Bugfix: Can't check for duplicates since this messes up the cache if the destination is a vertex
+				//if ((point != originPos && point != targetPos) || !checkForDuplicates)
 				{
 					newPoints.Add (point);
 				}
@@ -484,20 +486,18 @@ namespace AC
 		}
 
 
-		private bool IsLineClear (Vector2 startPos, Vector2 endPos)
+		protected bool IsLineClear (Vector2 startPos, Vector2 endPos)
 		{
 			// This will test if points can "see" each other, by doing a circle overlap check along the line between them
-			Vector2 actualPos = startPos;
+			Vector2 actualPos;
 			Vector2 direction = (endPos - startPos).normalized;
 			float magnitude = (endPos - startPos).magnitude;
-
-			float searchStep = 100f * searchRadius * searchRadius; // squared so that gap between circles increases with radius
 
 			for (float i=0f; i<magnitude; i+= searchStep)
 			{
 				actualPos = startPos + (direction * i);
 
-				if (UnityVersionHandler.Perform2DOverlapCircle (actualPos, searchRadius, NavigationEngine_PolygonCollider.results, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer) != 1)
+				if (Perform2DOverlapCircle (actualPos, searchRadius, results) != 1)
 				{
 					return false;
 				}
@@ -507,7 +507,7 @@ namespace AC
 		}
 
 
-		private Vector2 GetLineIntersect (Vector2 startPos, Vector2 endPos)
+		protected Vector2 GetLineIntersect (Vector2 startPos, Vector2 endPos)
 		{
 			// Important: startPos is considered to be outside the NavMesh
 
@@ -518,11 +518,12 @@ namespace AC
 			int numInside = 0;
 			
 			float radius = magnitude * 0.02f;
+			
 			for (float i=0f; i<magnitude; i+= (radius * 2f))
 			{
 				actualPos = startPos + (direction * i);
 
-				if (UnityVersionHandler.Perform2DOverlapCircle (actualPos, radius, NavigationEngine_PolygonCollider.results, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer) != 0)
+				if (Perform2DOverlapCircle (actualPos, radius, results) != 0)
 				{
 					numInside ++;
 				}
@@ -538,21 +539,6 @@ namespace AC
 		public override string GetPrefabName ()
 		{
 			return ("NavMesh2D");
-		}
-		
-		
-		public override void SetVisibility (bool visibility)
-		{
-			#if UNITY_EDITOR
-			NavigationMesh[] navMeshes = FindObjectsOfType (typeof (NavigationMesh)) as NavigationMesh[];
-			Undo.RecordObjects (navMeshes, "Navigation visibility");
-			
-			foreach (NavigationMesh navMesh in navMeshes)
-			{
-				navMesh.showInEditor = visibility;
-				UnityVersionHandler.CustomSetDirty (navMesh, true);
-			}
-			#endif
 		}
 		
 		
@@ -584,7 +570,7 @@ namespace AC
 		}
 
 
-		private void AddCharHoles (PolygonCollider2D[] navPolys, AC.Char charToExclude, NavigationMesh navigationMesh)
+		protected void AddCharHoles (PolygonCollider2D[] navPolys, AC.Char charToExclude, NavigationMesh navigationMesh)
 		{
 			if (navigationMesh.characterEvasion == CharacterEvasion.None)
 			{
@@ -602,76 +588,83 @@ namespace AC
 
 				if (navPolys[p].transform.lossyScale != Vector3.one)
 				{
-					ACDebug.LogWarning ("Cannot create evasion Polygons inside NavMesh '" + navPolys[p].gameObject.name + "' because it has a non-unit scale.");
+					ACDebug.LogWarning ("Cannot create evasion Polygons inside NavMesh '" + navPolys[p].gameObject.name + "' because it has a non-unit scale.", navigationMesh);
 					continue;
 				}
 
 				Vector2 navPosition = navPolys[p].transform.position;
-
-				for (int c=0; c<KickStarter.stateHandler.Characters.Count; c++)
+				
+				foreach (AC.Char character in KickStarter.stateHandler.Characters)
 				{
-					AC.Char character = KickStarter.stateHandler.Characters[c];
+					// Discard if not inside
+					if (!navPolys[p].OverlapPoint (character.transform.position)) continue;
 
 					CircleCollider2D circleCollider2D = character.GetComponent <CircleCollider2D>();
 					if (circleCollider2D != null &&
 						(character.charState == CharState.Idle || navigationMesh.characterEvasion == CharacterEvasion.AllCharacters) &&
 					    (charToExclude == null || character != charToExclude) && 
-						UnityVersionHandler.Perform2DOverlapPoint (character.transform.position, NavigationEngine_PolygonCollider.results, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer) != 0)
+						Perform2DOverlapPoint (character.Transform.position, results) != 0)
 					{
-						circleCollider2D.isTrigger = true;
+						if (character.IsPlayer && KickStarter.settingsManager.movementMethod == MovementMethod.Direct)
+						{
+							// In this particular case, do not set Is Trigger
+						}
+						else
+						{
+							circleCollider2D.isTrigger = true;
+						}
+
 						List<Vector2> newPoints3D = new List<Vector2>();
 						
-						#if UNITY_5 || UNITY_2017_1_OR_NEWER
-						Vector2 centrePoint = character.transform.TransformPoint (circleCollider2D.offset);
-						#else
-						Vector2 centrePoint = character.transform.TransformPoint (circleCollider2D.center);
-						#endif
-						
-						float radius = circleCollider2D.radius * character.transform.localScale.x;
+						Vector2 centrePoint = character.Transform.TransformPoint (circleCollider2D.offset);
+
+						float radius = circleCollider2D.radius * character.Transform.localScale.x;
 						float yScaler = navigationMesh.characterEvasionYScale;
 
-						if (navigationMesh.characterEvasionPoints == CharacterEvasionPoints.Four)
+						switch (navigationMesh.characterEvasionPoints)
 						{
-							newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
-						}
-						else if (navigationMesh.characterEvasionPoints == CharacterEvasionPoints.Eight)
-						{
-							newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_ne.x * radius, dir_ne.y * radius * yScaler));
+							case CharacterEvasionPoints.Four:
+								newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
+								break;
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_se.x * radius, dir_se.y * radius * yScaler));
+							case CharacterEvasionPoints.Eight:
+								newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_ne.x * radius, dir_ne.y * radius * yScaler));
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_sw.x * radius, dir_sw.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_se.x * radius, dir_se.y * radius * yScaler));
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nw.x * radius, dir_nw.y * radius * yScaler));
-						}
-						else if (navigationMesh.characterEvasionPoints == CharacterEvasionPoints.Sixteen)
-						{
-							newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nne.x * radius, dir_nne.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_ne.x * radius, dir_ne.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nee.x * radius, dir_nee.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_sw.x * radius, dir_sw.y * radius * yScaler));
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_see.x * radius, dir_see.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_se.x * radius, dir_se.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_sse.x * radius, dir_sse.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nw.x * radius, dir_nw.y * radius * yScaler));
+								break;
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_ssw.x * radius, dir_ssw.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_sw.x * radius, dir_sw.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_sww.x * radius, dir_sww.y * radius * yScaler));
+							case CharacterEvasionPoints.Sixteen:
+								newPoints3D.Add (centrePoint + new Vector2 (dir_n.x * radius, dir_n.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nne.x * radius, dir_nne.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_ne.x * radius, dir_ne.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nee.x * radius, dir_nee.y * radius * yScaler));
 
-							newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nww.x * radius, dir_nww.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nw.x * radius, dir_nw.y * radius * yScaler));
-							newPoints3D.Add (centrePoint + new Vector2 (dir_nnw.x * radius, dir_nnw.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_e.x * radius, dir_e.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_see.x * radius, dir_see.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_se.x * radius, dir_se.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_sse.x * radius, dir_sse.y * radius * yScaler));
+
+								newPoints3D.Add (centrePoint + new Vector2 (dir_s.x * radius, dir_s.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_ssw.x * radius, dir_ssw.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_sw.x * radius, dir_sw.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_sww.x * radius, dir_sww.y * radius * yScaler));
+
+								newPoints3D.Add (centrePoint + new Vector2 (dir_w.x * radius, dir_w.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nww.x * radius, dir_nww.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nw.x * radius, dir_nw.y * radius * yScaler));
+								newPoints3D.Add (centrePoint + new Vector2 (dir_nnw.x * radius, dir_nnw.y * radius * yScaler));
+								break;
 						}
 
 						navPolys[p].pathCount ++;
@@ -680,7 +673,7 @@ namespace AC
 						for (int i=0; i<newPoints3D.Count; i++)
 						{
 							// Only add a point if it is on the NavMesh
-							if (UnityVersionHandler.Perform2DOverlapPoint (newPoints3D[i], NavigationEngine_PolygonCollider.results, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer) != 0)
+							if (Perform2DOverlapPoint (newPoints3D[i], results) != 0)
 							{
 								newPoints.Add (newPoints3D[i] - navPosition);
 							}
@@ -706,7 +699,7 @@ namespace AC
 		}
 
 
-		private void RebuildVertexArray (Transform navMeshTransform, PolygonCollider2D poly, int polyIndex)
+		protected void RebuildVertexArray (Transform navMeshTransform, PolygonCollider2D poly, int polyIndex)
 		{
 			if (allVertexData == null)
 			{
@@ -735,13 +728,14 @@ namespace AC
 		}
 
 
-		private void CalcSearchRadius (NavigationMesh navMesh)
+		protected void CalcSearchRadius (NavigationMesh navMesh)
 		{
 			searchRadius = 0.1f - (0.08f * navMesh.accuracy);
+			searchStep = 100f * searchRadius * searchRadius;
 		}
 		
 
-		private void CreateCache (int i)
+		protected void CreateCache (int i)
 		{
 			if (!Application.isPlaying)
 			{
@@ -771,7 +765,7 @@ namespace AC
 			allCachedGraphs[i] = pointsToWeight (pointsList, false, i);
 
 			#if UNITY_ANDROID || UNITY_IOS
-			if (KickStarter.sceneSettings.navMesh != null && KickStarter.sceneSettings.navMesh.characterEvasion != CharacterEvasion.None)
+			if (KickStarter.sceneSettings.navMesh && KickStarter.sceneSettings.navMesh.characterEvasion != CharacterEvasion.None)
 			{
 				ACDebug.Log ("The NavMesh's 'Character evasion' setting should be set to 'None' for best performance on mobile devices.");
 			}
@@ -808,7 +802,7 @@ namespace AC
 			_target.gizmoColour = CustomGUILayout.ColorField ("Gizmo colour:", _target.gizmoColour, "", "The colour of its Gizmo when used for 2D polygons");
 
 			EditorGUILayout.Separator ();
-			GUILayout.Box ("", GUILayout.ExpandWidth (true), GUILayout.Height(1));
+			GUILayout.Box (string.Empty, GUILayout.ExpandWidth (true), GUILayout.Height(1));
 			EditorGUILayout.LabelField ("NavMesh holes", EditorStyles.boldLabel);
 
 			for (int i=0; i<_target.polygonColliderHoles.Count; i++)
@@ -831,12 +825,20 @@ namespace AC
 				}
 			}
 
+			GUILayout.BeginHorizontal ();
 			if (GUILayout.Button ("Create new hole"))
 			{
 				_target.polygonColliderHoles.Add (null);
 			}
+			GUI.enabled = !Application.isPlaying;
+			if (_target.polygonColliderHoles.Count > 0 && GUILayout.Button ("Bake"))
+			{
+				BakeHoles (_target);
+			}
+			GUI.enabled = true;
+			GUILayout.EndHorizontal ();
 
-			if (_target.GetComponent <PolygonCollider2D>() != null)
+			if (_target.GetComponent <PolygonCollider2D>())
 			{
 				int numPolys = _target.GetComponents <PolygonCollider2D>().Length;
 				if (numPolys > 1)
@@ -858,7 +860,7 @@ namespace AC
 
 		public override void DrawGizmos (GameObject navMeshOb)
 		{
-			if (navMeshOb != null)
+			if (navMeshOb)
 			{
 				Color gizmoColour = Color.white;
 
@@ -878,8 +880,106 @@ namespace AC
 			}
 		}
 
+
+		private void BakeHoles (NavigationMesh navMesh)
+		{
+			PolygonCollider2D[] polys = navMesh.GetComponents<PolygonCollider2D> ();
+			if (polys == null || polys.Length == 0) return;
+
+			if (polys[0].pathCount > 1)
+			{
+				bool addSubPaths = EditorUtility.DisplayDialog ("Reset sub-paths?", "The NavMesh already has additional path data baked into it.  Should the new holes be added to them, or replace them?", "Add", "Replace");
+				if (!addSubPaths)
+				{
+					polys[0].pathCount = 1;
+				}
+			}
+
+			List<Object> undoObs = new List<Object> ();
+			undoObs.Add (polys[0]);
+			undoObs.Add (navMesh);
+			for (int i = 0; i < navMesh.polygonColliderHoles.Count; i++)
+			{
+				PolygonCollider2D hole = navMesh.polygonColliderHoles[i];
+				if (hole && !undoObs.Contains (hole))
+				{
+					undoObs.Add (hole);
+				}
+			}
+
+			Undo.RecordObjects (undoObs.ToArray (), "Bake NavMesh holes");
+
+			Vector2 scaleFac = new Vector2 (1f / navMesh.transform.localScale.x, 1f / navMesh.transform.localScale.y);
+			for (int i = 0; i < navMesh.polygonColliderHoles.Count; i++)
+			{
+				PolygonCollider2D hole = navMesh.polygonColliderHoles[i];
+
+				if (hole)
+				{
+					polys[0].pathCount++;
+
+					List<Vector2> newPoints = new List<Vector2> ();
+					foreach (Vector2 holePoint in hole.points)
+					{
+						Vector2 relativePosition = hole.transform.TransformPoint (holePoint) - navMesh.transform.position;
+						newPoints.Add (new Vector2 (relativePosition.x * scaleFac.x, relativePosition.y * scaleFac.y));
+					}
+
+					polys[0].SetPath (polys[0].pathCount - 1, newPoints.ToArray ());
+					hole.enabled = false;
+				}
+			}
+
+			navMesh.polygonColliderHoles.Clear ();
+		}
+
 		#endif
 
+
+		private int Perform2DOverlapCircle (Vector2 point, float radius, Collider2D[] results)
+		{
+			return Physics2D.OverlapCircle (point, radius, ContactFilter2D, results);
+		}
+
+
+		private int Perform2DOverlapPoint (Vector2 point, Collider2D[] results)
+		{
+			return Physics2D.OverlapPoint (point, ContactFilter2D, results);
+		}
+
+
+		#region GetSet
+
+		public override bool RequiresNavMeshGameObject
+		{
+			get
+			{
+				return true;
+			}
+		}
+
+
+		private ContactFilter2D ContactFilter2D
+		{
+			get
+			{
+				if (!contactFilter2D.useTriggers)
+				{
+					string navMeshLayer = KickStarter.settingsManager.navMeshLayer;
+					if (!string.IsNullOrEmpty (navMeshLayer))
+					{
+						LayerMask layerMask = 1 << LayerMask.NameToLayer (navMeshLayer);
+						contactFilter2D.useTriggers = true;
+						contactFilter2D.SetLayerMask (layerMask);
+						contactFilter2D.ClearDepth ();
+					}
+				}
+				return contactFilter2D;
+			}
+		}
+
+		#endregion
+
 	}
-	
+
 }

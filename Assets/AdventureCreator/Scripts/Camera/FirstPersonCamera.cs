@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"FirstPersonCamera.cs"
  * 
@@ -26,11 +26,11 @@ namespace AC
 	 * Headbobbing code adapted from Mr. Animator's code: http://wiki.unity3d.com/index.php/Headbobber
 	 */
 	[AddComponentMenu("Adventure Creator/Camera/First-person camera")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_first_person_camera.html")]
-	#endif
 	public class FirstPersonCamera : _Camera
 	{
+
+		#region Variables
 
 		/** The sensitivity of free-aiming */
 		public Vector2 sensitivity = new Vector2 (15f, 15f);
@@ -56,35 +56,53 @@ namespace AC
 		/** The bobbing magnitude, if headBob = True and headBobMethod = FirstPersonHeadBobMethod.BuiltIn */
 		public float bobbingAmount = 0.2f;
 		private Animator headBobAnimator;
-		/** The name of the float parameter in headBobAnimator to set as the head-bob speed, if headBob = True and headBobMethod = FirstPersonHeadBobMethod.CustomAnimation */
+		/** The name of the float parameter in headBobAnimator to set as the forward head-bob speed, if headBob = True and headBobMethod = FirstPersonHeadBobMethod.CustomAnimation */
 		public string headBobSpeedParameter;
+		/** The name of the float parameter in headBobAnimator to set as the side head-bob speed, if headBob = True and headBobMethod = FirstPersonHeadBobMethod.CustomAnimation */
+		public string headBobSpeedSideParameter;
 		
-		private float actualTilt = 0f;
-		private float bobTimer = 0f;
-		private float height = 0f;
-		private float deltaHeight = 0f;
-		private Player player;
+		protected float actualTilt = 0f;
+		protected float bobTimer = 0f;
+		protected float height = 0f;
+		protected float deltaHeight = 0f;
+		protected Player player;
 
-		private LerpUtils.FloatLerp tiltLerp = new LerpUtils.FloatLerp ();
-		private float targetTilt;
+		protected LerpUtils.FloatLerp tiltLerp = new LerpUtils.FloatLerp ();
+		protected float targetTilt;
+
+		#endregion
 
 
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
-		{
-			Awake ();
-		}
-
+		#region UnityStandards
 
 		protected override void Awake ()
 		{
-			height = transform.localPosition.y;
-			player = GetComponentInParent <Player>();
-			headBobAnimator = GetComponent <Animator>();
+			if (player == null)
+			{
+				height = transform.localPosition.y;
+				player = GetComponentInParent<Player> ();
+				headBobAnimator = GetComponent<Animator> ();
+			}
 		}
 
+
+		protected override void OnEnable ()
+		{
+			base.OnEnable ();
+			EventManager.OnInitialiseScene += Awake;
+		}
+
+
+		protected override void OnDisable ()
+		{
+			base.OnDisable ();
+			EventManager.OnInitialiseScene -= Awake;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Overrides the default in _Camera to do nothing.
@@ -101,7 +119,7 @@ namespace AC
 		{
 			if (actualTilt != targetTilt)
 			{
-				if (player != null)
+				if (player)
 				{
 					actualTilt = tiltLerp.Update (actualTilt, targetTilt, player.turnSpeed);
 				}
@@ -111,34 +129,71 @@ namespace AC
 				}
 			}
 
+			ApplyTilt ();
+
 			if (headBob)
 			{
-				if (headBobMethod == FirstPersonHeadBobMethod.BuiltIn)
+				switch (headBobMethod)
 				{
-					deltaHeight = 0f;
+					case FirstPersonHeadBobMethod.BuiltIn:
+						{
+							deltaHeight = 0f;
 
-					float bobSpeed = GetHeadBobSpeed ();
-					float waveSlice = Mathf.Sin (bobTimer);
+							float bobSpeed = GetHeadBobSpeed ();
+							float waveSlice = Mathf.Sin (bobTimer);
 					
-					bobTimer += Mathf.Abs (player.GetMoveSpeed ()) * Time.deltaTime * 5f * builtInSpeedFactor;
+							bobTimer += Mathf.Abs (player.GetMoveSpeed ()) * Time.deltaTime * 5f * builtInSpeedFactor;
 
-					if (bobTimer > Mathf.PI * 2)
-					{
-						bobTimer = bobTimer - (2f * Mathf.PI);
-					}
+							if (bobTimer > Mathf.PI * 2)
+							{
+								bobTimer = bobTimer - (2f * Mathf.PI);
+							}
 
-					float totalAxes = Mathf.Clamp (bobSpeed, 0f, 1f);
+							float totalAxes = Mathf.Clamp (bobSpeed, 0f, 1f);
 					
-					deltaHeight = totalAxes * waveSlice * bobbingAmount;
+							deltaHeight = totalAxes * waveSlice * bobbingAmount;
 
-					transform.localPosition = new Vector3 (transform.localPosition.x, height + deltaHeight, transform.localPosition.z);
-				}
-				else if (headBobMethod == FirstPersonHeadBobMethod.CustomAnimation)
-				{
-					if (headBobAnimator != null && headBobSpeedParameter != "")
-					{
-						headBobAnimator.SetFloat (headBobSpeedParameter, GetHeadBobSpeed ());
-					}
+							transform.localPosition = new Vector3 (transform.localPosition.x, height + deltaHeight, transform.localPosition.z);
+						}
+						break;
+
+					case FirstPersonHeadBobMethod.CustomAnimation:
+						if (headBobAnimator)
+						{
+							bool isGrounded = (player && player.IsGrounded (true));
+
+							if (!string.IsNullOrEmpty (headBobSpeedParameter))
+							{
+								if (isGrounded)
+								{
+									float forwardDot = Vector3.Dot (player.TransformForward, player.GetMoveDirection ());
+									headBobAnimator.SetFloat (headBobSpeedParameter, player.GetMoveSpeed () * forwardDot);
+								}
+								else
+								{
+									headBobAnimator.SetFloat (headBobSpeedParameter, 0f);
+								}
+															   
+							//	headBobAnimator.SetFloat (headBobSpeedParameter, GetHeadBobSpeed ());
+							}
+							if (!string.IsNullOrEmpty (headBobSpeedSideParameter))
+							{
+								if (isGrounded)
+								{
+									float rightDot = Vector3.Dot (player.TransformRight, player.GetMoveDirection ());
+									headBobAnimator.SetFloat (headBobSpeedSideParameter, player.GetMoveSpeed () * rightDot);
+								}
+								else
+								{ 
+									headBobAnimator.SetFloat (headBobSpeedSideParameter, 0f);
+								}
+								//headBobAnimator.SetFloat (headBobSpeedSideParameter, GetHeadBobSpeed (true));
+							}
+						}
+						break;
+
+					default:
+						break;
 				}
 			}
 
@@ -147,7 +202,7 @@ namespace AC
 				return;
 			}
 
-			if (allowMouseWheelZooming && Camera != null && KickStarter.stateHandler.gameState == AC.GameState.Normal)
+			if (allowMouseWheelZooming && Camera && KickStarter.mainCamera && KickStarter.mainCamera.attachedCamera == this)
 			{
 				float scrollWheelInput = KickStarter.playerInput.InputGetAxis ("Mouse ScrollWheel");
 				if (scrollWheelInput > 0f)
@@ -168,20 +223,13 @@ namespace AC
 		 */
 		public float GetHeadBobSpeed ()
 		{
-			if (player != null && player.IsGrounded (true))
+			if (player && player.IsGrounded (true))
 			{
 				return Mathf.Abs (player.GetMoveSpeed ());
 			}
 			return 0f;
 		}
-		
-		
-		private void FixedUpdate ()
-		{
-			actualTilt = Mathf.Clamp (actualTilt, minY, maxY);
-			transform.localEulerAngles = new Vector3 (actualTilt, 0f, 0f);
-		}
-		
+
 
 		/**
 		 * <summary>Sets the pitch to a specific angle.</summary>
@@ -212,22 +260,38 @@ namespace AC
 		}
 
 
-		/**
-		 * Checks if the camera is looking up or down.
-		 */
+		/** Checks if the camera is looking up or down. */
 		public bool IsTilting ()
 		{
 			return (actualTilt != 0f);
 		}
 
 
-		/**
-		 * Gets the angle by which the camera is looking up or down, with negative values looking upward.
-		 */
+		/** Gets the angle by which the camera is looking up or down, with negative values looking upward. */
 		public float GetTilt ()
 		{
 			return actualTilt;
 		}
+		
+		
+		/** Gets the intended angle by which the camera wants to look up or down, with negative values looking upward. */
+		public float GetTargetTilt ()
+		{
+			return targetTilt;
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void ApplyTilt ()
+		{
+			actualTilt = Mathf.Clamp (actualTilt, minY, maxY);
+			transform.localEulerAngles = new Vector3 (actualTilt, 0f, 0f);
+		}
+		
+		#endregion
 
 	}
 

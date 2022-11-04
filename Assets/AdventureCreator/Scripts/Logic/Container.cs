@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Container.cs"
  * 
@@ -21,49 +21,74 @@ namespace AC
 	 * This component that is used to store a local set of inventory items within a scene.
 	 * The items stored here are separate to those held by the player, who can retrieve or place items in here for safe-keeping.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
-	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_container.html")]
-	#endif
-	public class Container : MonoBehaviour
+	[HelpURL ("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_container.html")]
+	public class Container : MonoBehaviour, ITranslatable, IItemReferencer
 	{
 
-		/** The list of inventory items held by the Container */
-		public List<ContainerItem> items = new List<ContainerItem>();
+		#region Variables
+
+		/** The Containers default list of items */
+		public List<ContainerItem> items = new List<ContainerItem> ();
 		/** If True, only inventory items (InvItem) with a specific category will be displayed */
 		public bool limitToCategory;
 		/** The category IDs to limit the display of inventory items by, if limitToCategory = True */
-		public List<int> categoryIDs = new List<int>();
+		public List<int> categoryIDs = new List<int> ();
+		/** If > 0, the maximum number of item slots the Container can hold */
+		public int maxSlots = 0;
+		/** If True, and maxSlots > 0, then attempting to place an item in the Container when full will result in the item being swapped with that in the occupied slot */
+		public bool swapIfFull = false;
+
+		/** The Container's label text */
+		public string label;
+		/** A unique identifier for the label's translation */
+		public int labelLineID = -1;
+
+		protected InvCollection invCollection = new InvCollection ();
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
-			RemoveWrongItems ();
+			CreateDefaultInstances ();
 		}
 
 
-		private void RemoveWrongItems ()
+		protected void OnEnable ()
 		{
-			if (limitToCategory && categoryIDs.Count > 0)
-			{
-				for (int i=0; i<items.Count; i++)
-				{
-					InvItem listedItem = KickStarter.inventoryManager.GetItem (items[i].linkedID);
-					if (!categoryIDs.Contains (listedItem.binID))
-					{
-						items.RemoveAt (i);
-						i--;
-					}
-				}
-			}
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		/**
-		 * Activates the Container.  If a Menu with an appearType = AppearType.OnContainer, it will be enabled and show the Container's contents.
-		 */
+		protected void Start ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+		}
+
+
+		protected void OnDisable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Activates the Container.  If a Menu with an appearType = AppearType.OnContainer, it will be enabled and show the Container's contents. */
 		public void Interact ()
 		{
-			KickStarter.playerInput.activeContainer = this;
+			if (gameObject.activeInHierarchy)
+			{
+				KickStarter.playerInput.activeContainer = this;
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot open the Container " + this.name + " because its GameObject is disabled", this);
+			}
 		}
 
 
@@ -71,188 +96,248 @@ namespace AC
 		 * <summary>Adds an inventory item to the Container's contents.</summary>
 		 * <param name = "_id">The ID number of the InvItem to add</param>
 		 * <param name = "amount">How many instances of the inventory item to add</param>
-		 * <returns>True if the addition was succesful</returns>
 		 */
-		public bool Add (int _id, int amount)
+		public void Add (int _id, int amount)
 		{
-			// Raise "count" by amount for appropriate ID
-			foreach (ContainerItem containerItem in items)
-			{
-				if (containerItem.linkedID == _id)
-				{
-					if (KickStarter.inventoryManager.CanCarryMultiple (containerItem.linkedID))
-					{
-						containerItem.count += amount;
-					}
-					PlayerMenus.ResetInventoryBoxes ();
-					return false;
-				}
-			}
-
-			// Not already carrying the item
-			InvItem itemToAdd = KickStarter.inventoryManager.GetItem (_id);
-			if (itemToAdd != null)
-			{
-				if (limitToCategory && !categoryIDs.Contains (itemToAdd.binID))
-				{
-					return false;
-				}
-
-				if (!itemToAdd.canCarryMultiple)
-				{
-					amount = 1;
-				}
-
-				items.Add (new ContainerItem (_id, amount, GetIDArray ()));
-				PlayerMenus.ResetInventoryBoxes ();
-				return true;
-			}
-
-			PlayerMenus.ResetInventoryBoxes ();
-			return true;
-		}
-		
-
-		/**
-		 * <summary>Removes an inventory item from the Container's contents.</summary>
-		 * <param name = "_id">The ID number of the InvItem to remove</param>
-		 * <param name = "amount">How many instances of the inventory item to remove</param>
-		 */
-		public void Remove (int _id, int amount)
-		{
-			// Reduce "count" by 1 for appropriate ID
-			
-			foreach (ContainerItem item in items)
-			{
-				if (item.linkedID == _id)
-				{
-					if (item.count > 0)
-					{
-						item.count -= amount;
-					}
-					if (item.count < 1)
-					{
-						items.Remove (item);
-					}
-					PlayerMenus.ResetInventoryBoxes ();
-					return;
-				}
-			}
+			invCollection.Add (new InvInstance (_id, amount));
 		}
 
 
 		/**
-		 * <summary>Removes all inventory items from the Container's contents.</summary>
+		 * <summary>Adds an inventory item to the Container's contents.</summary>
+		 * <param name = "addInstance">The instance of the InvItem to add</param>
 		 */
+		public void Add (InvInstance addInstance)
+		{
+			invCollection.Add (addInstance);
+		}
+
+
+		public void Remove (int itemID, int amount)
+		{
+			invCollection.Delete (itemID, amount);
+		}
+
+
+		public void Remove (InvInstance invInstance)
+		{
+			invCollection.Delete (invInstance);
+		}
+
+
+		public void Remove (int itemID)
+		{
+			invCollection.DeleteAllOfType (itemID);
+		}
+
+
+		/** Removes all inventory items from the Container's contents. */
 		public void RemoveAll ()
 		{
-			items.Clear ();
-			PlayerMenus.ResetInventoryBoxes ();
+			invCollection.DeleteAll ();
 		}
 
 
 		/**
 		 * <summary>Gets the number of instances of a particular inventory item stored within the Container.</summary>
-		 * <param name = "_id">The ID number of the InvItem to search for</param>
+		 * <param name = "invID">The ID number of the InvItem to search for</param>
 		 * <returns>The number of instances of the inventory item stored within the Container</returns>
 		 */
-		public int GetCount (int _id)
+		public int GetCount (int invID)
 		{
-			foreach (ContainerItem item in items)
-			{
-				if (item.linkedID == _id)
-				{
-					return (item.count);
-				}
-			}
-			return 0;
+			return invCollection.GetCount (invID);
 		}
 
 
 		/**
 		 * <summary>Adds an inventory item to the Container's contents, at a particular index.</summary>
-		 * <param name = "_item">The InvItem to place within the Container</param>
+		 * <param name = "itemInstance">The instance of the item to place within the Container</param>
 		 * <param name = "_index">The index number within the Container's current contents to insert the new item</param>
 		 * <param name = "count">If >0, the quantity of the item to be added. Otherwise, the same quantity as _item will be added</param>
-		 * <returns>The ContainerItem instance of the added item</returns>
 		 */
-		public ContainerItem InsertAt (InvItem _item, int _index, int count = 0)
+		public void InsertAt (InvInstance itemInstance, int index, int amountOverride = 0)
 		{
-			if (limitToCategory && !categoryIDs.Contains (_item.binID))
-			{
-				return null;
-			}
+			if (!InvInstance.IsValid (itemInstance)) return;
 
-			ContainerItem newContainerItem = new ContainerItem (_item.id, GetIDArray ());
-
-			if (count > 0)
-			{
-				newContainerItem.count = count;
-			}
-			else
-			{
-				newContainerItem.count = _item.count;
-			}
-			if (_index < items.Count)
-			{
-				if (items[_index] != null && items[_index].linkedID == _item.id)
-				{
-					// Same item in the slot, so just add instead
-					newContainerItem.count += items[_index].count;
-					items[_index] = newContainerItem;
-				}
-				else
-				{
-					items.Insert (_index, newContainerItem);
-				}
-			}
-			else
-			{
-				items.Add (newContainerItem);
-			}
-
-			PlayerMenus.ResetInventoryBoxes ();
-			return newContainerItem;
+			itemInstance.TransferCount = (amountOverride > 0) ? amountOverride : 0;
+			invCollection.Insert (itemInstance, index);
 		}
 
 
 		/**
-		 * <summmary>Gets an array of ID numbers of existing ContainerItem classes, so that a unique number can be generated.</summary>
-		 * <returns>Gets an array of ID numbers of existing ContainerItem classes</returns>
+		 * <summary>Gets the Container's label text in a given language</summary>
+		 * <param name = "languageNumber">The language index, where 0 = the game's default language</param>
+		 * <returns>The label text</returns>
 		 */
-		public int[] GetIDArray ()
+		public string GetLabel (int languageNumber = 0)
 		{
-			List<int> idArray = new List<int>();
-			
-			foreach (ContainerItem item in items)
-			{
-				idArray.Add (item.id);
-			}
-			
-			idArray.Sort ();
-			return idArray.ToArray ();
+			return KickStarter.runtimeLanguages.GetTranslation (label, labelLineID, languageNumber, GetTranslationType (0));
 		}
 
 
 		#if UNITY_EDITOR
 
-		public int GetInventoryReferences (int invID)
+		public int GetNumItemReferences (int itemID)
 		{
-			int numFound = 0;
-			if (items != null)
+			int numReferences = 0;
+			foreach (ContainerItem containerItem in items)
 			{
-				foreach (ContainerItem item in items)
+				if (containerItem.ItemID == itemID)
 				{
-					if (item.linkedID == invID)
-					{
-						numFound ++;
-					}
+					numReferences ++;
 				}
 			}
-			return numFound;
+			return numReferences;
+		}
+
+
+		public int UpdateItemReferences (int oldItemID, int newItemID)
+		{
+			int numReferences = 0;
+			foreach (ContainerItem containerItem in items)
+			{
+				if (containerItem.ItemID == oldItemID)
+				{
+					containerItem.ItemID = newItemID;
+					numReferences++;
+				}
+			}
+			return numReferences;
 		}
 
 		#endif
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void CreateDefaultInstances ()
+		{
+			invCollection = new InvCollection (this);
+		}
+
+		#endregion
+
+
+		#region ITranslatable
+
+		public string GetTranslatableString (int index)
+		{
+			return label;
+		}
+
+
+		public int GetTranslationID (int index)
+		{
+			return labelLineID;
+		}
+
+
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.Container;
+		}
+
+
+		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
+
+		public int GetNumTranslatables ()
+		{
+			return 1;
+		}
+
+
+		public bool HasExistingTranslation (int index)
+		{
+			return (labelLineID > -1);
+		}
+
+
+		public void SetTranslationID (int index, int _lineID)
+		{
+			labelLineID = _lineID;
+		}
+
+
+		public string GetOwner (int index)
+		{
+			return string.Empty;
+		}
+
+
+		public bool OwnerIsPlayer (int index)
+		{
+			return false;
+		}
+
+
+		public bool CanTranslate (int index)
+		{
+			return (!string.IsNullOrEmpty (label));
+		}
+
+		#endif
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The total number of items */
+		public int Count
+		{
+			get
+			{
+				return invCollection.GetCount (true);
+			}
+		}
+
+
+		/** The total number of filled slots */
+		public int FilledSlots
+		{
+			get
+			{
+				return invCollection.GetCount (false);
+			}
+		}
+
+
+		/** The Container's associated InvCollection, where item data is stored */
+		public InvCollection InvCollection
+		{
+			get
+			{
+				return invCollection;
+			}
+			set
+			{
+				invCollection = value;
+			}
+		}
+
+
+		/** Returns True if the number of filled slots is that of the maxSlots, if maxSlots > 0 */
+		public bool IsFull
+		{
+			get
+			{
+				if (maxSlots > 0)
+				{
+					return (FilledSlots >= maxSlots);
+				}
+				return false;
+			}
+		}
+
+		#endregion
 
 	}
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"CustomInteractionSystemExample.cs"
  * 
@@ -18,17 +18,15 @@ using UnityEngine;
 namespace AC
 {
 
-	/*
-	 *	<summary>This script serves as an example of how you can create a custom interaction system that can affect both Hotspots and inventory items.
-	 *	To use it, add it to any GameObject in your scene and set your game's 'Interaction method' to 'Custom Script'.
-	 *	Disabling the 'Left-click deselects active item?' will also prevent unwanted inventory item deselection.
+	/**
+	 * This script serves as an example of how you can create a custom interaction system that can affect both Hotspots and inventory items.
+	 * To use it, add it to any GameObject in your scene and set your game's 'Interaction method' to 'Custom Script'.
+	 * Disabling the 'Left-click deselects active item?' will also prevent unwanted inventory item deselection.
 	 *
-	 *	During gameplay, you will now be able to cycle through Hotspots and inventory items and use/examine them by clicking buttons from an on-screen GUI.</summary>
+	 * During gameplay, you will now be able to cycle through Hotspots and inventory items and use/examine them by clicking buttons from an on-screen GUI.
 	 */
 	[AddComponentMenu("Adventure Creator/3rd-party/Custom interaction system example")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_custom_interaction_system_example.html")]
-	#endif
 	public class CustomInteractionSystemExample : MonoBehaviour
 	{
 
@@ -64,7 +62,7 @@ namespace AC
 				return;
 			}
 
-			GUILayout.BeginArea (new Rect (0f, Screen.height * 0.2f, Screen.width * 0.3f, Screen.height * 0.8f));
+			GUILayout.BeginArea (new Rect (0f, ACScreen.height * 0.2f, ACScreen.width * 0.3f, ACScreen.height * 0.8f));
 
 			// Show the Hotspot GUI
 			ShowHotspotGUI ();
@@ -144,7 +142,7 @@ namespace AC
 
 				if (selectedHotspot != null && GUILayout.Button ("Use on selected Hotspot"))
 				{
-					selectedHotspot.RunInventoryInteraction (KickStarter.runtimeInventory.SelectedItem);
+					selectedHotspot.RunInventoryInteraction (KickStarter.runtimeInventory.SelectedInstance);
 				}
 
 				GUILayout.EndHorizontal ();
@@ -189,8 +187,8 @@ namespace AC
 					inventoryItemIndex = 0;
 				}
 
-				InvItem selectedInventoryItem = KickStarter.runtimeInventory.localItems[inventoryItemIndex];
-				KickStarter.runtimeInventory.SelectItem (selectedInventoryItem);
+				InvItem invItem = KickStarter.runtimeInventory.localItems[inventoryItemIndex];
+				KickStarter.runtimeInventory.SelectItem (new InvInstance (invItem));
 			}
 		}
 								

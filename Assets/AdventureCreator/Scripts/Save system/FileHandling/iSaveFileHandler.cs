@@ -1,6 +1,6 @@
 ﻿/*
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"iSaveFileHandler.cs"
  * 
@@ -50,6 +50,9 @@ namespace AC
 		 */
 		bool Delete (SaveFile saveFile);
 
+		/** Returns true if threading is supported when saving to disk */
+		bool SupportsSaveThreading ();
+
 		/**
 		 * <summary>Requests that game data be saved to disk.  When saving is complete, it needs to confirm the output to SaveSystem.OnCompleteSave for the save to be recorded.</summary>
 		 * <param name = "saveFile">The SaveFile container which stores information about the file.  Note that only the saveID, profileID and label have been correctly assigned by this point</param>
@@ -58,18 +61,12 @@ namespace AC
 		void Save (SaveFile saveFile, string dataToSave);
 
 		/**
-		 * <summary>Requests that save game data be loaded from disk.  When loading is complete, it needs to be sent back to SaveSystem.ReceiveLoadedData for it to actually be processed.</summary>
+		 * <summary>Requests that save game data be loaded from disk.  The resulting data needs to be sent back to SaveSystem.ReceiveLoadedData for it to actually be processed.</summary>
 		 * <param name = "saveFile">The SaveFile container which stores information about the save to load</param>
 		 * <param name = "doLog">If True, a log should be shown in the Console once the data has been read</param>
+		 * <returns>The raw, serialized data</returns>
 		 */
-		void Load (SaveFile saveFile, bool doLog);
-
-		/**
-		 * <summary>Requests that save game data from another game be loaded from disk (to be imported).  When loading is complete, it needs to be sent back to SaveSystem.ReceiveImportedData for it to actually be processed.</summary>
-		 * <param name = "saveFile">The SaveFile container which stores information about the save to import</param>
-		 * <param name = "doLog">If True, a log should be shown in the Console once the data has been read</param>
-		 */
-		void Import (SaveFile saveFile, bool doLog);
+		string Load (SaveFile saveFile, bool doLog);
 
 		/**
 		 * <summary>Reads the disk for all save files associated with a given profile</summary>
@@ -77,6 +74,14 @@ namespace AC
 		 * <returns>A List of SaveFile instances, with each instance storing information about each found save file</returns>
 		 */
 		List<SaveFile> GatherSaveFiles (int profileID);
+
+		/**
+		 * <summary>Reads the disk for a save file with a specific ID</summary>
+		 * <param name = "saveID">The ID number of the save to search for</param>
+		 * <param name = "profileID">The ID number of the save file's associated profile, or 0 if profiles are not enabled</param>
+		 * <returns>A SaveFile instances, if the save was found</returns>
+		 */
+		SaveFile GetSaveFile (int saveID, int profileID);
 
 		/**
 		 * <summary>Reads the disk for all save files associated with a given profile from another game, to allow for the importing of data between games</summary>

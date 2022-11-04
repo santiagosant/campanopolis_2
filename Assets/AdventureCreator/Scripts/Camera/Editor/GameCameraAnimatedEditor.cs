@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -17,7 +19,7 @@ namespace AC
 				EditorGUILayout.HelpBox ("This camera type requires an Animation component.", MessageType.Warning);
 			}
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			_target.animatedCameraType = (AnimatedCameraType) CustomGUILayout.EnumPopup ("Animated camera type:", _target.animatedCameraType, "", "The way in which animations are played");
 			_target.clip = (AnimationClip) CustomGUILayout.ObjectField <AnimationClip> ("Animation clip:", _target.clip, false, "", "The animation to play when this camera is made active");
 
@@ -36,7 +38,7 @@ namespace AC
 					_target.target = (Transform) CustomGUILayout.ObjectField <Transform> ("Target:", _target.target, true, "", "The object for the camera to follow");
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			if (_target.animatedCameraType == AnimatedCameraType.SyncWithTargetMovement)
 			{
@@ -49,3 +51,5 @@ namespace AC
 	}
 
 }
+
+#endif

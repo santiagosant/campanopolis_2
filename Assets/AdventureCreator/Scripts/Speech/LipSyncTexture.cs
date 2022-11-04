@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"LipSyncTexture.cs"
  * 
@@ -15,15 +15,13 @@ using System.Collections.Generic;
 namespace AC
 {
 
-	/**
-	 * Animates a SkinnedMeshRenderer's textures based on lipsync animation
-	 */
+	/** Animates a SkinnedMeshRenderer's textures based on lipsync animation */
 	[AddComponentMenu("Adventure Creator/Characters/Lipsync texture")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_lip_sync_texture.html")]
-	#endif
 	public class LipSyncTexture : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The SkinnedMeshRenderer to affect */
 		public SkinnedMeshRenderer skinnedMeshRenderer;
@@ -33,17 +31,36 @@ namespace AC
 		public string propertyName = "_MainTex";
 		/** A List of Texture2Ds that correspond to the phoneme defined in the Phonemes Editor */
 		public List<Texture2D> textures = new List<Texture2D>();
+		/** If True, then changes to the material will be applied in LateUpdate, as opposed to Update calls */
+		public bool affectInLateUpdate;
+
+		protected int thisFrameIndex = -1;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			LimitTextureArray ();
 		}
 
 
-		/**
-		 * Resizes the textures List to match the number of phonemes defined in the Phonemes Editor
-		 */
+		protected void LateUpdate ()
+		{
+			if (affectInLateUpdate)
+			{
+				SetFrame (thisFrameIndex, true);
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Resizes the textures List to match the number of phonemes defined in the Phonemes Editor */
 		public void LimitTextureArray ()
 		{
 			if (AdvGame.GetReferences () == null || AdvGame.GetReferences ().speechManager == null)
@@ -75,9 +92,22 @@ namespace AC
 		/**
 		 * <summary>Sets the material's texture based on the currently-active phoneme.</summary>
 		 * <param name = "textureIndex">The index number of the phoneme</param>
+		 * <param name = "fromLateUpdate">If True, then this function is called from LateUpdate</param>
 		 */
-		public void SetFrame (int textureIndex)
+		public void SetFrame (int textureIndex, bool fromLateUpdate = false)
 		{
+			thisFrameIndex = textureIndex;
+
+			if (textureIndex < 0 || textures == null || textureIndex >= textures.Count)
+			{
+				return;
+			}
+
+			if (affectInLateUpdate != fromLateUpdate)
+			{
+				return;
+			}
+
 			if (skinnedMeshRenderer)
 			{
 				if (materialIndex >= 0 && skinnedMeshRenderer.materials.Length > materialIndex)
@@ -90,6 +120,8 @@ namespace AC
 				}
 			}
 		}
+
+		#endregion
 
 	}
 

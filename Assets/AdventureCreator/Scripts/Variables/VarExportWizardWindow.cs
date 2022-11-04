@@ -7,9 +7,7 @@ using UnityEditor;
 namespace AC
 {
 	
-	/**
-	 * Provides an EditorWindow to manage the export of variables
-	 */
+	/** Provides an EditorWindow to manage the export of variables */
 	public class VarExportWizardWindow : EditorWindow
 	{
 
@@ -45,15 +43,15 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the window.</summary>
-		 */
+		/** Initialises the window. */
 		public static void Init (VariableLocation _variableLocation, bool _allScenes, Variables _variables)
 		{
-			VarExportWizardWindow window = EditorWindow.GetWindowWithRect <VarExportWizardWindow> (new Rect (0, 0, 350, 500), true, "Variables export wizard", true);
-			UnityVersionHandler.SetWindowTitle (window, "Variables export wizard");
+			VarExportWizardWindow window = (VarExportWizardWindow) GetWindow (typeof (VarExportWizardWindow));
+
+			window.titleContent.text = _variableLocation.ToString () + " Variables exporter";
 			window.position = new Rect (300, 200, 350, 500);
 			window._Init (_variableLocation, _allScenes, _variables);
+			window.minSize = new Vector2 (300, 180);
 		}
 		
 		
@@ -90,7 +88,6 @@ namespace AC
 			}
 			GUI.enabled = true;
 
-			EditorGUILayout.Space ();
 			GUILayout.EndScrollView ();
 		}
 
@@ -98,10 +95,9 @@ namespace AC
 		private void ShowColumnsGUI ()
 		{
 			EditorGUILayout.LabelField ("Define columns",  CustomStyles.subHeader);
-			EditorGUILayout.Space ();
 			for (int i=0; i<exportColumns.Count; i++)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 
 				EditorGUILayout.BeginHorizontal ();
 				exportColumns[i].ShowFieldSelector (i);
@@ -116,10 +112,9 @@ namespace AC
 					replaceForwardSlashes = EditorGUILayout.Toggle ("Replace '/' with '.'?", replaceForwardSlashes);
 				}
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
-			EditorGUILayout.Space ();
 			if (GUILayout.Button ("Add new column"))
 			{
 				exportColumns.Add (new ExportColumn ());
@@ -206,7 +201,7 @@ namespace AC
 				bool canProceed = EditorUtility.DisplayDialog ("Export variables", "AC will now go through your game, and collect all variables to be exported.\n\nIt is recommended to back up your project beforehand.", "OK", "Cancel");
 				if (!canProceed) return;
 
-				if (!UnityVersionHandler.SaveSceneIfUserWants ())
+				if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
 				{
 					return;
 				}
@@ -229,7 +224,6 @@ namespace AC
 				return;
 			}
 
-			bool fail = false;
 			List<string[]> output = new List<string[]>();
 
 			List<string> headerList = new List<string>();
@@ -257,12 +251,6 @@ namespace AC
 					{
 						string cellText = exportColumn.GetCellText (exportVar, VariableLocation.Global, replaceForwardSlashes);
 						rowList.Add (cellText);
-
-						if (cellText.Contains (CSVReader.csvDelimiter))
-						{
-							fail = true;
-							ACDebug.LogError ("Cannot export variables since global variable " + exportVar.id.ToString () + " (" + exportVar.label + ") contains the character '" + CSVReader.csvDelimiter + "'.");
-						}
 					}
 					output.Add (rowList.ToArray ());
 				}
@@ -290,7 +278,7 @@ namespace AC
 						}
 					}
 
-					if (originalScene == "")
+					if (string.IsNullOrEmpty (originalScene))
 					{
 						UnityVersionHandler.NewScene ();
 					}
@@ -315,28 +303,18 @@ namespace AC
 					output = GatherOutput (output, variables.vars, sceneName);
 				}
 			}
-			
-			if (!fail)
+
+			string fileContents = CSVReader.CreateCSVGrid (output);
+			if (!string.IsNullOrEmpty (fileContents) && Serializer.SaveFile (fileName, fileContents))
 			{
-				int length = output.Count;
-				
-				System.Text.StringBuilder sb = new System.Text.StringBuilder ();
-				for (int j=0; j<length; j++)
+				int numExported = output.Count - 1;
+				if (numExported == 1)
 				{
-					sb.AppendLine (string.Join (CSVReader.csvDelimiter, output[j]));
+					ACDebug.Log ("1 " + variableLocation + " variable exported.");
 				}
-				
-				if (Serializer.SaveFile (fileName, sb.ToString ()))
+				else
 				{
-					int numExported = output.Count-1;
-					if (numExported == 1)
-					{
-						ACDebug.Log ("1 " + variableLocation + " variable exported.");
-					}
-					else
-					{
-						ACDebug.Log (numExported.ToString () + " " + variableLocation + " variables exported.");
-					}
+					ACDebug.Log (numExported.ToString () + " " + variableLocation + " variables exported.");
 				}
 			}
 
@@ -355,26 +333,15 @@ namespace AC
 
 			foreach (GVar exportVar in exportVars)
 			{
-				bool fail = false;
-
 				List<string> rowList = new List<string>();
 				rowList.Add (exportVar.id.ToString ());
 				foreach (ExportColumn exportColumn in exportColumns)
 				{
 					string cellText = exportColumn.GetCellText (exportVar, variableLocation, replaceForwardSlashes, sceneName);
 					rowList.Add (cellText);
-
-					if (cellText.Contains (CSVReader.csvDelimiter))
-					{
-						fail = true;
-						ACDebug.LogError ("Cannot export variable '" + exportVar.id.ToString () + ": " + exportVar.label + "' since it contains the character '" + CSVReader.csvDelimiter + "'.");
-					}
 				}
 
-				if (!fail)
-				{
-					output.Add (rowList.ToArray ());
-				}
+				output.Add (rowList.ToArray ());
 			}
 
 			return output;
@@ -402,7 +369,7 @@ namespace AC
 
 			public void ShowFieldSelector (int i)
 			{
-				columnType = (ColumnType) EditorGUILayout.EnumPopup ("Column #" + (i+1).ToString (), columnType);
+				columnType = (ColumnType) EditorGUILayout.EnumPopup ("Column #" + (i+1).ToString () + ":", columnType);
 			}
 
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMenuSelect.cs"
  * 
@@ -20,7 +20,7 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionMenuSelect : Action
+	public class ActionMenuSelect : Action, IMenuReferencer
 	{
 		
 		public string menuName;
@@ -34,16 +34,12 @@ namespace AC
 		public bool selectFirstVisible = false;
 
 
-		public ActionMenuSelect ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Menu;
-			title = "Select element";
-			description = "Selects an element within an enabled menu.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Menu; }}
+		public override string Title { get { return "Select element"; }}
+		public override string Description { get { return "Selects an element within an enabled menu."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuName = AssignString (parameters, menuNameParameterID, menuName);
 			elementName = AssignString (parameters, elementNameParameterID, elementName);
@@ -51,7 +47,7 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!string.IsNullOrEmpty (menuName))
 			{
@@ -60,19 +56,23 @@ namespace AC
 				{
 					if (selectFirstVisible)
 					{
-						GameObject elementObject = menu.GetObjectToSelect ();
-						if (elementObject != null)
+						if (menu.menuSource == MenuSource.AdventureCreator)
 						{
-							KickStarter.playerMenus.SelectUIElement (elementObject);
+							MenuElement menuElement = menu.GetFirstVisibleElement ();
+							menu.Select (menuElement, 0);
+						}
+						else
+						{
+							GameObject elementObject = menu.GetObjectToSelect ();
+							if (elementObject != null)
+							{
+								KickStarter.playerMenus.SelectUIElement (elementObject);
+							}
 						}
 					}
 					else if (!string.IsNullOrEmpty (elementName))
 					{
-						MenuElement menuElement = PlayerMenus.GetElementWithName (menuName, elementName);
-						if (menuElement != null)
-						{
-							menu.Select (elementName, slotIndex);
-						}
+						menu.Select (elementName, slotIndex);
 					}
 				}
 			}
@@ -83,21 +83,21 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			menuNameParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuNameParameterID, ParameterType.String);
+			menuNameParameterID = Action.ChooseParameterGUI ("Menu name:", parameters, menuNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (menuNameParameterID < 0)
 			{
-				menuName = EditorGUILayout.TextField ("Menu containing element:", menuName);
+				menuName = EditorGUILayout.TextField ("Menu name:", menuName);
 			}
 
-			selectFirstVisible = EditorGUILayout.Toggle ("Select first-visible element?", selectFirstVisible);
+			selectFirstVisible = EditorGUILayout.Toggle ("Select first-visible?", selectFirstVisible);
 			if (!selectFirstVisible)
 			{
-				elementNameParameterID = Action.ChooseParameterGUI ("Element to select:", parameters, elementNameParameterID, ParameterType.String);
+				elementNameParameterID = Action.ChooseParameterGUI ("Element name:", parameters, elementNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (elementNameParameterID < 0)
 				{
-					elementName = EditorGUILayout.TextField ("Element to select:", elementName);
+					elementName = EditorGUILayout.TextField ("Element name:", elementName);
 				}
 
 				slotIndexParameterID = Action.ChooseParameterGUI ("Slot index (optional):", parameters, slotIndexParameterID, ParameterType.Integer);
@@ -106,18 +106,35 @@ namespace AC
 					slotIndex = EditorGUILayout.IntField ("Slot index (optional):", slotIndex);
 				}
 			}
-
-			AfterRunningOption ();
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (!string.IsNullOrEmpty (menuName) && !string.IsNullOrEmpty (elementName))
 			{
 				return menuName + " - " + elementName;
 			}
 			return string.Empty;
+		}
+
+
+		public int GetNumMenuReferences (string _menuName, string _elementName = "")
+		{
+			if (menuNameParameterID < 0 && menuName == _menuName)
+			{
+				if (string.IsNullOrEmpty (elementName))
+				{
+					return 1;
+				}
+
+				if (elementNameParameterID < 0 && _elementName == elementName)
+				{
+					return 1;
+				}
+			}
+
+			return 0;
 		}
 
 		#endif
@@ -132,7 +149,7 @@ namespace AC
 		 */
 		public static ActionMenuSelect CreateNew (string menuName, string elementName = "", int slotIndex = 0)
 		{
-			ActionMenuSelect newAction = (ActionMenuSelect) CreateInstance <ActionMenuSelect>();
+			ActionMenuSelect newAction = CreateNew<ActionMenuSelect> ();
 			newAction.menuName = menuName;
 			newAction.elementName = elementName;
 			newAction.selectFirstVisible = string.IsNullOrEmpty (elementName);

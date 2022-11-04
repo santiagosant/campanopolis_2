@@ -1,4 +1,6 @@
-﻿#if UNITY_2018_3_OR_NEWER
+﻿#if UNITY_EDITOR
+
+#if UNITY_2018_3_OR_NEWER
 #define USE_WEB_REQUEST
 #endif
 
@@ -174,3 +176,6 @@ namespace AC
 
 	}
 }
+
+
+#endif

@@ -1,8 +1,9 @@
-﻿#if !UNITY_5_0 && (UNITY_5 || UNITY_2017) && (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+﻿#if UNITY_EDITOR
+
+#if !UNITY_2020_2_OR_NEWER && (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
 #define ALLOW_VR
 #endif
 
-using UnityEngine;
 using UnityEditor;
 
 #if ALLOW_VR
@@ -28,3 +29,5 @@ namespace AC
 	}
 
 }
+
+#endif

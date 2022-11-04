@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"PlayerStart.cs"
  * 
@@ -13,6 +13,7 @@
  */
 
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace AC
 {
@@ -21,13 +22,13 @@ namespace AC
 	 * Defines a possible starting position for the Player when the scene loads, based on what the previous scene was
 	 * If no appropriate PlayerStart is found, then the defaultPlayerStart defined in SceneSettings will be used instead.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_player_start.html")]
-	#endif
 	public class PlayerStart : Marker
 	{
 
-		/** The way in which the previous scene is identified by (Number, Name) */
+		#region Variables
+
+		/** If autoActivateFromPrevious = True, the way in which the previous scene is identified by (Number, Name) */
 		public ChooseSceneBy chooseSceneBy = ChooseSceneBy.Number;
 		/** The number of the previous scene to check for */
 		public int previousScene;
@@ -39,14 +40,24 @@ namespace AC
 		public float fadeSpeed = 0.5f;
 		/** The _Camera that should be made active when the Player starts the scene from this point */
 		public _Camera cameraOnStart;
-		
-		private GameObject playerOb;
+		/** If >= 0, and player-switching is allowed, then this will only be used to automatically place the Player with the same ID value */
+		public List<int> playerIDs = new List<int> ();
+		/** If True, and player-switching is allowed, then only specific Players can use this from previous scenes */
+		public bool limitByPlayer = false;
+		/** Whether to limit activation by active / inactive Players */
+		public PlayerStartActiveOption limitByActive = PlayerStartActiveOption.NoLimit;
 
+		protected GameObject playerOb;
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Places the Player at the GameObject's position, and activates the assigned cameraOnStart.
 		 */
-		public void SetPlayerStart ()
+		public void PlacePlayerAt ()
 		{
 			if (KickStarter.mainCamera)
 			{
@@ -59,12 +70,12 @@ namespace AC
 				{
 					if (KickStarter.player)
 					{
-						KickStarter.player.SetLookDirection (this.transform.forward, true);
-						KickStarter.player.Teleport (KickStarter.sceneChanger.GetStartPosition (this.transform.position));
+						KickStarter.player.SetLookDirection (ForwardDirection, true);
+						KickStarter.player.Teleport (KickStarter.sceneChanger.GetStartPosition (Position));
 
 						if (SceneSettings.ActInScreenSpace ())
 						{
-							KickStarter.player.transform.position = AdvGame.GetScreenNavMesh (KickStarter.player.transform.position);
+							KickStarter.player.Transform.position = AdvGame.GetScreenNavMesh (KickStarter.player.Transform.position);
 						}
 					}
 				
@@ -72,7 +83,7 @@ namespace AC
 					{
 						KickStarter.mainCamera.SetFirstPerson ();
 					}
-					else if (cameraOnStart != null)
+					else if (cameraOnStart)
 					{
 						SetCameraOnStart ();
 					}
@@ -80,7 +91,7 @@ namespace AC
 					{
 						if (!KickStarter.settingsManager.IsInFirstPerson ())
 						{
-							ACDebug.LogWarning ("PlayerStart '" + this.name + "' has no Camera On Start", this);
+							ACDebug.LogWarning ("PlayerStart '" + gameObject.name + "' has no Camera On Start", this);
 
 							if (KickStarter.sceneSettings != null &&
 								this != KickStarter.sceneSettings.defaultPlayerStart)
@@ -96,19 +107,118 @@ namespace AC
 		}
 
 
-		/**
-		 * Makes the assigned cameraOnStart the active _Camera.
-		 */
+		public bool MatchesPreviousScene (int _playerID)
+		{
+			if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+			{
+				if (limitByPlayer && !playerIDs.Contains (_playerID))
+				{
+					return false;
+				}
+
+				switch (limitByActive)
+				{
+					case PlayerStartActiveOption.ActivePlayerOnly:
+						if (KickStarter.saveSystem.CurrentPlayerID != _playerID)
+						{
+							return false;
+						}
+						break;
+
+					case PlayerStartActiveOption.InactivePlayersOnly:
+						if (KickStarter.saveSystem.CurrentPlayerID == _playerID)
+						{
+							return false;
+						}
+						break;
+
+					default:
+						break;
+				}
+			}
+
+			switch (KickStarter.settingsManager.referenceScenesInSave)
+			{
+				case ChooseSceneBy.Name:
+					string _previousSceneName = GetPlayerPreviousSceneName (_playerID);
+					if (chooseSceneBy == ChooseSceneBy.Name && !string.IsNullOrEmpty (previousSceneName))
+					{
+						return (_previousSceneName == previousSceneName);
+					}
+					if (chooseSceneBy == ChooseSceneBy.Number && previousScene >= 0)
+					{
+						return (KickStarter.sceneChanger.IndexToName (previousScene) == _previousSceneName);
+					}
+					break;
+
+				case ChooseSceneBy.Number:
+				default:
+					int previousSceneIndex = GetPlayerPreviousSceneIndex (_playerID);
+					if (chooseSceneBy == ChooseSceneBy.Name && !string.IsNullOrEmpty (previousSceneName))
+					{
+						return (KickStarter.sceneChanger.NameToIndex (previousSceneName) == previousSceneIndex);
+					}
+					if (chooseSceneBy == ChooseSceneBy.Number && previousScene >= 0)
+					{
+						return previousScene == previousSceneIndex;
+					}
+					break;
+			}
+
+			return false;
+		}
+
+
+		private int GetPlayerPreviousSceneIndex (int _playerID)
+		{
+			if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow)
+			{
+				return KickStarter.sceneChanger.PreviousSceneIndex;
+			}
+
+			PlayerData playerData = KickStarter.saveSystem.GetPlayerData (_playerID);
+			return (playerData != null) ? playerData.previousScene : -1;
+		}
+
+
+		private string GetPlayerPreviousSceneName (int _playerID)
+		{
+			if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow)
+			{
+				return KickStarter.sceneChanger.PreviousSceneName;
+			}
+
+			PlayerData playerData = KickStarter.saveSystem.GetPlayerData (_playerID);
+			return (playerData != null) ? playerData.previousSceneName : string.Empty;
+		}
+
+
+		/** Makes the assigned cameraOnStart the active _Camera. */
 		public void SetCameraOnStart ()
 		{
-			if (cameraOnStart != null)
+			if (cameraOnStart && KickStarter.mainCamera)
 			{
-				KickStarter.mainCamera.SetGameCamera (cameraOnStart);
-				KickStarter.mainCamera.lastNavCamera = cameraOnStart;
 				cameraOnStart.MoveCameraInstant ();
 				KickStarter.mainCamera.SetGameCamera (cameraOnStart);
+				KickStarter.mainCamera.lastNavCamera = cameraOnStart;
 			}
 		}
+
+		#endregion
+
+
+		#if UNITY_EDITOR
+
+		public override void DrawGizmos ()
+		{
+			Renderer _renderer = GetComponent<Renderer> ();
+			if (_renderer && KickStarter.sceneSettings && !Application.isPlaying)
+			{
+				_renderer.enabled = KickStarter.sceneSettings.visibilityPlayerStarts;
+			}
+		}
+
+		#endif
 		
 	}
 

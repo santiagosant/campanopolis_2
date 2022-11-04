@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"InteractiveBoundary.cs"
  * 
@@ -10,6 +10,7 @@
  */
 
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace AC
 {
@@ -19,72 +20,52 @@ namespace AC
 	 * Attach this to a Trigger collider, and assign in a Hotspot's Inspector. When assigned, the Hotspot will only be interactable when the Player is within the collider's boundary.
 	 */
 	[AddComponentMenu("Adventure Creator/Hotspots/Interactive boundary")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_interactive_boundary.html")]
-	#endif
 	public class InteractiveBoundary : MonoBehaviour
 	{
 
 		#region Variables
 
-		private bool forcePresence;
-		private bool playerIsPresent;
+		protected bool forcePresence;
+		protected List<GameObject> playersPresent = new List<GameObject>();
 
 		#endregion
 
 
 		#region UnityStandards
 
-		private void OnEnable ()
+		protected void OnTriggerEnter (Collider other)
 		{
-			EventManager.OnSetPlayer += OnSwitchPlayer;
-		}
-
-
-		private void OnDisable ()
-		{
-			EventManager.OnSetPlayer -= OnSwitchPlayer;
-		}
-
-
-		private void OnSwitchPlayer (Player player)
-		{
-			playerIsPresent = false;
-		}
-
-
-		private void OnTriggerEnter (Collider other)
-		{
-			if (KickStarter.player != null && other.gameObject == KickStarter.player.gameObject)
+			if (KickStarter.player && other.gameObject == KickStarter.player.gameObject && !playersPresent.Contains (other.gameObject))
 			{
-				playerIsPresent = true;
+				playersPresent.Add (other.gameObject);
 			}
         }
 
 
-		private void OnTriggerExit (Collider other)
+		protected void OnTriggerExit (Collider other)
 		{
-			if (KickStarter.player != null && other.gameObject == KickStarter.player.gameObject)
+			if (KickStarter.player && other.gameObject == KickStarter.player.gameObject && playersPresent.Contains (other.gameObject))
 			{
-				playerIsPresent = false;
-			}
-        }
-
-
-		private void OnTriggerStay2D (Collider2D other)
-		{
-			if (KickStarter.player != null && other.gameObject == KickStarter.player.gameObject)
-			{
-				playerIsPresent = true;
+				playersPresent.Remove (other.gameObject);
 			}
 		}
 
 
-		private void OnTriggerExit2D (Collider2D other)
+		protected void OnTriggerEnter2D (Collider2D other)
 		{
-			if (KickStarter.player != null && other.gameObject == KickStarter.player.gameObject)
+			if (KickStarter.player && other.gameObject == KickStarter.player.gameObject && !playersPresent.Contains (other.gameObject))
 			{
-				playerIsPresent = false;
+				playersPresent.Add (other.gameObject);
+			}
+		}
+
+
+		protected void OnTriggerExit2D (Collider2D other)
+		{
+			if (KickStarter.player && other.gameObject == KickStarter.player.gameObject && playersPresent.Contains (other.gameObject))
+			{
+				playersPresent.Remove (other.gameObject);
 			}
 		}
 
@@ -102,7 +83,7 @@ namespace AC
 				{
 					return true;
 				}
-				return playerIsPresent;
+				return (KickStarter.player && playersPresent.Contains (KickStarter.player.gameObject));
 			}
 		}
 

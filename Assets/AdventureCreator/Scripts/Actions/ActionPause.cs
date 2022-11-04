@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPause.cs"
  * 
@@ -26,22 +26,18 @@ namespace AC
 		public float timeToPause;
 
 		
-		public ActionPause ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "Wait";
-			description = "Waits a set time before continuing.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Wait"; }}
+		public override string Description { get { return "Waits a set time before continuing."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			timeToPause = AssignFloat (parameters, parameterID, timeToPause);
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
@@ -63,7 +59,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Wait time (s):", parameters, parameterID, ParameterType.Float);
 			if (parameterID < 0)
@@ -74,7 +70,6 @@ namespace AC
 					EditorGUILayout.HelpBox ("A negative value will pause the ActionList by one frame.", MessageType.Info);
 				}
 			}
-			AfterRunningOption ();
 		}
 		
 
@@ -93,7 +88,7 @@ namespace AC
 		 */
 		public static ActionPause CreateNew (float waitTime)
 		{
-			ActionPause newAction = (ActionPause) CreateInstance <ActionPause>();
+			ActionPause newAction = CreateNew<ActionPause> ();
 			newAction.timeToPause = waitTime;
 			return newAction;
 		}

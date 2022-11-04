@@ -7,9 +7,7 @@ using UnityEditor;
 namespace AC
 {
 
-	/**
-	 * Provides an EditorWindow to manage phoneme settings
-	 */
+	/** Provides an EditorWindow to manage phoneme settings */
 	public class PhonemesWindow : EditorWindow
 	{
 
@@ -17,14 +15,13 @@ namespace AC
 		private Vector2 scrollPos;
 
 
-		/**
-		 * Initialises the window.
-		 */
+		/** Initialises the window. */
 		public static void Init ()
 		{
-			PhonemesWindow window = EditorWindow.GetWindowWithRect <PhonemesWindow> (new Rect (0, 0, 450, 270), true, "Phonemes editor", true);
-			UnityVersionHandler.SetWindowTitle (window, "Phonemes editor");
+			PhonemesWindow window = (PhonemesWindow) GetWindow (typeof (PhonemesWindow));
+			window.titleContent.text = "Phonemes editor";
 			window.position = new Rect (300, 200, 450, 270);
+			window.minSize = new Vector2 (300, 160);
 		}
 
 
@@ -43,6 +40,8 @@ namespace AC
 			{
 				return;
 			}
+
+			EditorGUILayout.LabelField ("Phonemes editor", CustomStyles.managerHeader);
 
 			speechManager.phonemes = ShowPhonemesGUI (speechManager.phonemes, speechManager.lipSyncMode);
 
@@ -65,7 +64,7 @@ namespace AC
 				EditorGUILayout.BeginHorizontal ();
 				phonemes [i] = EditorGUILayout.TextField ("Frame #" + i.ToString () + ":", phonemes [i]);
 
-				if (GUILayout.Button ("", CustomStyles.IconCog))
+				if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
 				{
 					PhonemeSideMenu (i);
 				}
@@ -122,8 +121,8 @@ namespace AC
 
 		private void PhonemeSideMenu (int i)
 		{
-			GUI.SetNextControlName ("");
-			GUI.FocusControl ("");
+			GUI.SetNextControlName (string.Empty);
+			GUI.FocusControl (string.Empty);
 
 			selectedFrameIndex = i;
 			GenericMenu menu = new GenericMenu ();

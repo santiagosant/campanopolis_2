@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SortingMap.cs"
  * 
@@ -20,12 +20,14 @@ namespace AC
 	 * This script is used to change the sorting order and scale of 2D characters, based on their position in the scene.
 	 * The instance of this class stored in SceneSettings' sortingMap variable will be read by FollowSortingMap components to determine what their SpriteRenderer's order and scale should be.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_sorting_map.html")]
-	#endif
 	public class SortingMap : MonoBehaviour
 	{
 
+		#region Variables
+
+		/** True if characters that follow this map should have their sorting affected */
+		public bool affectSorting = true;
 		/** How SpriteRenderer components that follow this map are effected (OrderInLayer, SortingLayer) */
 		public SortingMapType mapType = SortingMapType.OrderInLayer;
 		/** A List of SortingArea data that makes up the map */
@@ -41,53 +43,62 @@ namespace AC
 		/** The AnimationCurve used to define character scaling, where 0s is the smallest scale, and 1s is the largest (if sortingMapScaleType = AnimationCurve) */
 		public AnimationCurve scalingAnimationCurve;
 
+		protected Transform _transform;
 
-		private void OnEnable ()
+		#endregion
+
+
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void Start ()
+		protected void Start ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
 		}
 
 
-		private void OnDrawGizmos ()
+		protected void OnDrawGizmos ()
 		{
-			Vector3 right = transform.right * 0.1f;
+			Vector3 right = Transform.right * 0.1f;
+			bool doScaling = affectScale || affectSpeed;
 
-			float scaleGizmo = (affectScale && sortingMapScaleType == SortingMapScaleType.Linear) ? (originScale / 100f) : 1f;
-			Gizmos.DrawLine (transform.position - right * scaleGizmo, transform.position + right * scaleGizmo);
+			float scaleGizmo = (doScaling && sortingMapScaleType == SortingMapScaleType.Linear) ? (originScale / 100f) : 1f;
+			Gizmos.DrawLine (Transform.position - right * scaleGizmo, Transform.position + right * scaleGizmo);
 
 			for (int i=0; i<sortingAreas.Count; i++)
 			{
-				scaleGizmo = (affectScale && sortingMapScaleType == SortingMapScaleType.Linear) ? (sortingAreas[i].scale / 100f) : 1f;
+				scaleGizmo = (doScaling && sortingMapScaleType == SortingMapScaleType.Linear) ? (sortingAreas[i].scale / 100f) : 1f;
 
 				Gizmos.color = sortingAreas [i].color;
-				Gizmos.DrawIcon (GetAreaPosition (i), "", true);
+				Gizmos.DrawIcon (GetAreaPosition (i), string.Empty, true);
 				Gizmos.DrawLine (GetAreaPosition (i) - right * scaleGizmo, GetAreaPosition (i) + right * scaleGizmo);
 
-				Vector3 startPosition = (i == 0) ? transform.position : GetAreaPosition (i-1);
+				Vector3 startPosition = (i == 0) ? Transform.position : GetAreaPosition (i-1);
 
-				float startScaleGizmo = (affectScale && sortingMapScaleType == SortingMapScaleType.Linear) ? ((i == 0) ? (originScale / 100f) : (sortingAreas[i-1].scale / 100f)) : 1f;
+				float startScaleGizmo = (doScaling && sortingMapScaleType == SortingMapScaleType.Linear) ? ((i == 0) ? (originScale / 100f) : (sortingAreas[i-1].scale / 100f)) : 1f;
 			
 				Gizmos.DrawLine (startPosition + right * startScaleGizmo, GetAreaPosition (i) + right * scaleGizmo);
 				Gizmos.DrawLine (startPosition - right * startScaleGizmo, GetAreaPosition (i) - right * scaleGizmo);
 			}
 		}
 
+		#endregion
 
-		/**
-		 * <summary>Adjusts all relevant FollowSortingMaps that are within the same region, so that they are all displayed correctly.</summary>
-		 */
+
+		#region PublicFunctions
+
+		/** Adjusts all relevant FollowSortingMaps that are within the same region, so that they are all displayed correctly. */
 		public void UpdateSimilarFollowers ()
 		{
 			if (KickStarter.sceneSettings.sharedLayerSeparationDistance <= 0f)
@@ -98,15 +109,16 @@ namespace AC
 			foreach (SortingArea sortingArea in sortingAreas)
 			{
 				List<FollowSortingMap> testFollowers = new List<FollowSortingMap>();
-				for (int i=0; i<KickStarter.stateHandler.FollowSortingMaps.Count; i++)
+
+				foreach (FollowSortingMap followSortingMap in KickStarter.stateHandler.FollowSortingMaps)
 				{
-					if (KickStarter.stateHandler.FollowSortingMaps[i].GetSortingMap () == this)
+					if (followSortingMap.GetSortingMap () == this)
 					{
-						if ((mapType == SortingMapType.OrderInLayer && KickStarter.stateHandler.FollowSortingMaps[i].SortingOrder == sortingArea.order) ||
-							(mapType == SortingMapType.SortingLayer && KickStarter.stateHandler.FollowSortingMaps[i].SortingLayer == sortingArea.layer))
+						if ((mapType == SortingMapType.OrderInLayer && followSortingMap.SortingOrder == sortingArea.order) ||
+							(mapType == SortingMapType.SortingLayer && followSortingMap.SortingLayer == sortingArea.layer))
 						{
 							// Found a follower with the same order/layer
-							testFollowers.Add (KickStarter.stateHandler.FollowSortingMaps[i]);
+							testFollowers.Add (followSortingMap);
 						}
 					}
 				}
@@ -130,13 +142,7 @@ namespace AC
 				}
 			}
 		}
-		
-		
-		private static int SortByScreenPosition (FollowSortingMap o1, FollowSortingMap o2)
-		{
-			return KickStarter.CameraMain.WorldToScreenPoint (o1.transform.position).y.CompareTo (KickStarter.CameraMain.WorldToScreenPoint (o2.transform.position).y);
-		}
-		
+
 
 		/**
 		 * <summary>Gets the boundary position of a particular SortingArea.</summary>
@@ -145,9 +151,9 @@ namespace AC
 		 */
 		public Vector3 GetAreaPosition (int i)
 		{
-			return (transform.position + (transform.forward * sortingAreas [i].z));
+			return (Transform.position + (Transform.forward * sortingAreas [i].z));
 		}
-		
+
 
 		/**
 		 * <summary>Gets an interpolated scale factor, based on a position in the scene.</summary>
@@ -156,18 +162,13 @@ namespace AC
 		 */
 		public float GetScale (Vector3 followPosition)
 		{
-			if (!affectScale)
-			{
-				return 1f;
-			}
-			
 			if (sortingAreas.Count == 0)
 			{
 				return (float) originScale;
 			}
 			
 			// Behind first?
-			if (Vector3.Angle (transform.forward, transform.position - followPosition) < 90f)
+			if (Vector3.Angle (Transform.forward, Transform.position - followPosition) < 90f)
 			{
 				if (sortingMapScaleType == SortingMapScaleType.AnimationCurve)
 				{
@@ -178,7 +179,7 @@ namespace AC
 			}
 			
 			// In front of last?
-			if (Vector3.Angle (transform.forward, GetAreaPosition (sortingAreas.Count-1) - followPosition) > 90f)
+			if (Vector3.Angle (Transform.forward, GetAreaPosition (sortingAreas.Count-1) - followPosition) > 90f)
 			{
 				if (sortingMapScaleType == SortingMapScaleType.AnimationCurve)
 				{
@@ -192,7 +193,7 @@ namespace AC
 			if (sortingMapScaleType == SortingMapScaleType.AnimationCurve)
 			{
 				int i = sortingAreas.Count-1;
-				float angle = Vector3.Angle (transform.forward, GetAreaPosition (i) - followPosition);
+				float angle = Vector3.Angle (Transform.forward, GetAreaPosition (i) - followPosition);
 				float proportionAlong = 1 - Vector3.Distance (GetAreaPosition (i), followPosition) / sortingAreas [i].z * Mathf.Cos (Mathf.Deg2Rad * angle);
 
 				float scaleValue = scalingAnimationCurve.Evaluate (proportionAlong) * 100f;
@@ -201,7 +202,7 @@ namespace AC
 
 			for (int i=0; i<sortingAreas.Count; i++)
 			{
-				float angle = Vector3.Angle (transform.forward, GetAreaPosition (i) - followPosition);
+				float angle = Vector3.Angle (Transform.forward, GetAreaPosition (i) - followPosition);
 				if (angle < 90f)
 				{
 					float prevZ = 0;
@@ -244,7 +245,34 @@ namespace AC
 				sortingAreas [i].scale = (int) newScale;
 			}
 		}
+
+		#endregion
+
+
+		#region StaticFunctions		
 		
+		protected static int SortByScreenPosition (FollowSortingMap o1, FollowSortingMap o2)
+		{
+			return KickStarter.CameraMain.WorldToScreenPoint (o1.transform.position).y.CompareTo (KickStarter.CameraMain.WorldToScreenPoint (o2.transform.position).y);
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** A cache of the SortingMap's transform component */
+		public Transform Transform
+		{
+			get
+			{
+				if (_transform == null) _transform = transform;
+				return _transform;
+			}
+		}
+
+		#endregion
+
 	}
-	
+
 }

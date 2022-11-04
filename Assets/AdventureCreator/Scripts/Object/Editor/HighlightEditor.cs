@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -17,7 +19,8 @@ namespace AC
 			{
 				_target.affectChildren = CustomGUILayout.ToggleLeft ("Also affect child Renderer components?", _target.affectChildren, "", "If True, then child Renderer GameObjects will be brightened as well");
 			}
-			_target.maxHighlight = CustomGUILayout.Slider ("Maximum highlight intensity:", _target.maxHighlight, 1f, 5f, "", "The maximum highlight intensity (1 = no effect)");
+			//_target.maxHighlight = CustomGUILayout.Slider ("Maximum highlight intensity:", _target.maxHighlight, 1f, 5f, "", "The maximum highlight intensity (1 = no effect)");
+			_target.highlightCurve = CustomGUILayout.CurveField ("Intensity curve:", _target.highlightCurve, "", "An animation curve that describes the effect over time");
 			_target.fadeTime = CustomGUILayout.Slider ("Transition time (s):", _target.fadeTime, 0f, 5f, "", "The fade time for the highlight transition effect");
 			_target.flashHoldTime = CustomGUILayout.Slider ("Flash hold time (s)", _target.flashHoldTime, 0f, 5f, "", "The length of time that a flash will hold for");
 
@@ -35,3 +38,5 @@ namespace AC
 	
 	}
 }
+
+#endif

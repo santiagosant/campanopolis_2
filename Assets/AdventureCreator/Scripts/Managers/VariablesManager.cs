@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"VariablesManager.cs"
  * 
@@ -51,7 +51,6 @@ namespace AC
 		private static Variables sideVarComponent = null;
 		private static GVar selectedSideVar;
 
-		private static string[] boolType = {"False", "True"};
 		private string filter = "";
 		private VariableType typeFilter;
 		private VarFilter varFilter;
@@ -71,13 +70,6 @@ namespace AC
 		 */
 		public void ShowGUI ()
 		{
-			string sceneName = MultiSceneChecker.EditActiveScene ();
-			if (sceneName != "")
-			{
-				EditorGUILayout.LabelField ("Editing scene: '" + sceneName + "'",  CustomStyles.subHeader);
-				EditorGUILayout.Space ();
-			}
-
 			EditorGUILayout.Space ();
 			GUILayout.BeginHorizontal ();
 
@@ -87,7 +79,7 @@ namespace AC
 				SetTab (0);
 			}
 
-			label = (KickStarter.localVariables != null && KickStarter.localVariables.localVars.Count > 0) ? ("Local (" +  KickStarter.localVariables.localVars.Count + ")") : "Local";
+			label = (KickStarter.localVariables && KickStarter.localVariables.localVars.Count > 0) ? ("Local (" +  KickStarter.localVariables.localVars.Count + ")") : "Local";
 			if (GUILayout.Toggle (showLocalTab, label, "toolbarbutton"))
 			{
 				SetTab (1);
@@ -116,15 +108,11 @@ namespace AC
 				EditorGUILayout.EndHorizontal ();
 			}
 		
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			if (Application.isPlaying && updateRuntime && KickStarter.runtimeVariables != null)
 			{
-				EditorGUILayout.HelpBox ("Showing realtime values - changes made will not be saved.", MessageType.Warning);
-			}
-			else if (Application.isPlaying && KickStarter.runtimeVariables == null)
-			{
-				EditorGUILayout.HelpBox ("Variables cannot be modified or accessed without a GameEngine present in the scene.", MessageType.Warning);
+				EditorGUILayout.HelpBox ("Showing runtime values - changes made will not be saved.", MessageType.Info);
 			}
 			else
 			{
@@ -135,7 +123,11 @@ namespace AC
 			{
 				varPresets = ShowPresets (varPresets, vars, VariableLocation.Global);
 
-				if (Application.isPlaying && updateRuntime && KickStarter.runtimeVariables != null)
+				if (Application.isPlaying && updateRuntime && showGlobalTab && KickStarter.runtimeVariables == null)
+				{
+					EditorGUILayout.HelpBox ("Runtime values cannot be viewed without a GameEngine present in the scene.", MessageType.Warning);
+				}
+				else if (Application.isPlaying && updateRuntime && KickStarter.runtimeVariables != null)
 				{
 					selectedGlobalVar = ShowVariableListAndHeader (selectedGlobalVar, KickStarter.runtimeVariables.globalVars, VariableLocation.Global, varFilter, filter, typeFilter, false);
 				}
@@ -151,6 +143,13 @@ namespace AC
 			}
 			else if (showLocalTab)
 			{
+				string sceneName = MultiSceneChecker.EditActiveScene ();
+				if (!string.IsNullOrEmpty (sceneName) && UnityEngine.SceneManagement.SceneManager.sceneCount > 1)
+				{
+					EditorGUILayout.LabelField ("Editing scene: '" + sceneName + "'", CustomStyles.subHeader);
+					EditorGUILayout.Space ();
+				}
+
 				if (KickStarter.localVariables != null)
 				{
 					KickStarter.localVariables.varPresets = ShowPresets (KickStarter.localVariables.varPresets, KickStarter.localVariables.localVars, VariableLocation.Local);
@@ -167,7 +166,7 @@ namespace AC
 				else
 				{
 					EditorGUILayout.LabelField ("Local variables",  CustomStyles.subHeader);
-					EditorGUILayout.HelpBox ("A GameEngine prefab must be present in the scene before Local variables can be defined", MessageType.Info);
+					EditorGUILayout.HelpBox ("A GameEngine prefab must be present in the scene before Local variables can be defined", MessageType.Warning);
 				}
 			}
 
@@ -181,7 +180,7 @@ namespace AC
 			{
 				ShowVarGUIAndHeader (selectedGlobalVar, VariableLocation.Global, canEdit, varPresets, "AC.GlobalVariables.GetVariable (" + selectedGlobalVar.id + ")");
 			}
-			else if (showLocalTab && selectedLocalVar != null && KickStarter.localVariables != null && KickStarter.localVariables.localVars.Contains (selectedLocalVar))
+			else if (showLocalTab && selectedLocalVar != null && KickStarter.localVariables && KickStarter.localVariables.localVars.Contains (selectedLocalVar))
 			{
 				ShowVarGUIAndHeader (selectedLocalVar, VariableLocation.Local, canEdit, KickStarter.localVariables.varPresets, "AC.LocalVariables.GetVariable (" + selectedLocalVar.id + ")");
 			}
@@ -214,7 +213,7 @@ namespace AC
 
 			if (sideVar > 0 || sideVar < _vars.Count-1)
 			{
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 			}
 
 			if (sideVar > 0)
@@ -227,23 +226,24 @@ namespace AC
 				menu.AddItem (new GUIContent ("Re-arrange/Move down"), false, Callback, "Move down");
 				menu.AddItem (new GUIContent ("Re-arrange/Move to bottom"), false, Callback, "Move to bottom");
 			}
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 
 			if (sideVarLocation == VariableLocation.Local)
 			{
 				menu.AddItem (new GUIContent ("Convert to Global"), false, Callback, "Convert to Global");
-				menu.AddItem (new GUIContent ("Find local references"), false, Callback, "Find local references");
+				menu.AddItem (new GUIContent ("Find references"), false, Callback, "Find local references");
 			}
 			else if (sideVarLocation == VariableLocation.Global)
 			{
 				menu.AddItem (new GUIContent ("Convert to Local"), false, Callback, "Convert to Local");
-				menu.AddItem (new GUIContent ("Find global references"), false, Callback, "Find global references");
+				menu.AddItem (new GUIContent ("Find references"), false, Callback, "Find global references");
+				menu.AddItem (new GUIContent ("Change ID"), false, Callback, "Change global ID");
 			}
 			else if (sideVarLocation == VariableLocation.Component)
 			{
 				menu.AddItem (new GUIContent ("Find references"), false, Callback, "Find component references");
 			}
-			
+
 			menu.ShowAsContext ();
 		}
 		
@@ -255,29 +255,34 @@ namespace AC
 				List<GVar> _vars = new List<GVar>();
 				Object objectToRecord = null;
 
-				if (sideVarLocation == VariableLocation.Global)
+				switch (sideVarLocation)
 				{
-					_vars = KickStarter.variablesManager.vars;
-					KickStarter.variablesManager.filter = string.Empty;
-					objectToRecord = KickStarter.variablesManager;
-				}
-				else if (sideVarLocation == VariableLocation.Local)
-				{
-					if (KickStarter.localVariables != null)
-					{
-						_vars = KickStarter.localVariables.localVars;
+					case VariableLocation.Global:
+						_vars = KickStarter.variablesManager.vars;
 						KickStarter.variablesManager.filter = string.Empty;
-						objectToRecord = KickStarter.localVariables;
-					}
-				}
-				else if (sideVarLocation == VariableLocation.Component)
-				{
-					if (sideVarComponent != null)
-					{
-						_vars = sideVarComponent.vars;
-						sideVarComponent.filter = string.Empty;
-						objectToRecord = sideVarComponent;
-					}
+						objectToRecord = KickStarter.variablesManager;
+						break;
+
+					case VariableLocation.Local:
+						if (KickStarter.localVariables != null)
+						{
+							_vars = KickStarter.localVariables.localVars;
+							KickStarter.variablesManager.filter = string.Empty;
+							objectToRecord = KickStarter.localVariables;
+						}
+						break;
+
+					case VariableLocation.Component:
+						if (sideVarComponent != null)
+						{
+							_vars = sideVarComponent.vars;
+							sideVarComponent.filter = string.Empty;
+							objectToRecord = sideVarComponent;
+						}
+						break;
+
+					default:
+						break;
 				}
 
 				GVar tempVar = _vars[sideVar];
@@ -336,32 +341,44 @@ namespace AC
 						FindGlobalReferences (tempVar);
 						break;
 
+					case "Change global ID":
+						ReferenceUpdaterWindow.Init (ReferenceUpdaterWindow.ReferenceType.GlobalVariable, tempVar.label, tempVar.id);
+						break;
+
 					case "Find component references":
 						FindComponentReferences (tempVar, sideVarComponent);
+						break;
+
+					default:
 						break;
 				}
 			}
 
 			sideVar = -1;
 
-			if (sideVarLocation == AC.VariableLocation.Global)
+			switch (sideVarLocation)
 			{
-				EditorUtility.SetDirty (KickStarter.variablesManager);
-				AssetDatabase.SaveAssets ();
-			}
-			else if (sideVarLocation == VariableLocation.Local)
-			{
-				if (KickStarter.localVariables)
-				{
-					EditorUtility.SetDirty (KickStarter.localVariables);
-				}
-			}
-			else if (sideVarLocation == VariableLocation.Component)
-			{
-				if (sideVarComponent != null)
-				{
-					EditorUtility.SetDirty (sideVarComponent);
-				}
+				case VariableLocation.Global:
+					EditorUtility.SetDirty (KickStarter.variablesManager);
+					AssetDatabase.SaveAssets ();
+					break;
+
+				case VariableLocation.Local:
+					if (KickStarter.localVariables)
+					{
+						EditorUtility.SetDirty (KickStarter.localVariables);
+					}
+					break;
+
+				case VariableLocation.Component:
+					if (sideVarComponent)
+					{
+						EditorUtility.SetDirty (sideVarComponent);
+					}
+					break;
+
+				default:
+					break;
 			}
 		}
 
@@ -372,7 +389,7 @@ namespace AC
 
 			if (EditorUtility.DisplayDialog ("Convert " + localVariable.label + " to Global Variable?", "This will update all Actions and Managers that refer to this Variable.  This is a non-reversible process, and you should back up your project first. Continue?", "OK", "Cancel"))
 			{
-				if (UnityVersionHandler.SaveSceneIfUserWants ())
+				if (UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
 				{
 					// Create new Global
 					KickStarter.variablesManager.selectedGlobalVar = DeactivateAllVars (KickStarter.variablesManager.vars, KickStarter.variablesManager.selectedGlobalVar);
@@ -443,28 +460,20 @@ namespace AC
 
 			int totalNumReferences = 0;
 
-			ActionList[] actionLists = FindObjectsOfType <ActionList>();
-			foreach (ActionList actionList in actionLists)
+			MonoBehaviour[] sceneObjects = FindObjectsOfType<MonoBehaviour> ();
+			for (int i = 0; i < sceneObjects.Length; i++)
 			{
-				foreach (Action action in actionList.actions)
+				MonoBehaviour currentObj = sceneObjects[i];
+				IVariableReferencer currentComponent = currentObj as IVariableReferencer;
+				if (currentComponent != null)
 				{
-					int thisNumReferences = action.GetVariableReferences (actionList.parameters, VariableLocation.Local, localVariable.id);
+					ActionList.logSuffix = string.Empty;
+					int thisNumReferences = currentComponent.GetNumVariableReferences (VariableLocation.Local, localVariable.id);
 					if (thisNumReferences > 0)
 					{
 						totalNumReferences += thisNumReferences;
-						ACDebug.Log ("Found " + thisNumReferences + " references to local variable '" + localVariable.label + "' in Action #" + actionList.actions.IndexOf (action) + " of ActionList '" + actionList.name + "'", actionList);
+						ACDebug.Log ("Found " + thisNumReferences + " reference(s) to Local variable '" + localVariable.label + "' in " + currentObj.name + ActionList.logSuffix, currentObj);
 					}
-				}
-			}
-
-			Conversation[] conversations = FindObjectsOfType <Conversation>();
-			foreach (Conversation conversation in conversations)
-			{
-				int thisNumReferences = conversation.GetVariableReferences (VariableLocation.Local, localVariable.id);
-				if (thisNumReferences > 0)
-				{
-					totalNumReferences += thisNumReferences;
-					ACDebug.Log ("Found " + thisNumReferences + " references to local variable '" + localVariable.label + "' in Conversation '" + conversation.name + "'", conversation);
 				}
 			}
 
@@ -478,16 +487,35 @@ namespace AC
 
 			int totalNumReferences = 0;
 
-			ActionList[] actionLists = FindObjectsOfType <ActionList>();
-			foreach (ActionList actionList in actionLists)
+			MonoBehaviour[] sceneObjects = FindObjectsOfType<MonoBehaviour> ();
+			for (int i = 0; i < sceneObjects.Length; i++)
 			{
-				foreach (Action action in actionList.actions)
+				MonoBehaviour currentObj = sceneObjects[i];
+				IVariableReferencer currentComponent = currentObj as IVariableReferencer;
+				if (currentComponent != null)
 				{
-					int thisNumReferences = action.GetVariableReferences (actionList.parameters, VariableLocation.Component, componentVariable.id, _variables);
+					ActionList.logSuffix = string.Empty;
+					int thisNumReferences = currentComponent.GetNumVariableReferences (VariableLocation.Local, componentVariable.id, _variables);
 					if (thisNumReferences > 0)
 					{
 						totalNumReferences += thisNumReferences;
-						ACDebug.Log ("Found " + thisNumReferences + " references to component variable '" + componentVariable.label + "' in Action #" + actionList.actions.IndexOf (action) + " of ActionList '" + actionList.name + "'", actionList);
+						ACDebug.Log ("Found " + thisNumReferences + " reference(s) to Component variable '" + componentVariable.label + "' in " + currentObj.name + ActionList.logSuffix, currentObj);
+					}
+				}
+			}
+
+			// Search assets
+			if (AdvGame.GetReferences().speechManager)
+			{
+				ActionListAsset[] allActionListAssets = AdvGame.GetReferences ().speechManager.GetAllActionListAssets ();
+				foreach (ActionListAsset actionListAsset in allActionListAssets)
+				{
+					ActionList.logSuffix = string.Empty;
+					int thisNumReferences = actionListAsset.GetNumVariableReferences (VariableLocation.Component, componentVariable.id, _variables);
+					if (thisNumReferences > 0)
+					{
+						ACDebug.Log ("Found " + thisNumReferences + " reference(s) to Component variable '" + componentVariable.label + "' in ActionList asset " + actionListAsset.name + ActionList.logSuffix, actionListAsset);
+						totalNumReferences += thisNumReferences;
 					}
 				}
 			}
@@ -502,7 +530,7 @@ namespace AC
 
 			if (EditorUtility.DisplayDialog ("Search '" + globalVariable.label + "' references?", "The Editor will search assets, and active scenes listed in the Build Settings, for references to the variable.  The current scene will need to be saved and listed to be included in the search process. Continue?", "OK", "Cancel"))
 			{
-				if (UnityVersionHandler.SaveSceneIfUserWants ())
+				if (UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
 				{
 					int totalNumReferences = 0;
 
@@ -514,28 +542,20 @@ namespace AC
 					{
 						UnityVersionHandler.OpenScene (sceneFile);
 
-						ActionList[] actionLists = FindObjectsOfType <ActionList>();
-						foreach (ActionList actionList in actionLists)
+						MonoBehaviour[] sceneObjects = FindObjectsOfType<MonoBehaviour> ();
+						for (int i = 0; i < sceneObjects.Length; i++)
 						{
-							foreach (Action action in actionList.actions)
+							MonoBehaviour currentObj = sceneObjects[i];
+							IVariableReferencer currentComponent = currentObj as IVariableReferencer;
+							if (currentComponent != null)
 							{
-								int thisNumReferences = action.GetVariableReferences (actionList.parameters, VariableLocation.Global, globalVariable.id);
+								ActionList.logSuffix = string.Empty;
+								int thisNumReferences = currentComponent.GetNumVariableReferences (VariableLocation.Global, globalVariable.id);
 								if (thisNumReferences > 0)
 								{
 									totalNumReferences += thisNumReferences;
-									ACDebug.Log ("Found " + thisNumReferences + " references to global variable '" + globalVariable.label + "' in Action #" + actionList.actions.IndexOf (action) + " of ActionList '" + actionList.name + "' in scene '" + sceneFile + "'", actionList);
+									ACDebug.Log ("Found " + thisNumReferences + " reference(s) to Global variable '" + globalVariable.label + "' in '" + currentComponent.GetType () + "' in scene '" + sceneFile + "'" + ActionList.logSuffix, currentObj);
 								}
-							}
-						}
-
-						Conversation[] conversations = FindObjectsOfType <Conversation>();
-						foreach (Conversation conversation in conversations)
-						{
-							int thisNumReferences = conversation.GetVariableReferences (VariableLocation.Global, globalVariable.id);
-							if (thisNumReferences > 0)
-							{
-								totalNumReferences += thisNumReferences;
-								ACDebug.Log ("Found " + thisNumReferences + " references to global variable '" + globalVariable.label + "' in Conversation '" + conversation.name + "' in scene '" + sceneFile + "'", conversation);
 							}
 						}
 					}
@@ -548,20 +568,18 @@ namespace AC
 						ActionListAsset[] allActionListAssets = AdvGame.GetReferences ().speechManager.GetAllActionListAssets ();
 						foreach (ActionListAsset actionListAsset in allActionListAssets)
 						{
-							foreach (Action action in actionListAsset.actions)
+							ActionList.logSuffix = string.Empty;
+							int thisNumReferences = actionListAsset.GetNumVariableReferences (VariableLocation.Global, globalVariable.id);
+							if (thisNumReferences > 0)
 							{
-								int thisNumReferences = action.GetVariableReferences (actionListAsset.parameters, VariableLocation.Global, globalVariable.id);
-								if (thisNumReferences > 0)
-								{
-									totalNumReferences += thisNumReferences;
-									ACDebug.Log ("Found " + thisNumReferences + " references to global variable '" + globalVariable.label + "' in Action #" + actionListAsset.actions.IndexOf (action) + " of ActionList asset '" + actionListAsset.name + "'", actionListAsset);
-								}
+								ACDebug.Log ("Found " + thisNumReferences + " reference(s) to Global variable '" + globalVariable.label + "' in ActionList asset '" + actionListAsset.name + ActionList.logSuffix, actionListAsset);
+								totalNumReferences += thisNumReferences;
 							}
 						}
 					}
 
 					// Search menus
-					if (AdvGame.GetReferences ().menuManager != null && AdvGame.GetReferences ().menuManager.menus != null)
+					if (AdvGame.GetReferences ().menuManager && AdvGame.GetReferences ().menuManager.menus != null)
 					{
 						foreach (Menu menu in AdvGame.GetReferences ().menuManager.menus)
 						{
@@ -571,13 +589,110 @@ namespace AC
 								if (thisNumReferences > 0)
 								{
 									totalNumReferences += thisNumReferences;
-									ACDebug.Log ("Found " + thisNumReferences + " references to global variable '" + globalVariable.label + "' in Menu '" + menu.title + "'");
+									ACDebug.Log ("Found " + thisNumReferences + " references to Global variable '" + globalVariable.label + "' in Menu '" + menu.title + "'");
 								}
 							}
 						}
 					}
 
 					EditorUtility.DisplayDialog ("Variable search complete", "In total, found " + totalNumReferences + " references to global variable '" + globalVariable.label + "' in the project.  Please see the Console window for full details.", "OK");
+				}
+			}
+		}
+
+
+		public void ChangeGlobalVariableID (int oldID, int newID)
+		{
+			GVar globalVariable = GetVariable (oldID);
+			if (globalVariable == null || oldID == newID) return;
+
+			if (GetVariable (newID) != null)
+			{
+				ACDebug.LogWarning ("Cannot update Global variable " + globalVariable.label + " to ID " + newID + " because another Global variable uses the same ID");
+				return;
+			}
+
+			if (EditorUtility.DisplayDialog ("Update '" + globalVariable.label + "' references?", "The Editor will update assets, and active scenes listed in the Build Settings, that reference the variable.  It is recommended to back up the project first. Continue?", "OK", "Cancel"))
+			{
+				if (UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
+				{
+					int totalNumReferences = 0;
+
+					// Search scenes
+					string originalScene = UnityVersionHandler.GetCurrentSceneFilepath ();
+					string[] sceneFiles = AdvGame.GetSceneFiles ();
+
+					foreach (string sceneFile in sceneFiles)
+					{
+						UnityVersionHandler.OpenScene (sceneFile);
+
+						bool modifiedScene = false;
+						MonoBehaviour[] sceneObjects = FindObjectsOfType<MonoBehaviour> ();
+						for (int i = 0; i < sceneObjects.Length; i++)
+						{
+							MonoBehaviour currentObj = sceneObjects[i];
+							IVariableReferencer currentComponent = currentObj as IVariableReferencer;
+							if (currentComponent != null)
+							{
+								ActionList.logSuffix = string.Empty;
+								int thisNumReferences = currentComponent.UpdateVariableReferences (VariableLocation.Global, globalVariable.id, newID);
+								if (thisNumReferences > 0)
+								{
+									totalNumReferences += thisNumReferences;
+									modifiedScene = true;
+									ACDebug.Log ("Updated " + thisNumReferences + " reference(s) to Global variable '" + globalVariable.label + "' in '" + currentComponent.GetType () + "' in scene '" + sceneFile + "'" + ActionList.logSuffix, currentObj);
+
+									EditorUtility.SetDirty (currentObj);
+								}
+							}
+						}
+
+						if (modifiedScene)
+						{
+							UnityVersionHandler.SaveScene ();
+						}
+					}
+
+					UnityVersionHandler.OpenScene (originalScene);
+
+					// Search assets
+					if (AdvGame.GetReferences ().speechManager != null)
+					{
+						ActionListAsset[] allActionListAssets = AdvGame.GetReferences ().speechManager.GetAllActionListAssets ();
+						foreach (ActionListAsset actionListAsset in allActionListAssets)
+						{
+							ActionList.logSuffix = string.Empty;
+							int thisNumReferences = actionListAsset.UpdateVariableReferences (VariableLocation.Global, globalVariable.id, newID);
+							if (thisNumReferences > 0)
+							{
+								ACDebug.Log ("Updated " + thisNumReferences + " reference(s) to Global variable '" + globalVariable.label + "' in ActionList asset '" + actionListAsset.name + "'" + ActionList.logSuffix, actionListAsset);
+								totalNumReferences += thisNumReferences;
+							}
+							EditorUtility.SetDirty (actionListAsset);
+						}
+					}
+
+					// Search menus
+					if (AdvGame.GetReferences ().menuManager && AdvGame.GetReferences ().menuManager.menus != null)
+					{
+						foreach (Menu menu in AdvGame.GetReferences ().menuManager.menus)
+						{
+							if (menu != null)
+							{
+								int thisNumReferences = menu.UpdateVariableReferences (globalVariable.id, newID);
+								if (thisNumReferences > 0)
+								{
+									totalNumReferences += thisNumReferences;
+									ACDebug.Log ("Updated " + thisNumReferences + " references to Global variable '" + globalVariable.label + "' in Menu '" + menu.title + "'");
+									EditorUtility.SetDirty (AdvGame.GetReferences ().menuManager);
+								}
+							}
+						}
+					}
+
+					globalVariable.id = newID;
+					EditorUtility.SetDirty (this);
+					EditorUtility.DisplayDialog ("Variable update complete", "In total, updated " + totalNumReferences + " references to Global variable '" + globalVariable.label + "' in the project.  Please see the Console window for full details.", "OK");
 				}
 			}
 		}
@@ -595,7 +710,7 @@ namespace AC
 
 			if (EditorUtility.DisplayDialog ("Convert " + globalVariable.label + " to Local Variable?", "This will update all Actions and Managers that refer to this Variable.  This is a non-reversible process, and you should back up your project first, and make sure the current scene is added to your Build Settings. Continue?", "OK", "Cancel"))
 			{
-				if (UnityVersionHandler.SaveSceneIfUserWants ())
+				if (UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
 				{
 					// Create new Local
 					KickStarter.variablesManager.selectedLocalVar = DeactivateAllVars (KickStarter.localVariables.localVars, KickStarter.variablesManager.selectedLocalVar);
@@ -767,7 +882,6 @@ namespace AC
 				_selectedVar = varToActivate;
 				EditorGUIUtility.editingTextField = false;
 			}
-
 			return _selectedVar;
 		}
 		
@@ -841,7 +955,7 @@ namespace AC
 			{
 				_selectedVar = ShowVarList (_selectedVar, _vars, _location, _varFilter, _filter, _typeFilter, allowEditing, _variables);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			return _selectedVar;
 		}
 
@@ -859,7 +973,7 @@ namespace AC
 			}
 
 			Vector2 _scrollPos = (_variables != null) ? _variables.scrollPos : KickStarter.variablesManager.scrollPos;
-			_scrollPos = EditorGUILayout.BeginScrollView (_scrollPos, GUILayout.Height (Mathf.Min (numInFilter * 21, 235f)+5));
+			_scrollPos = EditorGUILayout.BeginScrollView (_scrollPos, GUILayout.Height (Mathf.Min (numInFilter * 22, ACEditorPrefs.MenuItemsBeforeScroll * 22) + 9));
 			if (numInFilter > 0)
 			{
 				foreach (GVar _var in _vars)
@@ -867,32 +981,29 @@ namespace AC
 					if (_var.showInFilter)
 					{
 						EditorGUILayout.BeginHorizontal ();
-						
+
 						string buttonLabel = _var.id + ": ";
-						if (buttonLabel == "")
+						if (string.IsNullOrEmpty (_var.label))
 						{
-							_var.label += "(Untitled)";	
+							buttonLabel += "(Untitled)";	
 						}
 						else
 						{
-							buttonLabel += _var.label;
-
-							if (buttonLabel.Length > 30)
-							{
-								buttonLabel = buttonLabel.Substring (0, 30);
-							}
+							buttonLabel += (_var.label.Length > 30) ? _var.label.Substring (0, 30) : _var.label;
 						}
 
 						string varValue = _var.GetValue ();
 						varValue = varValue.Replace("\r\n", "");
 						varValue = varValue.Replace("\n", "");
 						varValue = varValue.Replace("\r", "");
-						if (varValue.Length > 20)
+
+						if (_var.type == VariableType.String || _var.type == VariableType.PopUp)
 						{
-							varValue = varValue.Substring (0, 20);
+							if (varValue.Length > 20) varValue = varValue.Substring (0, 20);
+							varValue = "'" + varValue + "'";
 						}
 
-						buttonLabel += " (" + _var.type.ToString () + " - " + varValue + ")";
+						buttonLabel += " - " + varValue;
 
 						if (GUILayout.Toggle (_selectedVar == _var, buttonLabel, "Button"))
 						{
@@ -916,7 +1027,10 @@ namespace AC
 
 				if (_varFilter == VarFilter.Type || !string.IsNullOrEmpty (_filter))
 				{
-					EditorGUILayout.HelpBox ("Filtering " + numInFilter + " out of " + _vars.Count + " variables.", MessageType.Info);
+					if (numInFilter != _vars.Count)
+					{
+						EditorGUILayout.HelpBox ("Filtering " + numInFilter + " out of " + _vars.Count + " variables.", MessageType.Info);
+					}
 				}
 			}
 			else if (_vars.Count > 0)
@@ -939,7 +1053,10 @@ namespace AC
 
 			if (allowEditing)
 			{
-				EditorGUILayout.Space ();
+				if (_vars != null && _vars.Count > 0)
+				{
+					EditorGUILayout.Space ();
+				}
 				EditorGUILayout.BeginHorizontal ();
 				if (GUILayout.Button ("Create new " + _location + " variable"))
 				{
@@ -963,12 +1080,9 @@ namespace AC
 					_selectedVar = ActivateVar (_vars [_vars.Count-1], _selectedVar);
 				}
 
-				if (_vars != null && _vars.Count > 0)
+				if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
 				{
-					if (GUILayout.Button ("", CustomStyles.IconCog))
-					{
-						ExportSideMenu (_location, _variables);
-					}
+					ExportSideMenu (_location, _variables, (_vars.Count > 1));
 				}
 				EditorGUILayout.EndHorizontal ();
 			}
@@ -980,30 +1094,82 @@ namespace AC
 		}
 
 
-		private static void ExportSideMenu (VariableLocation _location, Variables _variables)
+		private static void ExportSideMenu (VariableLocation _location, Variables _variables, bool multiVars)
 		{
 			sideVarLocation = _location;
 			sideVarComponent = _variables;
 
 			GenericMenu menu = new GenericMenu ();
 
-			if (_location == VariableLocation.Local)
+			menu.AddItem (new GUIContent ("Bulk create.."), false, ExportCallback, "BulkCreate");
+
+			if (multiVars)
 			{
-				menu.AddItem (new GUIContent ("Export Local variables (all scenes)..."), false, ExportCallback, "Export");
-				menu.AddItem (new GUIContent ("Export Local variables (this scene)..."), false, ExportCallback, "ExportSingleLocal");
+				menu.AddSeparator (string.Empty);
+				menu.AddItem (new GUIContent ("Delete all"), false, ExportCallback, "DeleteAll");
+
+				menu.AddSeparator (string.Empty);
+
+				if (_location == VariableLocation.Local)
+				{
+					menu.AddItem (new GUIContent ("Export Local variables (all scenes)..."), false, ExportCallback, "Export");
+					menu.AddItem (new GUIContent ("Export Local variables (this scene)..."), false, ExportCallback, "ExportSingleLocal");
+				}
+				else
+				{
+					menu.AddItem (new GUIContent ("Export " + _location.ToString () + " variables..."), false, ExportCallback, "Export");
+				}
+
+				menu.AddSeparator (string.Empty);
+				menu.AddItem (new GUIContent ("Sort/By ID"), false, ExportCallback, "SortByID");
+				menu.AddItem (new GUIContent ("Sort/By name"), false, ExportCallback, "SortByName");
 			}
-			else
-			{
-				menu.AddItem (new GUIContent ("Export " + _location.ToString () + " variables..."), false, ExportCallback, "Export");
-			}
+
 			menu.ShowAsContext ();
 		}
 
 
 		private static void ExportCallback (object obj)
 		{
+			List<GVar> _vars = new List<GVar> ();
+			Object objectToRecord = null;
+
+			switch (sideVarLocation)
+			{
+				case VariableLocation.Global:
+					_vars = KickStarter.variablesManager.vars;
+					KickStarter.variablesManager.filter = string.Empty;
+					objectToRecord = KickStarter.variablesManager;
+					break;
+
+				case VariableLocation.Local:
+					if (KickStarter.localVariables)
+					{
+						_vars = KickStarter.localVariables.localVars;
+						KickStarter.variablesManager.filter = string.Empty;
+						objectToRecord = KickStarter.localVariables;
+					}
+					break;
+
+				case VariableLocation.Component:
+					if (sideVarComponent)
+					{
+						_vars = sideVarComponent.vars;
+						sideVarComponent.filter = string.Empty;
+						objectToRecord = sideVarComponent;
+					}
+					break;
+
+				default:
+					break;
+			}
+
 			switch (obj.ToString ())
 			{
+				case "BulkCreate":
+					BulkCreateVarsWindow.Init (sideVarLocation, sideVarComponent);
+					break;
+
 				case "Import":
 					//ImportItems ();
 					break;
@@ -1014,6 +1180,45 @@ namespace AC
 
 				case "Export":
 					VarExportWizardWindow.Init (sideVarLocation, true, sideVarComponent);
+					break;
+
+				case "DeleteAll":
+					DeleteAll (sideVarLocation, sideVarComponent);
+					break;
+
+				case "SortByID":
+					Undo.RecordObject (objectToRecord, "Sort variables by ID");
+					_vars.Sort (delegate (GVar v1, GVar v2) { return v1.id.CompareTo (v2.id); });
+					break;
+
+				case "SortByName":
+					Undo.RecordObject (objectToRecord, "Sort variables by name");
+					_vars.Sort (delegate (GVar v1, GVar v2) { return v1.label.CompareTo (v2.label); });
+					break;
+			}
+		}
+
+
+		private static void DeleteAll (VariableLocation _location, Variables _variables)
+		{
+			switch (_location)
+			{
+				case VariableLocation.Global:
+					if (KickStarter.variablesManager == null || KickStarter.variablesManager.vars == null) return;
+					Undo.RecordObject (KickStarter.variablesManager, "Delete all " + _location + " variables");
+					KickStarter.variablesManager.vars.Clear ();
+					break;
+
+				case VariableLocation.Local:
+					if (KickStarter.localVariables == null || KickStarter.localVariables.localVars == null) return;
+					Undo.RecordObject (KickStarter.localVariables, "Delete all " + _location + " variables");
+					KickStarter.localVariables.localVars.Clear ();
+					break;
+
+				case VariableLocation.Component:
+					if (_variables == null || _variables.vars == null) return;
+					Undo.RecordObject (_variables, "Delete all " + _location + " variables");
+					_variables.vars.Clear ();
 					break;
 			}
 		}
@@ -1027,271 +1232,30 @@ namespace AC
 			{
 				ShowVarGUI (selectedVar, location, canEdit, _varPresets, apiPrefix);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
 		public static void ShowVarGUI (GVar selectedVar, VariableLocation location, bool canEdit, List<VarPreset> _varPresets = null, string apiPrefix = "", Variables _variables = null)
 		{
-			string labelPrefix = (canEdit) ? "Initial value:" : "Current value:";
-			string helpText = (canEdit) ? "Its initial value" : "Its current value";
-
-			if (!canEdit && selectedVar.HasTranslations () && Options.GetLanguage () > 0)
-			{
-				labelPrefix = "Original language value:";
-			}
-
-			if (canEdit)
-			{
-				selectedVar.label = CustomGUILayout.TextField ("Label:", selectedVar.label, apiPrefix + ".label", "Its editor name");
-				selectedVar.type = (VariableType) CustomGUILayout.EnumPopup ("Type:", selectedVar.type, apiPrefix + ".type", "Its variable type");
-			}
-			else
-			{
-				EditorGUILayout.LabelField ("Label: " + selectedVar.label);
-				EditorGUILayout.LabelField ("Type: " + selectedVar.type.ToString ());
-			}
-
-			switch (selectedVar.type)
-			{
-				case VariableType.Boolean:
-					if (selectedVar.val != 1)
-					{
-						selectedVar.val = 0;
-					}
-					selectedVar.val = CustomGUILayout.Popup (labelPrefix, selectedVar.val, boolType, apiPrefix + ".val", helpText);
-					break;
-
-				case VariableType.Float:
-					selectedVar.floatVal = CustomGUILayout.FloatField (labelPrefix, selectedVar.floatVal, apiPrefix + ".floatVal", helpText);
-					break;
-
-				case VariableType.Integer:
-					selectedVar.val = CustomGUILayout.IntField (labelPrefix, selectedVar.val, apiPrefix + ".val", helpText);
-					break;
-
-				case VariableType.PopUp:
-					ShowPopUpLabelsGUI (selectedVar, canEdit);
-
-					if (selectedVar.GetNumPopUpValues () > 0)
-					{
-						string[] popUpLabels = selectedVar.GenerateEditorPopUpLabels ();
-						selectedVar.val = CustomGUILayout.Popup (labelPrefix, selectedVar.val, popUpLabels, apiPrefix + ".val", helpText);
-					}
-					else
-					{
-						selectedVar.val = 0;
-					}
-
-					if (selectedVar.popUpID > 0)
-					{
-						if (Application.isPlaying && selectedVar.canTranslate)
-						{
-							EditorGUILayout.LabelField ("Values can be translated");
-						}
-					}
-					else
-					{
-						if (canEdit)
-						{
-							selectedVar.canTranslate = CustomGUILayout.Toggle ("Values can be translated?", selectedVar.canTranslate, apiPrefix + ".canTranslate", "If True, the variable's value can be translated");
-						}
-						else if (selectedVar.canTranslate)
-						{
-							EditorGUILayout.LabelField ("Values can be translated");
-						}
-					}
-					break;
-
-				case VariableType.String:
-					EditorGUILayout.BeginHorizontal ();
-					CustomGUILayout.LabelField (labelPrefix, GUILayout.Width (140f), apiPrefix + ".textVal");
-					EditorStyles.textField.wordWrap = true;
-					selectedVar.textVal = CustomGUILayout.TextArea (selectedVar.textVal, GUILayout.MaxWidth (800f), apiPrefix + ".textVal");
-					EditorGUILayout.EndHorizontal ();
-
-					if (canEdit)
-					{
-						selectedVar.canTranslate = CustomGUILayout.Toggle ("Values can be translated?", selectedVar.canTranslate, apiPrefix + ".canTranslate", "If True, the variable's value can be translated");
-					}
-					else if (selectedVar.canTranslate)
-					{
-						EditorGUILayout.LabelField ("Values can be translated");
-					}
-					break;
-
-				case VariableType.Vector3:
-					selectedVar.vector3Val = CustomGUILayout.Vector3Field (labelPrefix, selectedVar.vector3Val, apiPrefix + ".vector3Val", helpText);
-					break;
-			}
-
-			switch (location)
-			{
-				case VariableLocation.Global:
-					CustomGUILayout.TokenLabel ("[var:" + selectedVar.id.ToString () + "]");
-					break;
-
-				case VariableLocation.Local:
-					CustomGUILayout.TokenLabel ("[localvar:" + selectedVar.id.ToString () + "]");
-					break;
-
-				case VariableLocation.Component:
-					if (_variables != null)
-					{
-						ConstantID _constantID = _variables.GetComponent <ConstantID>();
-						if (_constantID != null && _constantID.constantID != 0)
-						{
-							CustomGUILayout.TokenLabel ("[compvar:" + _constantID.constantID.ToString () + ":" + selectedVar.id.ToString () + "]");
-						}
-					}
-					break;
-			}
-
-			if (_varPresets != null)
-			{
-				EditorGUILayout.Space ();
-				foreach (VarPreset _varPreset in _varPresets)
-				{
-					// Local
-					string apiPrefix2 = (location == VariableLocation.Local) ? 
-										"AC.KickStarter.localVariables.GetPreset (" + _varPreset.ID + ").GetPresetValue (" + selectedVar.id + ")" :
-										"AC.KickStarter.runtimeVariables.GetPreset (" + _varPreset.ID + ").GetPresetValue (" + selectedVar.id + ")";
-
-					_varPreset.UpdateCollection (selectedVar);
-
-					string label = "'" +
-									(!string.IsNullOrEmpty (_varPreset.label) ? _varPreset.label : ("Preset #" + _varPreset.ID.ToString ())) +
-									"' value:";
-
-					PresetValue presetValue = _varPreset.GetPresetValue (selectedVar);
-					switch (selectedVar.type)
-					{
-						case VariableType.Boolean:
-							presetValue.val = CustomGUILayout.Popup (label, presetValue.val, boolType, apiPrefix2 + ".val");
-							break;
-
-						case VariableType.Float:
-							presetValue.floatVal = CustomGUILayout.FloatField (label, presetValue.floatVal, apiPrefix2 + ".floatVal");
-							break;
-
-						case VariableType.Integer:
-							presetValue.val = CustomGUILayout.IntField (label, presetValue.val, apiPrefix2 + ".val");
-							break;
-
-						case VariableType.PopUp:
-							presetValue.val = CustomGUILayout.Popup (label, presetValue.val, selectedVar.popUps, apiPrefix2 + ".val");
-							break;
-
-						case VariableType.String:
-							presetValue.textVal = CustomGUILayout.TextField (label, presetValue.textVal, apiPrefix2 + ".textVal");
-							break;
-
-						case VariableType.Vector3:
-							presetValue.vector3Val = CustomGUILayout.Vector3Field (label, presetValue.vector3Val, apiPrefix2 + ".vector3Val");
-							break;
-					}
-				}
-			}
-
-			EditorGUILayout.Space ();
-			if (canEdit)
-			{
-				switch (location)
-				{
-					case VariableLocation.Local:
-						selectedVar.link = VarLink.None;
-						break;
-
-					case VariableLocation.Global:
-					case VariableLocation.Component:
-						selectedVar.link = (VarLink) CustomGUILayout.EnumPopup ("Link to:", selectedVar.link, apiPrefix + ".link", "What it links to");
-						if (selectedVar.link == VarLink.PlaymakerVariable)
-						{
-							if (PlayMakerIntegration.IsDefinePresent ())
-							{
-								if (location == VariableLocation.Global)
-								{
-									selectedVar.pmVar = CustomGUILayout.TextField ("Playmaker Global Variable:", selectedVar.pmVar, apiPrefix + ".pmVar", "The name of the Playmaker variable to link to.");
-								}
-								else if (location == VariableLocation.Component)
-								{
-									if (_variables != null && PlayMakerIntegration.HasFSM (_variables.gameObject))
-									{
-										selectedVar.pmVar = CustomGUILayout.TextField ("Playmaker Local Variable:", selectedVar.pmVar, apiPrefix + ".pmVar", "The name of the Playmaker variable to link to. It is assumed to be placed on the same GameObject as this Variables component.");
-									}
-									else
-									{
-										EditorGUILayout.HelpBox ("A Playmaker FSM component must be present on the Variables GameObject.", MessageType.Info);
-									}
-								}
-
-								if (!string.IsNullOrEmpty (selectedVar.pmVar))
-								{
-									selectedVar.updateLinkOnStart = CustomGUILayout.Toggle ("Use PM for initial value?", selectedVar.updateLinkOnStart, apiPrefix + ".updateLinkOnStart", "If True, then Playmaker will be referred to for the initial value");
-								}
-							}
-							else
-							{
-								EditorGUILayout.HelpBox ("The 'PlayMakerIsPresent' Scripting Define Symbol must be listed in the\nPlayer Settings. Please set it from Edit -> Project Settings -> Player", MessageType.Warning);
-							}
-						}
-						else if (selectedVar.link == VarLink.OptionsData)
-						{
-							if (location == VariableLocation.Global)
-							{
-								EditorGUILayout.HelpBox ("This Variable will be stored in PlayerPrefs, and not in saved game files.", MessageType.Info);
-							}
-							else
-							{
-								EditorGUILayout.HelpBox ("Component variables cannot be linked to Options Data - use Global variables instead.", MessageType.Warning);
-							}
-						}
-						else if (selectedVar.link == VarLink.CustomScript)
-						{
-							selectedVar.updateLinkOnStart = CustomGUILayout.Toggle ("Script sets initial value?", selectedVar.updateLinkOnStart, apiPrefix + ".updateLinkOnStart", "If True, then a custom script will be referred to for the initial value");
-							EditorGUILayout.HelpBox ("See the Manual's 'Global variable linking' chapter for details on how to synchronise values.", MessageType.Info);
-						}
-						break;
-				}
-			}
-			else
-			{
-				if (selectedVar.link != VarLink.None)
-				{
-					EditorGUILayout.LabelField ("Links to: " + selectedVar.link.ToString ());
-					if (selectedVar.link == VarLink.PlaymakerVariable && !string.IsNullOrEmpty (selectedVar.pmVar))
-					{
-						EditorGUILayout.LabelField ("Linked PM variable: " + selectedVar.pmVar);
-					}
-					if (selectedVar.link == VarLink.PlaymakerVariable || selectedVar.link == VarLink.CustomScript)
-					{
-						if (selectedVar.updateLinkOnStart)
-						{
-							EditorGUILayout.LabelField ("Script sets initial value");
-						}
-					}
-				}
-			}
-
-			if (canEdit)
-			{
-				EditorGUILayout.BeginHorizontal ();
-				EditorGUILayout.LabelField (new GUIContent ("Internal description:", "An Editor-only description to aid designers"), GUILayout.MaxWidth (146f));
-				selectedVar.description = EditorGUILayout.TextArea (selectedVar.description);
-				EditorGUILayout.EndHorizontal ();
-			}
-			else
-			{
-				if (!string.IsNullOrEmpty (selectedVar.description))
-				{
-					EditorGUILayout.LabelField ("Internal description: " + selectedVar.description);
-				}
-			}
+			selectedVar.ShowGUI (location, canEdit, _varPresets, apiPrefix, _variables);
 		}
 
 
 		public static void ShowPopUpLabelsGUI (GVar variable, bool canEdit)
 		{
+			ShowPopUpLabelsGUI (variable, canEdit, null);
+		}
+
+
+		public static void ShowPopUpLabelsGUI (GVar variable, bool canEdit, Object objectToRecord)
+		{
+			if (KickStarter.variablesManager == null)
+			{
+				EditorGUILayout.HelpBox ("A Variables Manager must be assigned in the AC Game Editor window.", MessageType.Warning);
+				return;
+			}
+
 			if (canEdit)
 			{
 				List<string> popUpPresetLabels = new List<string>();
@@ -1315,7 +1279,7 @@ namespace AC
 				else if (j == popUpPresetLabels.Count-1)
 				{
 					// Create new
-					if (popUpPresetLabels.Count > 50)
+					if (popUpPresetLabels.Count > PopUpLabelData.MaxPresets)
 					{
 						ACDebug.LogWarning ("The maximum number of popup presets has been reached!");
 						return;
@@ -1332,6 +1296,8 @@ namespace AC
 					variable.popUpID = newData.ID;
 					variable.popUps = new string[0];
 					variable.popUpsLineID = -1;
+
+					EditorUtility.SetDirty (KickStarter.variablesManager);
 				}
 				else
 				{
@@ -1350,16 +1316,16 @@ namespace AC
 			PopUpLabelData presetData = KickStarter.variablesManager.GetPopUpLabelData (variable.popUpID);
 			if (presetData != null)
 			{
-				presetData.ShowGUI (canEdit);
+				presetData.ShowGUI (canEdit, KickStarter.variablesManager);
 			}
 			else
 			{
-				variable.popUps = PopupsGUI (variable.popUps, canEdit);
+				variable.popUps = PopupsGUI (variable.popUps, canEdit, objectToRecord);
 			}
 		}
 
 
-		public static string[] PopupsGUI (string[] popUps, bool canEdit = true)
+		public static string[] PopupsGUI (string[] popUps, bool canEdit = true, Object objectToRecord = null)
 		{
 			List<string> popUpList = new List<string>();
 			if (popUps != null && popUps.Length > 0)
@@ -1379,6 +1345,8 @@ namespace AC
 
 					if (GUILayout.Button ("-", GUILayout.MaxWidth (20f)))
 					{
+						if (objectToRecord != null) Undo.RecordObject (objectToRecord, "Delete PopUp value");
+						ACDebug.LogWarning ("Take caution when deleting a PopUp Variable's values, as this may affect the behaviour of Actions that reference it.  References made to this Variable can be found via the 'Find references' option in the cog menu beside it's name.", objectToRecord);
 						popUpList.RemoveAt (i);
 						EditorGUIUtility.editingTextField = false;
 						i=-1;
@@ -1389,6 +1357,7 @@ namespace AC
 
 				if (GUILayout.Button ("Add new value"))
 				{
+					if (objectToRecord != null) Undo.RecordObject (objectToRecord, "Add PopUp value");
 					popUpList.Add (string.Empty);
 				}
 			}
@@ -1453,14 +1422,7 @@ namespace AC
 				{
 					foreach (VarPreset _varPreset in _varPresets)
 					{
-						if (_varPreset.label != "")
-						{
-							labelList.Add (i.ToString () + ": " + _varPreset.label);
-						}
-						else
-						{
-							labelList.Add (i.ToString () + ": (Untitled)");
-						}
+						labelList.Add (_varPreset.ID.ToString () + ": " + ((!string.IsNullOrEmpty (_varPreset.label)) ? _varPreset.label : "(Untitled)"));
 						
 						if (_varPreset.ID == chosenPresetID)
 						{
@@ -1471,7 +1433,7 @@ namespace AC
 					
 					if (presetNumber == -1)
 					{
-						chosenPresetID = 0;
+						chosenPresetID = _varPresets[0].ID;
 					}
 					else if (presetNumber >= _varPresets.Count)
 					{
@@ -1498,10 +1460,9 @@ namespace AC
 					}
 
 					EditorGUILayout.BeginHorizontal ();
-					if (!Application.isPlaying)
-					{
-						GUI.enabled = false;
-					}
+					
+					GUI.enabled = Application.isPlaying;
+
 					if (GUILayout.Button ("Bulk-assign"))
 					{
 						if (presetNumber >= 0 && _varPresets.Count > presetNumber)
@@ -1526,11 +1487,11 @@ namespace AC
 					}
 
 					GUI.enabled = !Application.isPlaying;
+
 					if (GUILayout.Button ("Delete"))
 					{
 						_varPresets.RemoveAt (presetNumber);
-						presetNumber = 0;
-						chosenPresetID = 0;
+						chosenPresetID = -1;
 					}
 
 					GUI.enabled = true;
@@ -1549,7 +1510,7 @@ namespace AC
 			}
 			if (!Application.isPlaying || _varPresets.Count > 0)
 			{
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			EditorGUILayout.Space ();

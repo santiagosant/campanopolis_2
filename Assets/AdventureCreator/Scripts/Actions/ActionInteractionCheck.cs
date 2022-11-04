@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionInteraction.cs"
  * 
@@ -10,6 +10,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -30,55 +31,55 @@ namespace AC
 		
 		public InteractionType interactionType;
 		public int number = 0;
-		
-		
-		public ActionInteractionCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Hotspot;
-			title = "Check interaction enabled";
-			description = "Checks the enabled state of individual Interactions on a Hotspot.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+
+		public override ActionCategory Category { get { return ActionCategory.Hotspot; }}
+		public override string Title { get { return "Check interaction enabled"; }}
+		public override string Description { get { return "Checks the enabled state of individual Interactions on a Hotspot."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeHotspot = AssignFile <Hotspot> (parameters, parameterID, constantID, hotspot);
 		}
 		
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (runtimeHotspot == null)
 			{
 				return false;
 			}
 			
-			if (interactionType == InteractionType.Use)
+			switch (interactionType)
 			{
-				if (runtimeHotspot.useButtons.Count > number)
-				{
-					return !runtimeHotspot.useButtons [number].isDisabled;
-				}
-				else
-				{
-					ACDebug.LogWarning ("Cannot check Hotspot " + runtimeHotspot.gameObject.name + "'s Use button " + number.ToString () + " because it doesn't exist!", runtimeHotspot);
-				}
-			}
-			else if (interactionType == InteractionType.Examine)
-			{
-				return !runtimeHotspot.lookButton.isDisabled;
-			}
-			else if (interactionType == InteractionType.Inventory)
-			{
-				if (runtimeHotspot.invButtons.Count > number)
-				{
-					return !runtimeHotspot.invButtons [number].isDisabled;
-				}
-				else
-				{
-					ACDebug.LogWarning ("Cannot check Hotspot " + runtimeHotspot.gameObject.name + "'s Inventory button " + number.ToString () + " because it doesn't exist!", runtimeHotspot);
-				}
+				case InteractionType.Use:
+					if (runtimeHotspot.useButtons.Count > number)
+					{
+						return !runtimeHotspot.useButtons[number].isDisabled;
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot check Hotspot " + runtimeHotspot.gameObject.name + "'s Use button " + number.ToString () + " because it doesn't exist!", runtimeHotspot);
+					}
+					break;
+
+				case InteractionType.Examine:
+					return !runtimeHotspot.lookButton.isDisabled;
+
+				case InteractionType.Inventory:
+					if (runtimeHotspot.invButtons.Count > number)
+					{
+						return !runtimeHotspot.invButtons[number].isDisabled;
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot check Hotspot " + runtimeHotspot.gameObject.name + "'s Inventory button " + number.ToString () + " because it doesn't exist!", runtimeHotspot);
+					}
+					break;
+
+				default:
+					break;
 			}
 			
 			return false;
@@ -87,7 +88,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (AdvGame.GetReferences () && AdvGame.GetReferences ().settingsManager)
 			{
@@ -163,7 +164,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID <Hotspot> (hotspot, constantID, parameterID);
 		}
@@ -176,6 +177,17 @@ namespace AC
 				return hotspot.name + " - " + interactionType;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (hotspot && hotspot.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 		
 		#endif
@@ -190,7 +202,7 @@ namespace AC
 		 */
 		public static ActionInteractionCheck CreateNew (Hotspot hotspotToCheck, InteractionType interactionType, int index)
 		{
-			ActionInteractionCheck newAction = (ActionInteractionCheck) CreateInstance <ActionInteractionCheck>();
+			ActionInteractionCheck newAction = CreateNew<ActionInteractionCheck> ();
 			newAction.hotspot = hotspotToCheck;
 			newAction.interactionType = interactionType;
 			newAction.number = index;

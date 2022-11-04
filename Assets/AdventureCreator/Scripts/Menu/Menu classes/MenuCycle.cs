@@ -1,7 +1,8 @@
+
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuCycle.cs"
  * 
@@ -30,15 +31,16 @@ namespace AC
 		/** The Unity UI Button this is linked to (Unity UI Menus only) */
 		public UnityEngine.UI.Button uiButton;
 
-		#if UNITY_5_3_OR_NEWER
 		/** The Unity UI Dropdown this is linked to (Unity UI Menus only) */
 		public Dropdown uiDropdown;
-		#endif
 
 		/** The ActionListAsset to run when the element is clicked on */
 		public ActionListAsset actionListOnClick = null;
 		/** The text that's displayed on-screen, which prefixes the varying text */
 		public string label = "Element";
+		/** A string to append to the label, before the value */
+		public string labelSuffix = defaultLabelSuffix;
+		private const string defaultLabelSuffix = " : ";
 		/** The special FX applied to the text (None, Outline, Shadow, OutlineAndShadow) */
 		public TextEffects textEffects;
 		/** The outline thickness, if textEffects != TextEffects.None */
@@ -64,6 +66,9 @@ namespace AC
 		public Texture2D[] optionTextures = new Texture2D[0];
 		private RawImage rawImage;
 
+		/** If True, then a right-click will cycle backwards */
+		public bool rightClickGoesBack = false;
+
 		private GVar linkedVariable;
 		private string cycleText;
 
@@ -74,14 +79,12 @@ namespace AC
 		#endif
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiText = null;
 			uiButton = null;
 			label = "Cycle";
+			labelSuffix = defaultLabelSuffix;
 			selected = 0;
 			isVisible = true;
 			isClickable = true;
@@ -101,11 +104,9 @@ namespace AC
 			optionTextures = new Texture2D[0];
 			rawImage = null;
 			linkedVariable = null;
-
-			#if UNITY_5_3_OR_NEWER
 			uiDropdown = null;
-			#endif
-			
+			rightClickGoesBack = false;
+
 			base.Declare ();
 		}
 
@@ -132,11 +133,18 @@ namespace AC
 			uiText = null;
 
 			label = _element.label;
+			labelSuffix = _element.labelSuffix;
 			textEffects = _element.textEffects;
 			outlineSize = _element.outlineSize;
 			anchor = _element.anchor;
 			selected = _element.selected;
-			optionsArray = _element.optionsArray;
+			
+			optionsArray = new List<string>();
+			foreach (string option in _element.optionsArray)
+			{
+				optionsArray.Add (option);
+			}
+			
 			cycleType = _element.cycleType;
 			splitLanguageType = _element.splitLanguageType;
 			varID = _element.varID;
@@ -146,20 +154,14 @@ namespace AC
 			cycleUIBasis = _element.cycleUIBasis;
 			optionTextures = _element.optionTextures;
 			linkedVariable = null;
-
-			#if UNITY_5_3_OR_NEWER
 			uiDropdown = _element.uiDropdown;
-			#endif
+			rightClickGoesBack = _element.rightClickGoesBack;
 
 			base.Copy (_element);
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			rawImage = null;
 
@@ -178,41 +180,53 @@ namespace AC
 						uiText = uiButton.GetComponentInChildren <Text>();
 						#endif
 
-						uiButton.onClick.AddListener (() => {
-							ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
-						});
+						if (addEventListeners)
+						{
+							uiButton.onClick.AddListener (() => {
+								ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
+							});
+
+							if (rightClickGoesBack)
+							{
+								UISlotClickRight uiSlotRightClick = uiButton.gameObject.GetComponent<UISlotClickRight> ();
+								if (uiSlotRightClick == null)
+								{
+									uiSlotRightClick = uiButton.gameObject.AddComponent<UISlotClickRight> ();
+								}
+								uiSlotRightClick.Setup (_menu, this, 0);
+							}
+						}
+
+						CreateHoverSoundHandler (uiButton, _menu, 0);
 					}
 				}
 				else if (cycleUIBasis == CycleUIBasis.Dropdown)
 				{
-					#if UNITY_5_3_OR_NEWER
-					if (uiDropdown != null)
+					uiDropdown = LinkUIElement <Dropdown> (canvas);
+					if (uiDropdown)
 					{
-						uiDropdown = LinkUIElement <Dropdown> (canvas);
 						uiDropdown.value = selected;
-						uiDropdown.onValueChanged.AddListener (delegate {
-	         				uiDropdownValueChangedHandler (uiDropdown);
-	     				});
-	     			}
-     				#endif
+
+						if (addEventListeners)
+						{
+							uiDropdown.onValueChanged.AddListener (delegate {
+								uiDropdownValueChangedHandler (uiDropdown);
+							});
+						}
+
+						CreateHoverSoundHandler (uiDropdown, _menu, 0);
+		 			}
 				}
 			}
 		}
 
 
-		#if UNITY_5_3_OR_NEWER
 		private void uiDropdownValueChangedHandler (Dropdown _dropdown)
 		{
 			ProcessClickUI (parentMenu, 0, KickStarter.playerInput.GetMouseState ());
 		}
-		#endif
 
 
-		/**
-		 * <summary>Gets the boundary of the element</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiButton)
@@ -239,7 +253,7 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuCycle)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			if (source != AC.MenuSource.AdventureCreator)
 			{
@@ -251,15 +265,11 @@ namespace AC
 				}
 				else if (cycleUIBasis == CycleUIBasis.Dropdown)
 				{
-					#if UNITY_5_3_OR_NEWER
 					uiDropdown = LinkedUiGUI <Dropdown> (uiDropdown, "Linked Dropdown:", source);
-					#else
-					EditorGUILayout.HelpBox ("This option is only available with Unity 5.4 or newer.", MessageType.Info);
-					#endif
 				}
 				uiSelectableHideStyle = (UISelectableHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiSelectableHideStyle, apiPrefix + ".uiSelectableHideStyle", "The method by which this element is hidden from view when made invisible");
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 			}
 
 			cycleType = (AC_CycleType) CustomGUILayout.EnumPopup ("Cycle type:", cycleType, apiPrefix + ".cycleType", "What the value links to");
@@ -272,8 +282,13 @@ namespace AC
 			if (source == MenuSource.AdventureCreator || cycleUIBasis == CycleUIBasis.Button)
 			{
 				label = CustomGUILayout.TextField ("Label text:", label, apiPrefix + ".label", "The text that's displayed on-screen, which prefixes the varying text");
+				if (!string.IsNullOrEmpty (label))
+				{
+					labelSuffix = CustomGUILayout.TextField ("Label suffix:", labelSuffix, apiPrefix + ".labelSuffix", "A string to append to the label, before the value");
+				}
 			}
 
+			GVar popUpVariable = null;
 			if (cycleType == AC_CycleType.CustomScript || cycleType == AC_CycleType.Variable)
 			{
 				bool showOptionsGUI = true;
@@ -286,8 +301,9 @@ namespace AC
 
 					varID = AdvGame.GlobalVariableGUI ("Global variable:", varID, allowedVarTypes, "The Global PopUp or Integer variable that's value will be synced with the cycle");
 
-					if (AdvGame.GetReferences ().variablesManager != null && AdvGame.GetReferences ().variablesManager.GetVariable (varID) != null && AdvGame.GetReferences ().variablesManager.GetVariable (varID).type == VariableType.PopUp)
+					if (AdvGame.GetReferences ().variablesManager && AdvGame.GetReferences ().variablesManager.GetVariable (varID) != null && AdvGame.GetReferences ().variablesManager.GetVariable (varID).type == VariableType.PopUp)
 					{
+						popUpVariable = AdvGame.GetReferences ().variablesManager.GetVariable (varID);
 						showOptionsGUI = false;
 					}
 				}
@@ -334,6 +350,11 @@ namespace AC
 
 				actionListOnClick = (ActionListAsset) CustomGUILayout.ObjectField <ActionListAsset> ("ActionList on click:", actionListOnClick, false, apiPrefix + ".actionListOnClick", "The ActionList asset to run when the element is clicked on");
 			}
+
+			if (source == MenuSource.AdventureCreator || cycleUIBasis == CycleUIBasis.Button)
+			{
+				rightClickGoesBack = CustomGUILayout.Toggle ("Right-click cycles back?", rightClickGoesBack, apiPrefix + ".rightClickGoesBack", "If True, then right-clicks or InteractionB button presses will cycle the element backwards.");
+			}
 			alternativeInputButton = CustomGUILayout.TextField ("Alternative input button:", alternativeInputButton, apiPrefix + ".alternativeInputButton", "The name of the input button that triggers the element when pressed");
 
 			bool showOptionTextures = (optionTextures.Length > 0);
@@ -344,14 +365,18 @@ namespace AC
 			showOptionTextures = EditorGUILayout.Toggle ("Per-option textures?", showOptionTextures);
 			if (showOptionTextures)
 			{
-				int numOptions = (cycleType == AC_CycleType.Language) ? KickStarter.speechManager.languages.Count : optionsArray.Count;
+				int numOptions = (cycleType == AC_CycleType.Language) ? KickStarter.speechManager.Languages.Count : optionsArray.Count;
 				if (cycleType == AC_CycleType.Language)
 				{
 					numOptions = 0;
-					if (KickStarter.speechManager != null && KickStarter.speechManager.languages != null)
+					if (KickStarter.speechManager && KickStarter.speechManager.Languages != null)
 					{
-						numOptions = KickStarter.speechManager.languages.Count;
+						numOptions = KickStarter.speechManager.Languages.Count;
 					}
+				}
+				else if (popUpVariable != null)
+				{
+					numOptions = popUpVariable.GetNumPopUpValues ();
 				}
 				if (optionTextures.Length != numOptions)
 				{
@@ -362,20 +387,22 @@ namespace AC
 			{
 				optionTextures = new Texture2D[0];
 			}
-			EditorGUILayout.EndVertical ();
+			ChangeCursorGUI (menu);
+			CustomGUILayout.EndVertical ();
 
 			if (showOptionTextures)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				for (int i=0; i<optionTextures.Length; i++)
 				{
-					optionTextures[i] = (Texture2D) EditorGUILayout.ObjectField ("Option #" + i + " texture:", optionTextures[i], typeof (Texture2D), false);
+					string label = (popUpVariable != null) ? ("'" + popUpVariable.GetPopUpForIndex (i) + "' texture:") : ("Option #" + i + " texture:");
+					optionTextures[i] = (Texture2D) EditorGUILayout.ObjectField (label, optionTextures[i], typeof (Texture2D), false);
 				}
 				if (menu.menuSource != MenuSource.AdventureCreator)
 				{
 					EditorGUILayout.HelpBox ("Per-option textures require a RawImage component on the linked Button.", MessageType.Info);
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			base.ShowGUI (menu);
@@ -406,53 +433,139 @@ namespace AC
 		public override int GetVariableReferences (int _varID)
 		{
 			int numFound = 0;
-			string tokenText = "[var:" + _varID.ToString () + "]";
-			if (label.Contains (tokenText))
+			string tokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, _varID);
+			if (label.ToLower ().Contains (tokenText))
 			{
 				numFound ++;
 			}
 
-			if (cycleType == AC_CycleType.Variable && varID == _varID)
+			switch (cycleType)
 			{
-				numFound ++;
-			}
-
-			if (cycleType == AC_CycleType.CustomScript || cycleType == AC_CycleType.Variable)
-			{
-				foreach (string optionLabel in optionsArray)
-				{
-					if (optionLabel.Contains (tokenText))
+				case AC_CycleType.Variable:
+					if (varID == _varID)
 					{
 						numFound ++;
 					}
-				}
+					break;
+
+				case AC_CycleType.Language:
+				case AC_CycleType.CustomScript:
+					foreach (string optionLabel in optionsArray)
+					{
+						if (optionLabel.Contains (tokenText))
+						{
+							numFound++;
+						}
+					}
+					break;
+
+				default:
+					break;
+			}
+			return numFound;
+		}
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, newVarID);
+			if (label.ToLower ().Contains (oldTokenText))
+			{
+				label = label.Replace (oldTokenText, newTokenText);
+				numFound++;
 			}
 
-			return numFound + base.GetVariableReferences (_varID);
+			switch (cycleType)
+			{
+				case AC_CycleType.Variable:
+					if (varID == oldVarID)
+					{
+						varID = newVarID;
+						numFound++;
+					}
+					break;
+
+				case AC_CycleType.Language:
+				case AC_CycleType.CustomScript:
+					for (int i = 0; i < optionsArray.Count; i++)
+					{
+						if (optionsArray[i].Contains (oldTokenText))
+						{
+							optionsArray[i] = optionsArray[i].Replace (oldTokenText, newTokenText);
+							numFound++;
+						}
+					}
+					break;
+
+				default:
+					break;
+			}
+			return numFound;
 		}
-		
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if ((cycleType == AC_CycleType.CustomScript || cycleType == AC_CycleType.Variable) && actionListOnClick == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (cycleUIBasis == CycleUIBasis.Button && uiButton && uiButton.gameObject == gameObject) return true;
+			if (cycleUIBasis == CycleUIBasis.Dropdown && uiDropdown && uiDropdown.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (cycleUIBasis == CycleUIBasis.Button && uiButton && uiButton.gameObject == gameObject)
+			{
+				return 0;
+			}
+			if (cycleUIBasis == CycleUIBasis.Dropdown && uiDropdown && uiDropdown.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
+
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
+		}
+
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
-			CalculateValue ();
+			//CalculateValue ();
 
-			cycleText = TranslateLabel (label, languageNumber) + " : ";
+			cycleText = TranslateLabel (languageNumber);
+			if (!string.IsNullOrEmpty (cycleText))
+			{
+				cycleText += labelSuffix;
+			}
 
-			#if UNITY_5_3_OR_NEWER
-			if (Application.isPlaying && uiDropdown != null)
+			if (Application.isPlaying && uiDropdown)
 			{
 				cycleText = string.Empty;
 			}
-			#endif
 
 			cycleText += GetOptionLabel (selected);
 
-			if (Application.isPlaying && optionTextures.Length > 0 && selected < optionTextures.Length && optionTextures[selected] != null)
+			if (Application.isPlaying && optionTextures.Length > 0 && selected < optionTextures.Length && optionTextures[selected])
 			{
 				backgroundTexture = optionTextures[selected];
-				if (rawImage != null)
+				if (rawImage)
 				{
 					rawImage.texture = backgroundTexture;
 				}
@@ -468,13 +581,11 @@ namespace AC
 			}
 			else
 			{
-				#if UNITY_5_3_OR_NEWER
-				if (uiDropdown != null && Application.isPlaying)
+				if (uiDropdown && Application.isPlaying)
 				{
 					uiDropdown.value = selected;
 					UpdateUISelectable (uiDropdown, uiSelectableHideStyle);
 				}
-				#endif
 			}
 		}
 
@@ -484,7 +595,11 @@ namespace AC
 			#if UNITY_EDITOR
 			if (!Application.isPlaying && cycleType == AC_CycleType.Language)
 			{
-				optionsArray = AdvGame.GetReferences ().speechManager.languages;
+				optionsArray = new List<string> ();
+				for (int i = 0; i < AdvGame.GetReferences ().speechManager.Languages.Count; i++)
+				{
+					optionsArray.Add (AdvGame.GetReferences ().speechManager.Languages[i].name);
+				}
 			}
 			#endif
 
@@ -510,7 +625,7 @@ namespace AC
 		{
 			if (!Application.isPlaying && cycleType == AC_CycleType.Variable && (linkedVariable == null || linkedVariable.id != varID))
 			{
-				if (AdvGame.GetReferences ().variablesManager != null)
+				if (AdvGame.GetReferences ().variablesManager)
 				{
 					linkedVariable = AdvGame.GetReferences ().variablesManager.GetVariable (varID);
 				}
@@ -532,15 +647,18 @@ namespace AC
 				selected = 0;
 			}
 		}
-		
 
-		/**
-		 * <summary>Draws the element using OnGUI.</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">The index number of the slot to display</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
+
+		private void CycleOptionBack ()
+		{
+			selected--;
+			if (selected < 0)
+			{
+				selected = GetNumOptions () - 1;
+			}
+		}
+
+
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -562,26 +680,26 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element's slot, or the whole element if it only has one slot</returns>
-		 */
 		public override string GetLabel (int slot, int languageNumber)
 		{
 			string optionLabel = GetOptionLabel (selected);
-			if (!string.IsNullOrEmpty (optionLabel))
+			string prefixLabel = TranslateLabel (languageNumber);
+
+			if (!string.IsNullOrEmpty (prefixLabel) && !string.IsNullOrEmpty (optionLabel))
 			{
-				return TranslateLabel (label, languageNumber) + " : " + optionLabel;
+				return prefixLabel + labelSuffix + optionLabel;
 			}
-			return TranslateLabel (label, languageNumber);
+			else if (!string.IsNullOrEmpty (optionLabel))
+			{
+				return optionLabel;
+			}
+			return prefixLabel;
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiButton != null)
+			if (uiButton)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiButton.gameObject);
 			}
@@ -589,75 +707,68 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (!_menu.IsClickable ())
 			{
-				return;
+				return false;
 			}
 
-			#if UNITY_5_3_OR_NEWER
-			if (uiDropdown != null)
+			if (uiDropdown)
 			{
 				selected = uiDropdown.value;
+			}
+			else if (_mouseState == MouseState.RightClick && rightClickGoesBack)
+			{
+				CycleOptionBack ();
 			}
 			else
 			{
 				CycleOption ();
 			}
-			#else
-			CycleOption ();
-			#endif
 
-			if (cycleType == AC_CycleType.Language)
+			switch (cycleType)
 			{
-				if (selected == 0 && KickStarter.speechManager.ignoreOriginalText && KickStarter.runtimeLanguages.Languages.Count > 1)
-				{
-					// Ignore original text by skipping to first language
-					selected = 1;
-				}
-
-				if (KickStarter.speechManager != null && KickStarter.speechManager.separateVoiceAndTextLanguages)
-				{
-					switch (splitLanguageType)
+				case AC_CycleType.Language:
+					int trueIndex = KickStarter.runtimeLanguages.EnabledLanguageToTrueIndex (selected);
+					if (KickStarter.speechManager && KickStarter.speechManager.separateVoiceAndTextLanguages)
 					{
-						case SplitLanguageType.TextAndVoice:
-							Options.SetLanguage (selected);
-							Options.SetVoiceLanguage (selected);
-							break;
+						switch (splitLanguageType)
+						{
+							case SplitLanguageType.TextAndVoice:
+								Options.SetLanguage (trueIndex);
+								Options.SetVoiceLanguage (trueIndex);
+								break;
 
-						case SplitLanguageType.TextOnly:
-							Options.SetLanguage (selected);
-							break;
+							case SplitLanguageType.TextOnly:
+								Options.SetLanguage (trueIndex);
+								break;
 
-						case SplitLanguageType.VoiceOnly:
-							Options.SetVoiceLanguage (selected);
-							break;
+							case SplitLanguageType.VoiceOnly:
+								Options.SetVoiceLanguage (trueIndex);
+								break;
+						}
 					}
-				}
-				else
-				{
-					Options.SetLanguage (selected);
-				}
-			}
-			else if (cycleType == AC_CycleType.Variable)
-			{
-				if (linkedVariable != null)
-				{
-					linkedVariable.IntegerValue = selected;
-					linkedVariable.Upload ();
-				}
-			}
+					else
+					{
+						Options.SetLanguage (trueIndex);
+					}
+					break;
 
-			if (cycleType == AC_CycleType.CustomScript)
-			{
-				MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
+				case AC_CycleType.Variable:
+					if (linkedVariable != null)
+					{
+						linkedVariable.IntegerValue = selected;
+						linkedVariable.Upload ();
+					}
+					break;
+
+				case AC_CycleType.CustomScript:
+					MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
+					break;
+
+				default:
+					break;
 			}
 	
 			if (actionListOnClick)
@@ -665,16 +776,17 @@ namespace AC
 				AdvGame.RunActionListAsset (actionListOnClick);
 			}
 			
-			base.ProcessClick (_menu, _slot, _mouseState);
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
-		#if UNITY_5_3_OR_NEWER
 		public override void RecalculateSize (MenuSource source)
 		{
-			if (Application.isPlaying && uiDropdown != null)
+			CalculateValue ();
+
+			if (Application.isPlaying && uiDropdown)
 			{
-				if (uiDropdown.captionText != null)
+				if (uiDropdown.captionText)
 				{
 					string _label = GetOptionLabel (selected);
 					if (!string.IsNullOrEmpty (_label))
@@ -683,7 +795,26 @@ namespace AC
 					}
 				}
 
-				for (int i=0; i<GetNumOptions (); i++)
+				int numOptions = GetNumOptions ();
+
+				if (Application.isPlaying)
+				{
+					if (uiDropdown.options.Count < numOptions)
+					{
+						while (uiDropdown.options.Count < numOptions)
+						{
+							uiDropdown.options.Add (new Dropdown.OptionData ("New option"));
+							Debug.Log ("Add " + uiDropdown.options.Count);
+						}
+						ACDebug.Log ("Cycle element '" + title + " is linked to a UI Dropdown with fewer options - adding them in automatically.");
+					}
+					else if (uiDropdown.options.Count > numOptions)
+					{
+						uiDropdown.options.RemoveRange (numOptions, uiDropdown.options.Count - numOptions);
+					}
+				}
+
+				for (int i=0; i< numOptions; i++)
 				{
 					if (uiDropdown.options.Count > i && uiDropdown.options[i] != null)
 					{
@@ -693,8 +824,6 @@ namespace AC
 			}
 			base.RecalculateSize (source);
 		}
-
-		#endif
 
 
 		public override void OnMenuTurnOn (Menu menu)
@@ -729,22 +858,36 @@ namespace AC
 
 			if (cycleType == AC_CycleType.Language)
 			{
+				optionsArray = new List<string> ();
 				if (Application.isPlaying)
 				{
-					optionsArray = KickStarter.runtimeLanguages.Languages;
+					for (int i = 0; i < KickStarter.runtimeLanguages.Languages.Count; i++)
+					{
+						if (!KickStarter.runtimeLanguages.Languages[i].isDisabled)
+						{
+							optionsArray.Add (KickStarter.runtimeLanguages.Languages[i].name);
+						}
+					}
 				}
 				else
 				{
-					optionsArray = AdvGame.GetReferences ().speechManager.languages;
+					for (int i = 0; i < AdvGame.GetReferences ().speechManager.Languages.Count; i++)
+					{
+						optionsArray.Add (AdvGame.GetReferences ().speechManager.Languages[i].name);
+					}
 				}
 
 				if (Options.optionsData != null)
 				{
-					selected = Options.optionsData.language;
-
-					if (KickStarter.speechManager != null && KickStarter.speechManager.separateVoiceAndTextLanguages && splitLanguageType == SplitLanguageType.VoiceOnly)
+					if (KickStarter.speechManager && KickStarter.speechManager.separateVoiceAndTextLanguages && splitLanguageType == SplitLanguageType.VoiceOnly)
 					{
-						selected = Options.optionsData.voiceLanguage;
+						int trueIndex = Options.optionsData.voiceLanguage;
+						selected = KickStarter.runtimeLanguages.TrueLanguageIndexToEnabledIndex (trueIndex);
+					}
+					else
+					{
+						int trueIndex = Options.optionsData.language;
+						selected = KickStarter.runtimeLanguages.TrueLanguageIndexToEnabledIndex (trueIndex);
 					}
 				}
 			}
@@ -767,11 +910,11 @@ namespace AC
 
 		protected override void AutoSize ()
 		{
-			AutoSize (new GUIContent (TranslateLabel (label, Options.GetLanguage ()) + " : Default option"));
+			AutoSize (new GUIContent (TranslateLabel (Options.GetLanguage ()) + " : Default option"));
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -786,6 +929,12 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -829,6 +978,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 
 	}
 	

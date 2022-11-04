@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionQTE.cs"
  * 
@@ -24,7 +24,7 @@ namespace AC
 	public class ActionQTE : ActionCheck
 	{
 
-		public enum QTEType { SingleKeypress, HoldKey, ButtonMash, SingleAxis };
+		public enum QTEType { SingleKeypress, HoldKey, ButtonMash, SingleAxis, ThumbstickRotation };
 		public QTEType qteType = QTEType.SingleKeypress;
 
 		public int menuNameParameterID = -1;
@@ -42,28 +42,32 @@ namespace AC
 		
 		public float holdDuration;
 		public float cooldownTime;
+		public int targetPressesParameterID = -1;
 		public int targetPresses;
 		public bool doCooldown;
 
+		public string verticalInputName;
+		public int verticalInputNameParameterID = -1;
+		public bool rotationIsClockwise = true;
+		public float targetRotations = 1f;
+		public int targetRotationsParameterID = -1;
+
 		
-		public ActionQTE ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Input;
-			title = "QTE";
-			description = "Initiates a Quick Time Event for a set duration. The QTE type can either be a single key- press, holding a button down, or button-mashing. The Input button must be defined in Unity's Input Manager.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Input; }}
+		public override string Title { get { return "QTE"; }}
+		public override string Description { get { return "Initiates a Quick Time Event for a set duration. The QTE type can either be a single key- press, holding a button down, or button-mashing. The Input button must be defined in Unity's Input Manager."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuName = AssignString (parameters, menuNameParameterID, menuName);
 			inputName = AssignString (parameters, inputNameParameterID, inputName);
 			duration = AssignFloat (parameters, durationParameterID, duration);
+			targetPresses = AssignInteger (parameters, targetPressesParameterID, targetPresses);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (string.IsNullOrEmpty (inputName) && (KickStarter.settingsManager.inputMethod != InputMethod.TouchScreen || qteType == QTEType.SingleAxis))
 			{
@@ -95,28 +99,34 @@ namespace AC
 					}
 				}
 
-				if (qteType == QTEType.SingleKeypress)
+				switch (qteType)
 				{
-					KickStarter.playerQTE.StartSinglePressQTE (inputName, duration, animator, wrongKeyFails);
-				}
-				else if (qteType == QTEType.SingleAxis)
-				{
-					KickStarter.playerQTE.StartSingleAxisQTE (inputName, duration, axisThreshold, animator, wrongKeyFails);
-				}
-				else if (qteType == QTEType.HoldKey)
-				{
-					KickStarter.playerQTE.StartHoldKeyQTE (inputName, duration, holdDuration, animator, wrongKeyFails);
-				}
-				else if (qteType == QTEType.ButtonMash)
-				{
-					KickStarter.playerQTE.StartButtonMashQTE (inputName, duration, targetPresses, doCooldown, cooldownTime, animator, wrongKeyFails);
+					case QTEType.SingleKeypress:
+						KickStarter.playerQTE.StartSinglePressQTE (inputName, duration, animator, wrongKeyFails);
+						break;
+
+					case QTEType.SingleAxis:
+						KickStarter.playerQTE.StartSingleAxisQTE (inputName, duration, axisThreshold, animator, wrongKeyFails);
+						break;
+
+					case QTEType.HoldKey:
+						KickStarter.playerQTE.StartHoldKeyQTE (inputName, duration, holdDuration, animator, wrongKeyFails);
+						break;
+
+					case QTEType.ButtonMash:
+						KickStarter.playerQTE.StartButtonMashQTE (inputName, duration, targetPresses, doCooldown, cooldownTime, animator, wrongKeyFails);
+						break;
+
+					case QTEType.ThumbstickRotation:
+						KickStarter.playerQTE.StartThumbstickRotationQTE (inputName, verticalInputName, duration, targetRotations, rotationIsClockwise, animator, wrongKeyFails);
+						break;
 				}
 
 				return defaultPauseTime;
 			}
 			else
 			{
-				if (KickStarter.playerQTE.GetState () == QTEState.None)
+				if (KickStarter.playerQTE.GetState () == QTEState.Running)
 				{
 					return defaultPauseTime;
 				}
@@ -136,17 +146,17 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			KickStarter.playerQTE.SkipQTE ();
-			if (menuName != "")
+			if (!string.IsNullOrEmpty (menuName))
 			{
 				PlayerMenus.GetMenuWithName (menuName).TurnOff (true);
 			}
 		}
 		
 
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (KickStarter.playerQTE.GetState () == QTEState.Win)
 			{
@@ -158,50 +168,77 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			qteType = (QTEType) EditorGUILayout.EnumPopup ("QTE type:" , qteType);
+			string _label = string.Empty;
 
-			string _label = (qteType == QTEType.SingleAxis) ? "axis" : "button";
-			inputNameParameterID = Action.ChooseParameterGUI ("Input " + _label + " name:", parameters, inputNameParameterID, ParameterType.String);
-			if (inputNameParameterID < 0)
+			if (qteType == QTEType.ThumbstickRotation)
 			{
-				inputName = EditorGUILayout.TextField ("Input " + _label + " name:", inputName);
-			}
-
-			if (qteType == QTEType.SingleAxis)
-			{
-				axisThreshold = EditorGUILayout.Slider ("Axis threshold:", axisThreshold, -1f, 1f);
-
-				if (axisThreshold >= 0f)
+				inputNameParameterID = Action.ChooseParameterGUI ("Horizontal input name:", parameters, inputNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
+				if (inputNameParameterID < 0)
 				{
-					_label = "Negative axis fails?";
-				}
-				else if (axisThreshold < 0f)
-				{
-					_label = "Positive axis fails?";
+					inputName = EditorGUILayout.TextField ("Horizontal input name:", inputName);
 				}
 
-				if (Mathf.Approximately (axisThreshold, 0f))
+				verticalInputNameParameterID = Action.ChooseParameterGUI ("Vertical input name:", parameters, verticalInputNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
+				if (verticalInputNameParameterID < 0)
 				{
-					EditorGUILayout.HelpBox ("The 'Axis threshold' cannot be zero.", MessageType.Warning);
+					verticalInputName = EditorGUILayout.TextField ("Vertical input name:", verticalInputName);
 				}
-				else if (axisThreshold > 0f)
+
+				targetRotationsParameterID = Action.ChooseParameterGUI ("# of rotations:", parameters, targetRotationsParameterID, ParameterType.Float);
+				if (targetRotationsParameterID < 0)
 				{
-					EditorGUILayout.HelpBox ("The QTE will be succesful when the input value is greater than the 'Axis threshold'.", MessageType.Info);
+					targetRotations = EditorGUILayout.Slider ("# of rotations:", targetRotations, 0.25f, 10f);
 				}
-				else if (axisThreshold < 0f)
-				{
-					EditorGUILayout.HelpBox ("The QTE will be succesful when the input value is less than than the 'Axis threshold'.", MessageType.Info);
-				}
+
+				rotationIsClockwise = EditorGUILayout.Toggle ("Clockwise rotation?", rotationIsClockwise);
+				_label = "Wrong direction fails?";
 			}
 			else
 			{
-				_label = "Wrong button fails?";
-		
-				if (KickStarter.settingsManager != null && KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
+				_label = (qteType == QTEType.SingleAxis) ? "axis" : "button";
+				inputNameParameterID = Action.ChooseParameterGUI ("Input " + _label + " name:", parameters, inputNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
+				if (inputNameParameterID < 0)
 				{
-					EditorGUILayout.HelpBox ("If the input name field is left blank, then all screen taps will be valid.", MessageType.Info);
+					inputName = EditorGUILayout.TextField ("Input " + _label + " name:", inputName);
+				}
+
+				if (qteType == QTEType.SingleAxis)
+				{
+					axisThreshold = EditorGUILayout.Slider ("Axis threshold:", axisThreshold, -1f, 1f);
+
+					if (axisThreshold >= 0f)
+					{
+						_label = "Negative axis fails?";
+					}
+					else if (axisThreshold < 0f)
+					{
+						_label = "Positive axis fails?";
+					}
+
+					if (Mathf.Approximately (axisThreshold, 0f))
+					{
+						EditorGUILayout.HelpBox ("The 'Axis threshold' cannot be zero.", MessageType.Warning);
+					}
+					else if (axisThreshold > 0f)
+					{
+						EditorGUILayout.HelpBox ("The QTE will be succesful when the input value is greater than the 'Axis threshold'.", MessageType.Info);
+					}
+					else if (axisThreshold < 0f)
+					{
+						EditorGUILayout.HelpBox ("The QTE will be succesful when the input value is less than than the 'Axis threshold'.", MessageType.Info);
+					}
+				}
+				else
+				{
+					_label = "Wrong button fails?";
+			
+					if (KickStarter.settingsManager != null && KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
+					{
+						EditorGUILayout.HelpBox ("If the input name field is left blank, then all screen taps will be valid.", MessageType.Info);
+					}
 				}
 			}
 
@@ -210,16 +247,30 @@ namespace AC
 			durationParameterID = Action.ChooseParameterGUI ("Duration (s):", parameters, durationParameterID, ParameterType.Float);
 			if (durationParameterID < 0)
 			{
-				duration = EditorGUILayout.Slider ("Duration (s):", duration, 0f, 10f);
+				duration = EditorGUILayout.FloatField ("Duration (s):", duration);
+				if (duration < 0f) duration = 0f;
 			}
 			
 			if (qteType == QTEType.ButtonMash)
 			{
-				targetPresses = EditorGUILayout.IntField ("Target # of presses:", targetPresses);
+				targetPressesParameterID = Action.ChooseParameterGUI ("Target # of presses:", parameters, targetPressesParameterID, ParameterType.Integer);
+				if (targetPressesParameterID < 0)
+				{
+					targetPresses = EditorGUILayout.IntField ("Target # of presses:", targetPresses);
+				}
+
 				doCooldown = EditorGUILayout.Toggle ("Cooldown effect?", doCooldown);
 				if (doCooldown)
 				{
-					cooldownTime = EditorGUILayout.Slider ("Cooldown time (s):", cooldownTime, 0f, duration);
+					if (durationParameterID < 0)
+					{
+						cooldownTime = EditorGUILayout.Slider ("Cooldown time (s):", cooldownTime, 0f, duration);
+					}
+					else
+					{
+						cooldownTime = EditorGUILayout.FloatField ("Cooldown time (s):", cooldownTime);
+						if (cooldownTime < 0f) cooldownTime = 0f;
+					}
 				}
 			}
 			else if (qteType == QTEType.HoldKey)
@@ -227,7 +278,7 @@ namespace AC
 				holdDuration = EditorGUILayout.Slider ("Required duration (s):", holdDuration, 0f, 10f);
 			}
 
-			menuNameParameterID = Action.ChooseParameterGUI ("Menu to display (optional):", parameters, menuNameParameterID, ParameterType.String);
+			menuNameParameterID = Action.ChooseParameterGUI ("Menu to display (optional):", parameters, menuNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (menuNameParameterID < 0)
 			{
 				menuName = EditorGUILayout.TextField ("Menu to display (optional):", menuName);
@@ -272,7 +323,7 @@ namespace AC
 		 */
 		public static ActionQTE CreateNew_SingleKeypress (string inputButtonName, float duration, bool wrongButtonFails = false, string menuToDisplay = "", bool animateUI = false)
 		{
-			ActionQTE newAction = (ActionQTE) CreateInstance <ActionQTE>();
+			ActionQTE newAction = CreateNew<ActionQTE> ();
 			newAction.qteType = QTEType.SingleKeypress;
 			newAction.inputName = inputButtonName;
 			newAction.duration = duration;
@@ -295,7 +346,7 @@ namespace AC
 		 */
 		public static ActionQTE CreateNew_SingleAxis (string inputAxisName, float duration, float axisThreshold = 0.2f, bool wrongDirectionFails = false, string menuToDisplay = "", bool animateUI = false)
 		{
-			ActionQTE newAction = (ActionQTE) CreateInstance <ActionQTE>();
+			ActionQTE newAction = CreateNew<ActionQTE> ();
 			newAction.qteType = QTEType.SingleAxis;
 			newAction.inputName = inputAxisName;
 			newAction.duration = duration;
@@ -319,7 +370,7 @@ namespace AC
 		 */
 		public static ActionQTE CreateNew_HoldKey (string inputButtonName, float duration, float requiredDuration, bool wrongButtonFails = false, string menuToDisplay = "", bool animateUI = false)
 		{
-			ActionQTE newAction = (ActionQTE) CreateInstance <ActionQTE>();
+			ActionQTE newAction = CreateNew<ActionQTE> ();
 			newAction.qteType = QTEType.HoldKey;
 			newAction.inputName = inputButtonName;
 			newAction.duration = duration;
@@ -344,7 +395,7 @@ namespace AC
 		 */
 		public static ActionQTE CreateNew_ButtonMash (string inputButtonName, float duration, int requiredPresses, float cooldownTime = -1f, bool wrongButtonFails = false, string menuToDisplay = "", bool animateUI = false)
 		{
-			ActionQTE newAction = (ActionQTE) CreateInstance <ActionQTE>();
+			ActionQTE newAction = CreateNew<ActionQTE> ();
 			newAction.qteType = QTEType.ButtonMash;
 			newAction.inputName = inputButtonName;
 			newAction.duration = duration;

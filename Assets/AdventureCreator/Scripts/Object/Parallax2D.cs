@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Parallax2D.cs"
  * 
@@ -15,15 +15,13 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * When used in 2D games, this script can be attached to scene objects to make them scroll as the camera moves, creating a parallax effect.
-	 */
+	/** When used in 2D games, this script can be attached to scene objects to make them scroll as the camera moves, creating a parallax effect. */
 	[AddComponentMenu("Adventure Creator/Misc/Parallax 2D")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_parallax2_d.html")]
-	#endif
 	public class Parallax2D : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The intensity of the depth effect. Positive values will make the GameObject appear further away (i.e. in the background), negative values will make it appear closer to the camera (i.e. in the foreground). */
 		public float depth;
@@ -41,7 +39,7 @@ namespace AC
 		/** The minimum scrolling position in the X-direction, if limitX = True */
 		public float minX;
 		/** The maximum scrolling position in the X-direction, if limitX = True */
-		public float maxX;
+		public  float maxX;
 
 		/** If True, scrolling in the Y-direction will be constrained */
 		public bool limitY;
@@ -50,47 +48,59 @@ namespace AC
 		/** The maximum scrolling position in the Y-direction, if limitY = True */
 		public float maxY;
 
-		/** What entity affects the parallax behaviour (Camera, Cursor) */
+		/** What entity affects the parallax behaviour (Camera, Cursor, Transform) */
 		public ParallaxReactsTo reactsTo = ParallaxReactsTo.Camera;
+		/** Which GameObject affects behaviour, if reactsTo = ParallaxReactsTo.Transform */
+		public Transform transformToReactTo;
 
-		private float xStart;
-		private float yStart;
-		private float xDesired;
-		private float yDesired;
-		private Vector2 perspectiveOffset;
+		protected float xStart;
+		protected float yStart;
+		protected float xDesired;
+		protected float yDesired;
+		protected Vector2 perspectiveOffset;
+
+		public HorizontalParallaxConstraint horizontalConstraint;
+		public VerticalParallaxConstraint verticalConstraint;
+		public SpriteRenderer backgroundConstraint = null;
+		public enum HorizontalParallaxConstraint { Left, Right };
+		public enum VerticalParallaxConstraint { Top, Bottom };
+
+		private Transform _transform;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
-			xStart = transform.localPosition.x;
-			yStart = transform.localPosition.y;
-
-			xDesired = xStart;
-			yDesired = yStart;
+			Initialise ();
 		}
 
 
-		private void OnEnable ()
+		protected void OnEnable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void Start ()
+		protected void Start ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
 		}
 
+		#endregion
 
-		/**
-		 * Updates the GameObject's position according to the camera.  This is called every frame by the StateHandler.
-		 */
+
+		#region PublicFunctions
+
+		/** Updates the GameObject's position according to the camera.  This is called every frame by the StateHandler. */
 		public void UpdateOffset ()
 		{
 			switch (reactsTo)
@@ -102,14 +112,24 @@ namespace AC
 					}
 					else
 					{
-						perspectiveOffset = new Vector2 (KickStarter.CameraMain.transform.position.x, KickStarter.CameraMain.transform.position.y);
+						perspectiveOffset = new Vector2 (KickStarter.CameraMainTransform.position.x, KickStarter.CameraMainTransform.position.y);
 					}
 					break;
 
 				case ParallaxReactsTo.Cursor:
-					Vector2 screenCentre = AdvGame.GetMainGameViewSize () / 2f;
+					Vector2 screenCentre = ACScreen.safeArea.size / 2f;
 					Vector2 mousePosition = KickStarter.playerInput.GetMousePosition ();
 					perspectiveOffset = new Vector2 (((1f - mousePosition.x) / screenCentre.x) + 1f, ((1f - mousePosition.y) / screenCentre.y + 1f));
+					break;
+
+				case ParallaxReactsTo.Transform:
+					if (transformToReactTo)
+					{
+						perspectiveOffset = transformToReactTo.position;
+					}
+					break;
+
+				default:
 					break;
 			}
 
@@ -125,30 +145,142 @@ namespace AC
 			xDesired = xStart;
 			if (xScroll)
 			{
-				xDesired += perspectiveOffset.x * depth;
-				xDesired += xOffset;
+				if (limitX && reactsTo == ParallaxReactsTo.Camera && backgroundConstraint)
+				{
+					xDesired = GetHorizontalBackgroundConstraintPosition ();
+				}
+				else
+				{
+					xDesired += perspectiveOffset.x * depth;
+					xDesired += xOffset;
+				}
 			}
 
 			yDesired = yStart;
 			if (yScroll)
 			{
-				yDesired += perspectiveOffset.y * depth;
-				yDesired += yOffset;
+				if (limitY && reactsTo == ParallaxReactsTo.Camera && backgroundConstraint)
+				{
+					yDesired = GetVerticalBackgroundConstraintPosition ();
+				}
+				else
+				{
+					yDesired += perspectiveOffset.y * depth;
+					yDesired += yOffset;
+				}
 			}
 
 			if (xScroll && yScroll)
 			{
-				transform.localPosition = new Vector3 (xDesired, yDesired, transform.localPosition.z);
+				Transform.localPosition = new Vector3 (xDesired, yDesired, Transform.localPosition.z);
 			}
 			else if (xScroll)
 			{
-				transform.localPosition = new Vector3 (xDesired, transform.localPosition.y, transform.localPosition.z);
+				Transform.localPosition = new Vector3 (xDesired, Transform.localPosition.y, Transform.localPosition.z);
 			}
 			else if (yScroll)
 			{
-				transform.localPosition = new Vector3 (transform.localPosition.x, yDesired, transform.localPosition.z);
+				Transform.localPosition = new Vector3 (Transform.localPosition.x, yDesired, Transform.localPosition.z);
 			}
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected virtual void Initialise ()
+		{
+			xStart = Transform.localPosition.x;
+			yStart = Transform.localPosition.y;
+
+			xDesired = xStart;
+			yDesired = yStart;
+		}
+
+
+		private float GetHorizontalBackgroundConstraintPosition ()
+		{
+			if (!KickStarter.CameraMain.orthographic)
+			{
+				Debug.LogWarning (gameObject.name + " cannot use background for parallax constraint unless the Main Camera uses Orthographic projection.");
+				return 0f;
+			}
+
+			switch (horizontalConstraint)
+			{
+				case HorizontalParallaxConstraint.Left:
+					{
+						float cameraLeft = KickStarter.CameraMain.ViewportToWorldPoint (new Vector3 (0f, 0f, KickStarter.CameraMain.nearClipPlane)).x;
+						float backgroundLeft = backgroundConstraint.bounds.min.x;
+						float scroll = Mathf.Max (cameraLeft - backgroundLeft, 0f);
+						return backgroundConstraint.bounds.min.x + (scroll * depth) + xOffset;
+					}
+
+				case HorizontalParallaxConstraint.Right:
+					{
+						float cameraRight = KickStarter.CameraMain.ViewportToWorldPoint (new Vector3 (1f, 1f, KickStarter.CameraMain.nearClipPlane)).x;
+						float backgroundRight = backgroundConstraint.bounds.max.x;
+						float scroll = Mathf.Min (cameraRight - backgroundRight, 0f);
+						return backgroundConstraint.bounds.max.x + (scroll * depth) + xOffset;
+					}
+
+				default:
+					break;
+			}
+
+			return 0f;
+		}
+
+
+		private float GetVerticalBackgroundConstraintPosition ()
+		{
+			if (!KickStarter.CameraMain.orthographic)
+			{
+				Debug.LogWarning (gameObject.name + " cannot use background for parallax constraint unless the Main Camera uses Orthographic projection.");
+				return 0f;
+			}
+
+			switch (verticalConstraint)
+			{
+				case VerticalParallaxConstraint.Top:
+					{
+						float cameraTop = KickStarter.CameraMain.ViewportToWorldPoint (new Vector3 (0f, 1f, KickStarter.CameraMain.nearClipPlane)).y;
+						float backgroundTop = backgroundConstraint.bounds.max.y;
+						float offset = Mathf.Min (cameraTop - backgroundTop, 0f);
+						return backgroundConstraint.bounds.max.y - (offset * depth) + yOffset;
+					}
+
+				case VerticalParallaxConstraint.Bottom:
+					{
+						float cameraBottom = KickStarter.CameraMain.ViewportToWorldPoint (new Vector3 (1f, 0f, KickStarter.CameraMain.nearClipPlane)).y;
+						float backgroundBottom = backgroundConstraint.bounds.min.y;
+						float offset = Mathf.Max (cameraBottom - backgroundBottom, 0f);
+						return backgroundConstraint.bounds.min.y - (offset * depth) + yOffset;
+					}
+
+				default:
+					break;
+			}
+
+			return 0f;
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		private Transform Transform
+		{
+			get
+			{
+				if (_transform == null) _transform = transform;
+				return _transform;
+			}
+		}
+
+		#endregion
 
 	}
 

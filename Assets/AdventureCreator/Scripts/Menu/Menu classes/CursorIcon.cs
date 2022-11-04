@@ -1,11 +1,11 @@
-﻿#if UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2018_2_OR_NEWER
+﻿#if UNITY_STANDALONE && !UNITY_2018_2_OR_NEWER
 #define ALLOW_MOVIETEXTURES
 #endif
 
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"CursorIcon.cs"
  * 
@@ -38,10 +38,10 @@ namespace AC
 		/** A unique identifier */
 		public int id;
 
+		private string cachedLabel;
 
-		/**
-		 * The default Constructor.
-		 */
+
+		/** The default Constructor. */
 		public CursorIcon ()
 		{
 			dontCycle = false;
@@ -55,8 +55,30 @@ namespace AC
 			
 			label = "Icon " + (id + 1).ToString ();
 		}
-		
-		
+
+
+		public CursorIcon (CursorIcon cursorIcon)
+		{
+			dontCycle = cursorIcon.dontCycle;
+			label = cursorIcon.label;
+			lineID = cursorIcon.lineID;
+			id = cursorIcon.id;
+
+			texture = cursorIcon.texture;
+			isAnimated = cursorIcon.isAnimated;
+			numFrames = cursorIcon.numFrames;
+			numRows = cursorIcon.numRows;
+			numCols = cursorIcon.numCols;
+			size = cursorIcon.size;
+			animSpeed = cursorIcon.animSpeed;
+			endAnimOnLastFrame = cursorIcon.endAnimOnLastFrame;
+			skipFirstFrameWhenLooping = cursorIcon.skipFirstFrameWhenLooping;
+			clickOffset = cursorIcon.clickOffset;
+			frameSpeeds = cursorIcon.frameSpeeds;
+			alwaysAnimate = cursorIcon.alwaysAnimate;
+		}
+
+
 		/**
 		 * <summary>A Constructor that generates a unique id number.</summary>
 		 * <param name = "idArray">An array of previously-assigned id numbers</param>
@@ -82,6 +104,42 @@ namespace AC
 			
 			label = "Icon " + (id + 1).ToString ();
 		}
+
+
+		public override void ClearCache ()
+		{
+			cachedLabel = string.Empty;
+			base.ClearCache ();
+		}
+
+
+		public void UpdateLabel (int languageNumber)
+		{
+			cachedLabel = KickStarter.runtimeLanguages.GetTranslation (label, lineID, languageNumber, AC_TextType.CursorIcon);
+		}
+
+
+		/**
+		 * <summary>Gets the icon's display name.</summary>
+		 * <param name = "languageNumber">The index of the current language, as set in SpeechManager</param>
+		 * <returns>The icon's display name</returns>
+		 */
+		public string GetLabel (int languageNumber)
+		{
+			if (Application.isPlaying)
+			{
+				if (languageNumber == Options.GetLanguage ())
+				{
+					if (string.IsNullOrEmpty (cachedLabel))
+					{
+						UpdateLabel (languageNumber);
+					}
+					return AdvGame.ConvertTokens (cachedLabel);
+				}
+				return AdvGame.ConvertTokens (KickStarter.runtimeLanguages.GetTranslation (label, lineID, languageNumber, AC_TextType.CursorIcon));
+			}
+			return AdvGame.ConvertTokens (label);
+		}
 		
 		
 		/**
@@ -90,14 +148,14 @@ namespace AC
 		 */
 		public string GetButtonName ()
 		{
-			if (label != "")
+			if (!string.IsNullOrEmpty (label))
 			{
-				return "Icon_" + label.Replace (" ", "");
+				return "Icon_" + label.Replace (" ", string.Empty);
 			}
 			return "Icon_" + id.ToString ();
 		}
-		
-		
+
+
 		/**
 		 * <summary>Copies the values from another CursorIcon.</summary>
 		 * <param name = "_cursorIcon">The CursorIcon to copy from</param>
@@ -117,7 +175,7 @@ namespace AC
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 		
 		public string GetTranslatableString (int index)
 		{
@@ -131,7 +189,19 @@ namespace AC
 		}
 
 
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.CursorIcon;
+		}
+
+
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -163,18 +233,14 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC_TextType.CursorIcon;
-		}
-
-
 		public bool CanTranslate (int index)
 		{
 			return (!string.IsNullOrEmpty (label));
 		}
 
 		#endif
+
+		#endregion
 
 	}
 	
@@ -247,6 +313,8 @@ namespace AC
 		 */
 		public void Copy (CursorIconBase _icon)
 		{
+			if (_icon == null) return;
+
 			texture = _icon.texture;
 			isAnimated = _icon.isAnimated;
 			numFrames = _icon.numFrames;
@@ -442,6 +510,21 @@ namespace AC
 			}
 			return null;
 		}
+
+
+		/**
+		 * <summary>Replaces the icon's texture, and also clears internal caches.</summary>
+		 * <param name = "newTexture">The icon's new texture</param>
+		 */
+		public void ReplaceTexture (Texture newTexture)
+		{
+			if (texture != newTexture)
+			{
+				texture = newTexture;
+				ClearSprites ();
+				ClearCache ();
+			}
+		}
 		
 		
 		/**
@@ -511,10 +594,8 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Clears the animated Texture2D and Sprite caches.</summary>
-		 */
-		public void ClearCache ()
+		/** Clears the animated Texture2D and Sprite caches. */
+		public virtual void ClearCache ()
 		{
 			textures = null;
 			texture2D = null;
@@ -538,7 +619,7 @@ namespace AC
 			float _size = size;
 			if (KickStarter.cursorManager.cursorRendering == CursorRendering.Hardware)
 			{
-				_size = (float) ((float) texture.width / (float) Screen.width);
+				_size = (float) ((float) texture.width / (float) ACScreen.width);
 			}
 			Rect _rect = AdvGame.GUIBox (centre, _size);
 			
@@ -651,10 +732,11 @@ namespace AC
 				}
 			}
 			
-			if (texture != null)
+			if (texture)
 			{
 				uniqueIdentifier = texture.name + frameInRow.ToString () + currentRow.ToString ();
 			}
+
 			return new Rect (frameWidth * (frameInRow-1), frameHeight * (numRows - currentRow), frameWidth, frameHeight);
 		}
 		
@@ -689,7 +771,6 @@ namespace AC
 				frameInRow = 1;
 				currentRow = 1;
 			}
-			
 			return new Rect (frameWidth * (frameInRow-1), frameHeight * (numRows - currentRow), frameWidth, frameHeight);
 		}
 		
@@ -739,32 +820,35 @@ namespace AC
 			{
 				if (cursorRendering == CursorRendering.Software)
 				{
-					size = CustomGUILayout.FloatField ("Size:", size, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".size"));
+					size = CustomGUILayout.FloatField ("Size:", size, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".size"));
 				}
 
-				EditorGUILayout.BeginHorizontal ();
-				EditorGUILayout.LabelField ("Click offset (from " + ((cursorRendering == CursorRendering.Software) ? "centre):" : "top left):"), GUILayout.Width (150f));
-				clickOffset = CustomGUILayout.Vector2Field ("", clickOffset, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".clickOffset"));
-				EditorGUILayout.EndHorizontal ();
+				if (cursorRendering != CursorRendering.UnityUI)
+				{
+					EditorGUILayout.BeginHorizontal ();
+					EditorGUILayout.LabelField ("Click offset (from " + ((cursorRendering == CursorRendering.Software) ? "centre):" : "top left):"), GUILayout.Width (150f));
+					clickOffset = CustomGUILayout.Vector2Field (string.Empty, clickOffset, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".clickOffset"));
+					EditorGUILayout.EndHorizontal ();
+				}
 			}
 
 			#if ALLOW_MOVIETEXTURE
 			if (!(texture is MovieTexture))
 			#endif
 			{
-				isAnimated = CustomGUILayout.Toggle ("Animate?", isAnimated, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".isAnimated"));
+				isAnimated = CustomGUILayout.Toggle ("Animate?", isAnimated, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".isAnimated"));
 				if (isAnimated)
 				{
 					EditorGUILayout.BeginHorizontal ();
 					EditorGUILayout.LabelField ("Frames:", GUILayout.Width (50f));
-					numFrames = CustomGUILayout.IntField (numFrames, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".numFrames"));
+					numFrames = CustomGUILayout.IntField (numFrames, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".numFrames"));
 					EditorGUILayout.LabelField ("Rows:", GUILayout.Width (50f));
-					numRows = CustomGUILayout.IntField (numRows, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".numRows"));
+					numRows = CustomGUILayout.IntField (numRows, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".numRows"));
 					EditorGUILayout.LabelField ("Columns:", GUILayout.Width (50f));
-					numCols = CustomGUILayout.IntField (numCols, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".numCols"));
+					numCols = CustomGUILayout.IntField (numCols, GUILayout.Width (70f), string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".numCols"));
 					EditorGUILayout.EndHorizontal ();
 					
-					animSpeed = CustomGUILayout.FloatField ("Animation speed:", animSpeed, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".animSpeed"));
+					animSpeed = CustomGUILayout.FloatField ("Animation speed:", animSpeed, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".animSpeed"));
 
 					showExtra = EditorGUILayout.Foldout (showExtra, "Additional settings:");
 					if (showExtra)
@@ -772,20 +856,20 @@ namespace AC
 						EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 						if (includeAlwaysAnimate)
 						{
-							alwaysAnimate = CustomGUILayout.ToggleLeft ("Always animate?", alwaysAnimate, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".alwaysAnimate"));
+							alwaysAnimate = CustomGUILayout.ToggleLeft ("Always animate?", alwaysAnimate, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".alwaysAnimate"));
 						}
-						endAnimOnLastFrame = CustomGUILayout.ToggleLeft ("End on last frame?", endAnimOnLastFrame, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".endAnimOnLastFrame"));
-						skipFirstFrameWhenLooping = CustomGUILayout.ToggleLeft ("Skip first when animating?", skipFirstFrameWhenLooping, string.IsNullOrEmpty (apiPrefix) ? "" : (apiPrefix + ".skipFirstFrameWhenLooping"));
+						endAnimOnLastFrame = CustomGUILayout.ToggleLeft ("End on last frame?", endAnimOnLastFrame, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".endAnimOnLastFrame"));
+						skipFirstFrameWhenLooping = CustomGUILayout.ToggleLeft ("Skip first when animating?", skipFirstFrameWhenLooping, string.IsNullOrEmpty (apiPrefix) ? string.Empty : (apiPrefix + ".skipFirstFrameWhenLooping"));
 
 						SyncFrameSpeeds ();
-						for (int i=0; i<numFrames; i++)
+						for (int i = 0; i < numFrames; i++)
 						{
 							if (i == 0 && skipFirstFrameWhenLooping) continue;
-							if (i == (numFrames-1) && endAnimOnLastFrame) continue;
+							if (i == (numFrames - 1) && endAnimOnLastFrame) continue;
 
 							frameSpeeds[i] = EditorGUILayout.Slider ("Frame #" + (i+1).ToString () + " relative speed:", frameSpeeds[i], 0.01f, 1f);
 						}
-						EditorGUILayout.EndVertical ();
+						CustomGUILayout.EndVertical ();
 					}
 				}
 			}
@@ -798,7 +882,7 @@ namespace AC
 		{
 			get
 			{
-				if (texture2D == null && texture != null && texture is Texture2D)
+				if (texture2D == null && texture && texture is Texture2D)
 				{
 					texture2D = (Texture2D) texture;
 				}
@@ -860,7 +944,7 @@ namespace AC
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -874,7 +958,19 @@ namespace AC
 		}
 
 		
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.HotspotPrefix;
+		}
+
+
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
 		
 		public int GetNumTranslatables ()
 		{
@@ -906,18 +1002,14 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC_TextType.HotspotPrefix;
-		}
-
-
 		public bool CanTranslate (int index)
 		{
 			return (!string.IsNullOrEmpty (label));
 		}
 
 		#endif
+
+		#endregion
 		
 	}
 	

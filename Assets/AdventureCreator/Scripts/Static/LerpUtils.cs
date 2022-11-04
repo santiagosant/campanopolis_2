@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"LerpUtils.cs"
  * 
@@ -43,11 +43,12 @@ namespace AC
 			{
 				if (Mathf.Approximately (newTargetValue, currentValue))
 				{
-					return End (currentValue, targetValue);
+					return End (currentValue, newTargetValue);
 				}
 
 				if (isRunning && (!Mathf.Approximately (targetValue, newTargetValue) || !Mathf.Approximately (moveSpeed, newMoveSpeed)))
 				{
+					// Values changed, so reset
 					isRunning = false;
 				}
 
@@ -97,11 +98,11 @@ namespace AC
 			}
 
 
-			private float End (float currentValue, float targetValue)
+			private float End (float currentValue, float _targetValue)
 			{
 				if (isRunning)
 				{
-					currentValue = targetValue;
+					currentValue = _targetValue;
 					isRunning = false;
 				}
 
@@ -134,7 +135,7 @@ namespace AC
 			{
 				if (newTargetValue == currentValue)
 				{
-					return End (currentValue, targetValue);
+					return End (currentValue, newTargetValue);
 				}
 
 				if (targetValue != newTargetValue || !Mathf.Approximately (moveSpeed, newMoveSpeed))
@@ -182,11 +183,11 @@ namespace AC
 			}
 
 
-			private Vector2 End (Vector2 currentValue, Vector2 targetValue)
+			private Vector2 End (Vector2 currentValue, Vector2 _targetValue)
 			{
 				if (isRunning)
 				{
-					currentValue = targetValue;
+					currentValue = _targetValue;
 					isRunning = false;
 				}
 
@@ -219,7 +220,7 @@ namespace AC
 			{
 				if (newTargetValue == currentValue)
 				{
-					return End (currentValue, targetValue);
+					return End (currentValue, newTargetValue);
 				}
 
 				if (targetValue != newTargetValue || !Mathf.Approximately (moveSpeed, newMoveSpeed))
@@ -261,11 +262,11 @@ namespace AC
 			}
 
 
-			private Vector3 End (Vector3 currentValue, Vector3 targetValue)
+			private Vector3 End (Vector3 currentValue, Vector3 _targetValue)
 			{
 				if (isRunning)
 				{
-					currentValue = targetValue;
+					currentValue = _targetValue;
 					isRunning = false;
 				}
 
@@ -300,7 +301,7 @@ namespace AC
 			{
 				if (newTargetValue == currentValue)
 				{
-					return End (currentValue, targetValue);
+					return End (currentValue, newTargetValue);
 				}
 
 				if (targetValue != newTargetValue || !Mathf.Approximately (moveSpeed, newMoveSpeed))
@@ -352,11 +353,11 @@ namespace AC
 			}
 
 
-			private Quaternion End (Quaternion currentValue, Quaternion targetValue)
+			private Quaternion End (Quaternion currentValue, Quaternion _targetValue)
 			{
 				if (isRunning)
 				{
-					currentValue = targetValue;
+					currentValue = _targetValue;
 					isRunning = false;
 				}
 

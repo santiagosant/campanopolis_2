@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSaveHandle.cs"
  * 
@@ -18,7 +18,7 @@ using UnityEditor;
 
 namespace AC
 {
-	
+
 	[System.Serializable]
 	public class ActionSaveHandle : Action
 	{
@@ -28,38 +28,39 @@ namespace AC
 
 		public int saveIndex = 0;
 		public int saveIndexParameterID = -1;
-		
-		public int varID;
+
+		[SerializeField] private int varID;
 		public int slotVarID;
-		
+
 		public string menuName = "";
 		public string elementName = "";
 
 		public bool updateLabel = false;
 		public bool customLabel = false;
+		public string customLabelText;
+		public bool preProcessTokens = true;
 
 		public bool doSelectiveLoad = false;
 		public SelectiveLoad selectiveLoad = new SelectiveLoad ();
-		private bool recievedCallback;
+		protected bool recievedCallback;
 
-		
-		public ActionSaveHandle ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Save;
-			title = "Save or load";
-			description = "Saves and loads save-game files";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override ActionCategory Category { get { return ActionCategory.Save; } }
+		public override string Title { get { return "Save or load"; } }
+		public override string Description { get { return "Saves and loads save-game files"; } }
+		public override int NumSockets { get { return (saveHandling == SaveHandling.OverwriteExistingSave || saveHandling == SaveHandling.SaveNewGame) ? 1 : 0; } }
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			saveIndex = AssignInteger (parameters, saveIndexParameterID, saveIndex);
 		}
-		
-		
-		override public float Run ()
+
+
+		public override float Run ()
 		{
+			UpgradeSelf ();
+
 			if (!isRunning)
 			{
 				isRunning = true;
@@ -78,7 +79,7 @@ namespace AC
 		}
 
 
-		private void PerformSaveOrLoad ()
+		protected void PerformSaveOrLoad ()
 		{
 			ClearAllEvents ();
 
@@ -98,29 +99,28 @@ namespace AC
 				KickStarter.saveSystem.SetSelectiveLoadOptions (selectiveLoad);
 			}
 
-			string newSaveLabel = "";
+			string newSaveLabel = string.Empty;
 			if (customLabel && ((updateLabel && saveHandling == SaveHandling.OverwriteExistingSave) || saveHandling == AC.SaveHandling.SaveNewGame))
 			{
 				if (selectSaveType != SelectSaveType.Autosave)
 				{
-					GVar gVar = GlobalVariables.GetVariable (varID);
-					if (gVar != null)
+					newSaveLabel = customLabelText;
+					if (preProcessTokens)
 					{
-						newSaveLabel = gVar.GetValue (Options.GetLanguage ());
-					}
-					else
-					{
-						LogWarning ("Could not " + saveHandling.ToString () + " - no variable found.");
-						return;
+						newSaveLabel = AdvGame.ConvertTokens (newSaveLabel);
 					}
 				}
 			}
-			
-			int i = Mathf.Max (0, saveIndex);
+
+			int i = saveIndex;
 
 			if (saveHandling == SaveHandling.ContinueFromLastSave)
 			{
-				SaveSystem.ContinueGame ();
+				bool fileFound = SaveSystem.ContinueGame ();
+				if (!fileFound)
+				{
+					OnComplete ();
+				}
 				return;
 			}
 
@@ -135,9 +135,8 @@ namespace AC
 					}
 					else
 					{
-						if (PlayerMenus.IsSavingLocked (this))
+						if (PlayerMenus.IsSavingLocked (this, true))
 						{
-							LogWarning ("Cannot save at this time - either blocking ActionLists, a Conversation is active, or saving has been manually locked.");
 							OnComplete ();
 						}
 						else
@@ -152,7 +151,7 @@ namespace AC
 					GVar gVar = GlobalVariables.GetVariable (slotVarID);
 					if (gVar != null)
 					{
-						i = gVar.val;
+						i = gVar.IntegerValue;
 					}
 					else
 					{
@@ -162,76 +161,103 @@ namespace AC
 				}
 			}
 
-			if (menuName != "" && elementName != "")
+			if (selectSaveType != SelectSaveType.Autosave && selectSaveType != SelectSaveType.SetSaveID)
 			{
-				MenuElement menuElement = PlayerMenus.GetElementWithName (menuName, elementName);
-				if (menuElement != null && menuElement is MenuSavesList)
+				if (!string.IsNullOrEmpty (menuName) && !string.IsNullOrEmpty (elementName))
 				{
-					MenuSavesList menuSavesList = (MenuSavesList) menuElement;
-					i += menuSavesList.GetOffset ();
+					MenuElement menuElement = PlayerMenus.GetElementWithName (menuName, elementName);
+					if (menuElement != null && menuElement is MenuSavesList)
+					{
+						MenuSavesList menuSavesList = (MenuSavesList) menuElement;
+						i += menuSavesList.GetOffset ();
+					}
+					else
+					{
+						LogWarning ("Cannot find SavesList element '" + elementName + "' in Menu '" + menuName + "'.");
+					}
+				}
+			}
+
+			if (saveHandling == SaveHandling.LoadGame)
+			{
+				if (selectSaveType == SelectSaveType.SetSaveID)
+				{
+					bool fileFound = SaveSystem.LoadGame (i);
+					if (!fileFound)
+					{
+						OnComplete ();
+					}
 				}
 				else
 				{
-					LogWarning ("Cannot find ProfilesList element '" + elementName + "' in Menu '" + menuName + "'.");
+					bool fileFound = SaveSystem.LoadGame (i, -1, false);
+					if (!fileFound)
+					{
+						OnComplete ();
+					}
 				}
-			}
-			else
-			{
-				LogWarning ("No SavesList element referenced when trying to find slot slot " + i.ToString ());
-			}
-			
-			if (saveHandling == SaveHandling.LoadGame)
-			{
-				SaveSystem.LoadGame (i, -1, false);
 			}
 			else if (saveHandling == SaveHandling.OverwriteExistingSave || saveHandling == SaveHandling.SaveNewGame)
 			{
-				if (PlayerMenus.IsSavingLocked (this))
+				if (PlayerMenus.IsSavingLocked (this, true))
 				{
-					LogWarning ("Cannot save at this time - either blocking ActionLists, a Conversation is active, or saving has been manually locked.");
 					OnComplete ();
 				}
 				else
 				{
 					if (saveHandling == SaveHandling.OverwriteExistingSave)
 					{
-						SaveSystem.SaveGame (i, -1, false, updateLabel, newSaveLabel);
+						if (selectSaveType == SelectSaveType.SetSaveID)
+						{
+							SaveSystem.SaveGame (0, i, true, updateLabel, newSaveLabel);
+						}
+						else
+						{
+							//SaveSystem.SaveGame (i, -1, false, updateLabel, newSaveLabel);
+
+							int saveID = i;
+							if (i >= 0 && i < KickStarter.saveSystem.foundSaveFiles.Count)
+							{
+								saveID = KickStarter.saveSystem.foundSaveFiles[i].saveID;
+							}
+							SaveSystem.SaveGame (i, saveID, true, updateLabel, newSaveLabel);
+						}
 					}
 					else if (saveHandling == SaveHandling.SaveNewGame)
 					{
-						SaveSystem.SaveNewGame (updateLabel, newSaveLabel);
+						SaveSystem.SaveNewGame (customLabel, newSaveLabel);
 					}
 				}
 			}
 		}
 
 
-		private void OnFinishLoading ()
+		protected void OnFinishLoading ()
 		{
 			OnComplete ();
 		}
 
 
-		private void OnFinishSaving (SaveFile saveFile)
+		protected void OnFinishSaving (SaveFile saveFile)
 		{
 			OnComplete ();
 		}
 
 
-		private void OnComplete ()
+		protected void OnComplete ()
 		{
 			ClearAllEvents ();
 			recievedCallback = true;
 		}
 
 
-		private void OnFail (int saveID)
+		protected void OnFail (int saveID)
 		{
 			OnComplete ();
 		}
 
 
-		private void ClearAllEvents ()
+		protected void ClearAllEvents ()
 		{
 			EventManager.OnFinishLoading -= OnFinishLoading;
 			EventManager.OnFailLoading -= OnFail;
@@ -241,22 +267,14 @@ namespace AC
 		}
 
 
-		public override ActionEnd End (List<Action> actions)
+#if UNITY_EDITOR
+
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			if (saveHandling == SaveHandling.OverwriteExistingSave || saveHandling == SaveHandling.SaveNewGame)
-			{
-				return base.End (actions);
-			}
-			return GenerateStopActionEnd ();
-		}
-		
-		
-		#if UNITY_EDITOR
-		
-		override public void ShowGUI (List<ActionParameter> parameters)
-		{
+			UpgradeSelf ();
+
 			saveHandling = (SaveHandling) EditorGUILayout.EnumPopup ("Method:", saveHandling);
-			
+
 			if (saveHandling == SaveHandling.LoadGame || saveHandling == SaveHandling.OverwriteExistingSave)
 			{
 				string _action = "load";
@@ -264,7 +282,7 @@ namespace AC
 				{
 					_action = "overwrite";
 				}
-				
+
 				selectSaveType = (SelectSaveType) EditorGUILayout.EnumPopup ("Save to " + _action + ":", selectSaveType);
 				if (selectSaveType == SelectSaveType.SetSlotIndex)
 				{
@@ -278,12 +296,21 @@ namespace AC
 				{
 					slotVarID = AdvGame.GlobalVariableGUI ("Integer variable:", slotVarID, VariableType.Integer);
 				}
+				else if (selectSaveType == SelectSaveType.SetSaveID)
+				{
+					saveIndexParameterID = Action.ChooseParameterGUI ("Save ID to " + _action + ":", parameters, saveIndexParameterID, ParameterType.Integer);
+					if (saveIndexParameterID == -1)
+					{
+						saveIndex = EditorGUILayout.IntField ("Save ID to " + _action + ":", saveIndex);
+					}
+				}
 
-				if (selectSaveType != SelectSaveType.Autosave)
+				if (selectSaveType != SelectSaveType.Autosave && selectSaveType != SelectSaveType.SetSaveID)
 				{
 					EditorGUILayout.Space ();
 					menuName = EditorGUILayout.TextField ("Menu with SavesList:", menuName);
 					elementName = EditorGUILayout.TextField ("SavesList element:", elementName);
+					EditorGUILayout.HelpBox ("If the slot index already accounts for the menu's offset, leave these text fields blank.", MessageType.Info);
 				}
 			}
 
@@ -299,33 +326,80 @@ namespace AC
 					customLabel = EditorGUILayout.Toggle ("With custom label?", customLabel);
 					if (customLabel)
 					{
-						varID = AdvGame.GlobalVariableGUI ("Label as String variable:", varID, VariableType.String);
+						customLabelText = EditorGUILayout.TextField ("Custom label:", customLabelText);
+						preProcessTokens = EditorGUILayout.Toggle ("Pre-process tokens?", preProcessTokens);
 					}
 				}
 			}
 
 			if (saveHandling == SaveHandling.LoadGame || saveHandling == SaveHandling.ContinueFromLastSave)
 			{
-				doSelectiveLoad = EditorGUILayout.ToggleLeft ("Selective loading?", doSelectiveLoad);
+				doSelectiveLoad = EditorGUILayout.Toggle ("Selective loading?", doSelectiveLoad);
 				if (doSelectiveLoad)
 				{
+					EditorGUILayout.Space ();
 					selectiveLoad.ShowGUI ();
 				}
 			}
-
-			if (saveHandling == SaveHandling.OverwriteExistingSave || saveHandling == SaveHandling.SaveNewGame)
-			{
-				AfterRunningOption ();
-			}
 		}
-		
-		
+
+
 		public override string SetLabel ()
 		{
 			return saveHandling.ToString ();
 		}
-		
-		#endif
+
+
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables variables = null, int variablesConstantID = 0)
+		{
+			UpgradeSelf ();
+			int thisNumReferences = 0;
+
+			if (saveHandling == SaveHandling.SaveNewGame || (saveHandling == SaveHandling.OverwriteExistingSave && updateLabel && selectSaveType != SelectSaveType.Autosave))
+			{
+				string tokenText = AdvGame.GetVariableTokenText (location, varID, variablesConstantID);
+				if (!string.IsNullOrEmpty (customLabelText) && customLabelText.ToLower ().Contains (tokenText))
+				{
+					thisNumReferences ++;
+				}
+			}
+
+			thisNumReferences += base.GetNumVariableReferences (location, varID, parameters, variables, variablesConstantID);
+			return thisNumReferences;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables variables = null, int variablesConstantID = 0)
+		{
+			UpgradeSelf ();
+			int thisNumReferences = 0;
+
+			if (saveHandling == SaveHandling.SaveNewGame || (saveHandling == SaveHandling.OverwriteExistingSave && updateLabel && selectSaveType != SelectSaveType.Autosave))
+			{
+				string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, variablesConstantID);
+				if (!string.IsNullOrEmpty (customLabelText) && customLabelText.ToLower ().Contains (oldTokenText))
+				{
+					string newTokenText = AdvGame.GetVariableTokenText (location, newVarID, variablesConstantID);
+					customLabelText = customLabelText.Replace (oldTokenText, newTokenText);
+					thisNumReferences++;
+				}
+			}
+
+			thisNumReferences += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, variables, variablesConstantID);
+			return thisNumReferences;
+		}
+
+#endif
+
+
+		private void UpgradeSelf ()
+		{
+			if (string.IsNullOrEmpty (customLabelText) && varID >= 0)
+			{
+				customLabelText = "[var:" + varID + "]";
+				varID = -1;
+			}
+		}
 
 
 		/**
@@ -335,7 +409,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_SaveNew (int customLabelGlobalStringVariableID = -1)
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.SaveNewGame;
 			newAction.customLabel = (customLabelGlobalStringVariableID >= 0);
 			newAction.varID = customLabelGlobalStringVariableID;
@@ -349,7 +423,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_SaveAutosave ()
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.OverwriteExistingSave;
 			newAction.selectSaveType = SelectSaveType.Autosave;
 			return newAction;
@@ -365,7 +439,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_LoadFromSlot (string menuName, string savesListElementName, int saveSlotIndex)
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.LoadGame;
 			newAction.selectSaveType = SelectSaveType.SetSlotIndex;
 			newAction.saveIndex = saveSlotIndex;
@@ -381,7 +455,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_LoadAutosave ()
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.LoadGame;
 			newAction.selectSaveType = SelectSaveType.Autosave;
 			return newAction;
@@ -394,7 +468,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_ContinueLast ()
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.ContinueFromLastSave;
 			return newAction;
 		}
@@ -409,7 +483,7 @@ namespace AC
 		 */
 		public static ActionSaveHandle CreateNew_SaveInSlot (string menuName, string savesListElementName, int saveSlotIndex)
 		{
-			ActionSaveHandle newAction = (ActionSaveHandle) CreateInstance <ActionSaveHandle>();
+			ActionSaveHandle newAction = CreateNew<ActionSaveHandle> ();
 			newAction.saveHandling = SaveHandling.OverwriteExistingSave;
 			newAction.selectSaveType = SelectSaveType.SetSlotIndex;
 			newAction.saveIndex = saveSlotIndex;
@@ -417,7 +491,7 @@ namespace AC
 			newAction.elementName = savesListElementName;
 			return newAction;
 		}
-		
+
 	}
-	
+
 }

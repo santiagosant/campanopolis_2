@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPlayerLock.cs"
  * 
@@ -34,152 +34,204 @@ namespace AC
 		public LockType doGravityLock = LockType.NoChange;
 		public LockType doHotspotHeadTurnLock = LockType.NoChange;
 		public Paths movePath;
+		public bool lockedPathCanReverse;
 
-		
-		public ActionPlayerLock ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Player;
-			title = "Constrain";
-			description = "Locks and unlocks various aspects of Player control. When using Direct or First Person control, can also be used to specify a Path object to restrict movement to.";
-		}
-		
-		
-		override public float Run ()
-		{
-			Player player = KickStarter.player;
 
-			if (KickStarter.playerInput)
+		public override ActionCategory Category { get { return ActionCategory.Player; }}
+		public override string Title { get { return "Constrain"; }}
+		public override string Description { get { return "Locks and unlocks various aspects of Player control. When using Direct or First Person control, can also be used to specify a Path object to restrict movement to."; }}
+
+
+		public override float Run ()
+		{
+			if (KickStarter.player == null)
 			{
-				if (IsSingleLockMovement ())
-				{
-					doLeftLock = doUpLock;
-					doRightLock = doUpLock;
-					doDownLock = doUpLock;
-				}
+				LogWarning ("No Player found!");
+				return 0f;
+			}
 
-				if (doUpLock == LockType.Disabled)
-				{
-					KickStarter.playerInput.SetUpLock (true);
-				}
-				else if (doUpLock == LockType.Enabled)
-				{
-					KickStarter.playerInput.SetUpLock (false);
-				}
+			if (IsSingleLockMovement ())
+			{
+				doLeftLock = doUpLock;
+				doRightLock = doUpLock;
+				doDownLock = doUpLock;
+			}
+
+			switch (doUpLock)
+			{ 
+				case LockType.Disabled:
+					KickStarter.player.upMovementLocked = true;
+					break;
+
+				case LockType.Enabled:
+					KickStarter.player.upMovementLocked = false;
+					break;
+
+				default:
+					break;
+			}
+
+			switch (doDownLock)
+			{ 
+				case LockType.Disabled:
+					KickStarter.player.downMovementLocked = true;
+					break;
+
+				case LockType.Enabled:
+					KickStarter.player.downMovementLocked = false;
+					break;
+
+				default:
+					break;
+			}
+
+			switch (doLeftLock)
+			{
+				case LockType.Disabled:
+					KickStarter.player.leftMovementLocked = true;
+					break;
+
+				case LockType.Enabled:
+					KickStarter.player.leftMovementLocked = false;
+					break;
+
+				default:
+					break;
+			}
+
+			switch (doRightLock)
+			{
+				case LockType.Disabled:
+					KickStarter.player.rightMovementLocked = true;
+					break;
+
+				case LockType.Enabled:
+					KickStarter.player.rightMovementLocked = false;
+					break;
+
+				default:
+					break;
+			}
 		
-				if (doDownLock == LockType.Disabled)
+			if (KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick)
+			{
+				switch (doJumpLock)
 				{
-					KickStarter.playerInput.SetDownLock (true);
-				}
-				else if (doDownLock == LockType.Enabled)
-				{
-					KickStarter.playerInput.SetDownLock (false);
-				}
-				
-				if (doLeftLock == LockType.Disabled)
-				{
-					KickStarter.playerInput.SetLeftLock (true);
-				}
-				else if (doLeftLock == LockType.Enabled)
-				{
-					KickStarter.playerInput.SetLeftLock (false);
-				}
-		
-				if (doRightLock == LockType.Disabled)
-				{
-					KickStarter.playerInput.SetRightLock (true);
-				}
-				else if (doRightLock == LockType.Enabled)
-				{
-					KickStarter.playerInput.SetRightLock (false);
-				}
+					case LockType.Disabled:
+						KickStarter.player.jumpingLocked = true;
+						break;
 
-				if (KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick)
-				{
-					if (doJumpLock == LockType.Disabled)
-					{
-						KickStarter.playerInput.SetJumpLock (true);
-					}
-					else if (doJumpLock == LockType.Enabled)
-					{
-						KickStarter.playerInput.SetJumpLock (false);
-					}
-				}
+					case LockType.Enabled:
+						KickStarter.player.jumpingLocked = false;
+						break;
 
-				if (IsInFirstPerson ())
-				{
-					if (freeAimLock == LockType.Disabled)
-					{
-						KickStarter.playerInput.SetFreeAimLock (true);
-					}
-					else if (freeAimLock == LockType.Enabled)
-					{
-						KickStarter.playerInput.SetFreeAimLock (false);
-					}
-				}
-
-				if (cursorState == LockType.Disabled)
-				{
-					KickStarter.playerInput.SetInGameCursorState (false);
-				}
-				else if (cursorState == LockType.Enabled)
-				{
-					KickStarter.playerInput.SetInGameCursorState (true);
-				}
-
-				if (doRunLock != PlayerMoveLock.NoChange)
-				{
-					KickStarter.playerInput.runLock = doRunLock;
+					default:
+						break;
 				}
 			}
-			
-			if (player)
+
+			if (IsInFirstPerson ())
 			{
-				if (movePath)
-				{
-					player.SetLockedPath (movePath);
-					player.SetMoveDirectionAsForward ();
-				}
-				else if (player.GetPath ())
-				{
-					if (player.IsPathfinding () && !ChangingMovementLock () && (doRunLock == PlayerMoveLock.AlwaysWalk || doRunLock == PlayerMoveLock.AlwaysRun))
-					{
-						if (doRunLock == PlayerMoveLock.AlwaysRun)
-						{
-							player.GetPath ().pathSpeed = PathSpeed.Run;
-							player.isRunning = true;
-						}
-						else if (doRunLock == PlayerMoveLock.AlwaysWalk)
-						{
-							player.GetPath ().pathSpeed = PathSpeed.Walk;
-							player.isRunning = false;
-						}
-					}
-					else
-					{
-						player.EndPath ();
-					}
-				}
+				switch (freeAimLock)
+				{ 
+					case LockType.Disabled:
+						KickStarter.player.freeAimLocked = true;
+						break;
 
-				if (doGravityLock == LockType.Enabled)
-				{
-					player.ignoreGravity = false;
-				}
-				else if (doGravityLock == LockType.Disabled)
-				{
-					player.ignoreGravity = true;
-				}
+					case LockType.Enabled:
+						KickStarter.player.freeAimLocked = false;
+						break;
 
-				if (AllowHeadTurning ())
+					default:
+						break;
+				}
+			}
+
+			switch (cursorState)
+			{
+				case LockType.Disabled:
+					KickStarter.playerInput.SetInGameCursorState (false);
+					break;
+
+				case LockType.Enabled:
+					KickStarter.playerInput.SetInGameCursorState (true);
+					break;
+
+				default:
+					break;
+			}
+
+			switch (doRunLock)
+			{
+				case PlayerMoveLock.AlwaysRun:
+				case PlayerMoveLock.AlwaysWalk:
+				case PlayerMoveLock.Free:
+					KickStarter.player.runningLocked = doRunLock;
+					break;
+
+				default:
+					break;
+			}
+			
+			if (movePath)
+			{
+				KickStarter.player.SetLockedPath (movePath, lockedPathCanReverse, PathSnapping.SnapToStart);
+				KickStarter.player.SetMoveDirectionAsForward ();
+			}
+			else if (KickStarter.player.GetPath ())
+			{
+				if (KickStarter.player.IsPathfinding () && !ChangingMovementLock ())// && (doRunLock == PlayerMoveLock.AlwaysWalk || doRunLock == PlayerMoveLock.AlwaysRun))
 				{
-					if (doHotspotHeadTurnLock == LockType.Disabled)
+					switch (doRunLock)
 					{
-						player.SetHotspotHeadTurnLock (true);
+						case PlayerMoveLock.AlwaysRun:
+							KickStarter.player.GetPath ().pathSpeed = PathSpeed.Run;
+							KickStarter.player.isRunning = true;
+							break;
+
+						case PlayerMoveLock.AlwaysWalk:
+							KickStarter.player.GetPath ().pathSpeed = PathSpeed.Walk;
+							KickStarter.player.isRunning = false;
+							break;
+
+						default:
+							break;
 					}
-					else if (doHotspotHeadTurnLock == LockType.Enabled)
-					{
-						player.SetHotspotHeadTurnLock (false);
-					}
+				}
+				else
+				{
+					KickStarter.player.EndPath ();
+				}
+			}
+
+			switch (doGravityLock)
+			{ 
+				case LockType.Enabled:
+					KickStarter.player.ignoreGravity = false;
+					break;
+
+				case LockType.Disabled:
+					KickStarter.player.ignoreGravity = true;
+					break;
+
+				default:
+					break;
+			}
+
+			if (AllowHeadTurning ())
+			{
+				switch (doHotspotHeadTurnLock)
+				{
+					case LockType.Disabled:
+						KickStarter.player.SetHotspotHeadTurnLock (true);
+						break;
+
+					case LockType.Enabled:
+						KickStarter.player.SetHotspotHeadTurnLock (false);
+						break;
+
+					default:
+						break;
 				}
 			}
 			
@@ -189,7 +241,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			if (IsSingleLockMovement ())
 			{
@@ -218,18 +270,27 @@ namespace AC
 			doGravityLock = (LockType) EditorGUILayout.EnumPopup ("Affected by gravity?", doGravityLock);
 			movePath = (Paths) EditorGUILayout.ObjectField ("Move path:", movePath, typeof (Paths), true);
 
+			if (movePath)
+			{
+				lockedPathCanReverse = EditorGUILayout.Toggle ("Can reverse along path?", lockedPathCanReverse);
+			}
+
 			if (AllowHeadTurning ())
 			{
 				doHotspotHeadTurnLock = (LockType) EditorGUILayout.EnumPopup ("Hotspot head-turning?", doHotspotHeadTurnLock);
 			}
-			
-			AfterRunningOption ();
 		}
-		
+
+
+		public override bool ReferencesPlayer (int playerID = -1)
+		{
+			return true;
+		}
+
 		#endif
 
 
-		private bool AllowHeadTurning ()
+		protected bool AllowHeadTurning ()
 		{
 			if (SceneSettings.CameraPerspective != CameraPerspective.TwoD && AdvGame.GetReferences ().settingsManager.playerFacesHotspots)
 			{
@@ -239,7 +300,7 @@ namespace AC
 		}
 
 
-		private bool IsSingleLockMovement ()
+		protected bool IsSingleLockMovement ()
 		{
 			if (AdvGame.GetReferences ().settingsManager)
 			{
@@ -253,7 +314,7 @@ namespace AC
 		}
 
 
-		private bool ChangingMovementLock ()
+		protected bool ChangingMovementLock ()
 		{
 			if (doUpLock != LockType.NoChange)
 			{
@@ -271,7 +332,7 @@ namespace AC
 		}
 
 
-		private bool IsInFirstPerson ()
+		protected bool IsInFirstPerson ()
 		{
 			if (AdvGame.GetReferences ().settingsManager && AdvGame.GetReferences ().settingsManager.IsInFirstPerson ())
 			{
@@ -294,7 +355,7 @@ namespace AC
 		 */
 		public static ActionPlayerLock CreateNew (LockType movementLock, LockType jumpLock = LockType.NoChange, LockType freeAimLock = LockType.NoChange, LockType cursorLock = LockType.NoChange, PlayerMoveLock movementSpeedLock = PlayerMoveLock.NoChange, LockType gravityLock = LockType.NoChange, LockType hotspotHeadTurnLock = LockType.NoChange, Paths limitToPath = null)
 		{
-			ActionPlayerLock newAction = (ActionPlayerLock) CreateInstance <ActionPlayerLock>();
+			ActionPlayerLock newAction = CreateNew<ActionPlayerLock> ();
 			newAction.doUpLock = movementLock;
 			newAction.doLeftLock = movementLock;
 			newAction.doRightLock = movementLock;
@@ -325,7 +386,7 @@ namespace AC
 		 */
 		public static ActionPlayerLock CreateNew (LockType upMovementLock, LockType downMovementLock, LockType leftMovementLock, LockType rightMovementLock, LockType jumpLock = LockType.NoChange, LockType freeAimLock = LockType.NoChange, LockType cursorLock = LockType.NoChange, PlayerMoveLock movementSpeedLock = PlayerMoveLock.NoChange, LockType gravityLock = LockType.NoChange, LockType hotspotHeadTurnLock = LockType.NoChange, Paths limitToPath = null)
 		{
-			ActionPlayerLock newAction = (ActionPlayerLock) CreateInstance <ActionPlayerLock>();
+			ActionPlayerLock newAction = CreateNew<ActionPlayerLock> ();
 			newAction.doUpLock = upMovementLock;
 			newAction.doLeftLock = leftMovementLock;
 			newAction.doRightLock = rightMovementLock;
@@ -338,7 +399,6 @@ namespace AC
 			newAction.doHotspotHeadTurnLock = hotspotHeadTurnLock;
 			return newAction;
 		}
-
 
 	}
 

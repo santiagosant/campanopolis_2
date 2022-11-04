@@ -7,9 +7,7 @@ using UnityEditor;
 namespace AC
 {
 	
-	/**
-	 * Provides an EditorWindow to manage the export of inventory items
-	 */
+	/** Provides an EditorWindow to manage the export of inventory items */
 	public class InvItemExportWizardWindow : EditorWindow
 	{
 
@@ -29,18 +27,17 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the window.</summary>
-		 */
+		/** Initialises the window. */
 		public static void Init (InventoryManager _inventoryManager)
 		{
 			if (_inventoryManager == null) return;
 
-			InvItemExportWizardWindow window = EditorWindow.GetWindowWithRect <InvItemExportWizardWindow> (new Rect (0, 0, 350, 500), true, "Inventory item exporter", true);
+			InvItemExportWizardWindow window = (InvItemExportWizardWindow) GetWindow (typeof (InvItemExportWizardWindow));
 
-			UnityVersionHandler.SetWindowTitle (window, "Inventory item exporter");
+			window.titleContent.text = "Inventory item exporter";
 			window.position = new Rect (300, 200, 350, 500);
 			window._Init (_inventoryManager);
+			window.minSize = new Vector2 (300, 180);
 		}
 		
 		
@@ -64,7 +61,7 @@ namespace AC
 				exportColumns.Add (new ExportColumn ());
 			}
 
-			EditorGUILayout.LabelField ("Inventory item export wizard", CustomStyles.managerHeader);
+			EditorGUILayout.LabelField ("Inventory item exporter", CustomStyles.managerHeader);
 			scroll = GUILayout.BeginScrollView (scroll);
 
 			EditorGUILayout.HelpBox ("Choose the fields to export as columns below, then click 'Export CSV'.", MessageType.Info);
@@ -83,7 +80,6 @@ namespace AC
 			}
 			GUI.enabled = true;
 
-			EditorGUILayout.Space ();
 			GUILayout.EndScrollView ();
 		}
 
@@ -91,10 +87,9 @@ namespace AC
 		private void ShowColumnsGUI ()
 		{
 			EditorGUILayout.LabelField ("Define columns",  CustomStyles.subHeader);
-			EditorGUILayout.Space ();
 			for (int i=0; i<exportColumns.Count; i++)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 
 				EditorGUILayout.BeginHorizontal ();
 				exportColumns[i].ShowFieldSelector (i);
@@ -104,10 +99,9 @@ namespace AC
 				}
 				EditorGUILayout.EndHorizontal ();
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
-			EditorGUILayout.Space ();
 			if (GUILayout.Button ("Add new column"))
 			{
 				exportColumns.Add (new ExportColumn ());
@@ -208,7 +202,6 @@ namespace AC
 				exportItems.Add (new InvItem (item));
 			}
 
-			bool fail = false;
 			List<string[]> output = new List<string[]>();
 
 			List<string> headerList = new List<string>();
@@ -227,30 +220,14 @@ namespace AC
 				{
 					string cellText = exportColumn.GetCellText (exportItem, inventoryManager);
 					rowList.Add (cellText);
-
-					if (cellText.Contains (CSVReader.csvDelimiter))
-					{
-						fail = true;
-						ACDebug.LogError ("Cannot export inventory since item " + exportItem.id.ToString () + " (" + exportItem.label + ") contains the character '" + CSVReader.csvDelimiter + "'.");
-					}
 				}
 				output.Add (rowList.ToArray ());
 			}
-			
-			if (!fail)
+
+			string fileContents = CSVReader.CreateCSVGrid (output);
+			if (!string.IsNullOrEmpty (fileContents) && Serializer.SaveFile (fileName, fileContents))
 			{
-				int length = output.Count;
-				
-				System.Text.StringBuilder sb = new System.Text.StringBuilder ();
-				for (int j=0; j<length; j++)
-				{
-					sb.AppendLine (string.Join (CSVReader.csvDelimiter, output[j]));
-				}
-				
-				if (Serializer.SaveFile (fileName, sb.ToString ()))
-				{
-					ACDebug.Log ((exportItems.Count-1).ToString () + " items exported.");
-				}
+				ACDebug.Log ((exportItems.Count-1).ToString () + " items exported.");
 			}
 
 			//this.Close ();
@@ -279,7 +256,7 @@ namespace AC
 
 			public void ShowFieldSelector (int i)
 			{
-				columnType = (ColumnType) EditorGUILayout.EnumPopup ("Column #" + (i+1).ToString (), columnType);
+				columnType = (ColumnType) EditorGUILayout.EnumPopup ("Column #" + (i+1).ToString () + ":", columnType);
 			}
 
 

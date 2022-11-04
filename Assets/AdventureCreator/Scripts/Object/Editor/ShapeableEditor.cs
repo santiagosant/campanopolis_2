@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 
@@ -11,11 +13,12 @@ namespace AC
 		
 		private ShapeGroup selectedGroup;
 		private ShapeKey selectedKey;
-		
-		
-		public override void OnInspectorGUI()
+		private Shapeable _target;
+
+
+		public override void OnInspectorGUI ()
 		{
-			Shapeable _target = (Shapeable) target;
+			_target = (Shapeable) target;
 			
 			_target.shapeGroups = AllGroupsGUI (_target.shapeGroups);
 			
@@ -45,18 +48,18 @@ namespace AC
 		{
 			EditorGUILayout.Space ();
 			
-			EditorGUILayout.BeginVertical ("Button");
-			EditorGUILayout.LabelField ("Shape group " + shapeGroup.label, EditorStyles.boldLabel);
-			
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
+			CustomGUILayout.ToggleHeader (true, "Shape group " + shapeGroup.label);
+
 			shapeGroup.label = CustomGUILayout.TextField ("Group label:", shapeGroup.label, "", "The editor-friendly name of the group");
 			shapeGroup.shapeKeys = AllKeysGUI (shapeGroup.shapeKeys);
+			
+			EditorGUILayout.EndVertical ();
 			
 			if (selectedKey != null && shapeGroup.shapeKeys.Contains (selectedKey))
 			{
 				selectedKey = KeyGUI (selectedKey, blendShapeNames);
 			}
-			
-			EditorGUILayout.EndVertical ();
 			
 			return shapeGroup;
 		}
@@ -64,18 +67,51 @@ namespace AC
 		
 		private ShapeKey KeyGUI (ShapeKey shapeKey, string[] blendShapeNames)
 		{
-			EditorGUILayout.LabelField ("Shape key " + shapeKey.label, EditorStyles.boldLabel);
-			
-			shapeKey.label = CustomGUILayout.TextField ("Key label:", shapeKey.label, "", "An editor-friendly name of the blendshape");
+			EditorGUILayout.Space ();
 
-			if (blendShapeNames != null && blendShapeNames.Length > 0)
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
+			CustomGUILayout.ToggleHeader (true, "Shape key " + shapeKey.label);
+
+			shapeKey.Upgrade ();
+			shapeKey.label = CustomGUILayout.TextField ("Key label:", shapeKey.label, "", "An editor-friendly name of the blendshape");
+			
+			foreach (ShapeKeyBlendshape blendshape in shapeKey.blendshapes)
 			{
-				shapeKey.index = CustomGUILayout.Popup ("Blendshape:", shapeKey.index, blendShapeNames, "", "The Blendshape that this relates to");
+				CustomGUILayout.BeginHorizontal ();
+				if (blendShapeNames != null && blendShapeNames.Length > 0)
+				{
+					blendshape.index = CustomGUILayout.Popup ("Blendshape:", blendshape.index, blendShapeNames, "", "The Blendshape that this relates to");
+				}
+				else
+				{
+					blendshape.index = CustomGUILayout.IntField ("BlendShape index:", blendshape.index, "", "The Blendshape that this relates to");
+				}
+
+				if (shapeKey.blendshapes.Count > 1 && GUILayout.Button ("-", GUILayout.Width (20f), GUILayout.Height (15f)))
+				{
+					Undo.RecordObject (_target, "Delete shapekey Blendshape");
+					shapeKey.blendshapes.Remove (blendshape);
+					selectedGroup = null;
+					selectedKey = null;
+					break;
+				}
+
+				CustomGUILayout.EndHorizontal ();
+				blendshape.relativeIntensity = CustomGUILayout.Slider ("   Relative intensity:", blendshape.relativeIntensity, 0f, 100f, "", "The relative intensity (from 0 -> 100) of the Blendshape when the Key is fully active");
+
+				if (shapeKey.blendshapes.IndexOf (blendshape) < (shapeKey.blendshapes.Count - 1))
+				{
+					CustomGUILayout.DrawUILine ();
+				}
 			}
-			else
+
+			if (GUILayout.Button ("Add new Blendshape"))
 			{
-				shapeKey.index = CustomGUILayout.IntField ("BlendShape index:", shapeKey.index, "", "The Blendshape that this relates to");
+				Undo.RecordObject (_target, "Add new Blendshape");
+				shapeKey.blendshapes.Add (new ShapeKeyBlendshape (0));
 			}
+
+			EditorGUILayout.EndVertical ();
 
 			return shapeKey;
 		}
@@ -83,8 +119,9 @@ namespace AC
 		
 		private List<ShapeGroup> AllGroupsGUI (List<ShapeGroup> shapeGroups)
 		{
-			EditorGUILayout.LabelField ("Shape groups", EditorStyles.boldLabel);
-			
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
+			CustomGUILayout.ToggleHeader (true, "Shape groups");
+
 			foreach (ShapeGroup shapeGroup in shapeGroups)
 			{
 				EditorGUILayout.BeginHorizontal ();
@@ -111,6 +148,7 @@ namespace AC
 				
 				if (GUILayout.Button ("-", GUILayout.Width (20f), GUILayout.Height (15f)))
 				{
+					Undo.RecordObject (_target, "Delete shape group");
 					shapeGroups.Remove (shapeGroup);
 					selectedGroup = null;
 					selectedKey = null;
@@ -122,11 +160,14 @@ namespace AC
 			
 			if (GUILayout.Button ("Create new shape group"))
 			{
+				Undo.RecordObject (_target, "Create new shape group");
 				ShapeGroup newShapeGroup = new ShapeGroup (GetIDArray (shapeGroups));
 				shapeGroups.Add (newShapeGroup);
 				selectedGroup = newShapeGroup;
 				selectedKey = null;
 			}
+
+			EditorGUILayout.EndVertical ();
 			
 			return shapeGroups;
 		}
@@ -158,6 +199,7 @@ namespace AC
 				
 				if (GUILayout.Button ("-", GUILayout.Width (20f), GUILayout.Height (15f)))
 				{
+					Undo.RecordObject (_target, "Delete shape key");
 					shapeKeys.Remove (shapeKey);
 					selectedKey = null;
 					break;
@@ -168,6 +210,7 @@ namespace AC
 			
 			if (GUILayout.Button ("Create new shape key"))
 			{
+				Undo.RecordObject (_target, "Create new shape key");
 				ShapeKey newShapeKey = new ShapeKey (GetIDArray (shapeKeys));
 				shapeKeys.Add (newShapeKey);
 				selectedKey = newShapeKey;
@@ -203,3 +246,5 @@ namespace AC
 	}
 
 }
+
+#endif

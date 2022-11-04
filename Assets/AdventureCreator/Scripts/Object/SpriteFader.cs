@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SpriteFader.cs"
  * 
@@ -15,43 +15,50 @@ using System.Collections;
 namespace AC
 {
 
-	/**
-	 * Provides functions that can fade a sprite in and out.
-	 */
+	/** Provides functions that can fade a sprite in and out. */
 	[AddComponentMenu("Adventure Creator/Misc/Sprite fader")]
 	[RequireComponent (typeof (SpriteRenderer))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_sprite_fader.html")]
-	#endif
 	public class SpriteFader : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** If True, then child Sprite will also be affected */
 		public bool affectChildren = false;
 
-		/** True if the Sprite attached to the GameObject this script is attached to is currently fading */
-		[HideInInspector] public bool isFading = true;
-		/** The time at which the sprite began fading */
-		[HideInInspector] public float fadeStartTime;
-		/** The duration of the sprite-fading effect */
-		[HideInInspector] public float fadeTime;
-		/** The direction of the sprite-fading effect (fadeIn, fadeOut) */
-		[HideInInspector] public FadeType fadeType;
+		[Range (0f, 1f)] public float minAlpha = 0f;
+		[Range (0f, 1f)] public float maxAlpha = 1f;
 
-		private SpriteRenderer spriteRenderer;
-		private SpriteRenderer[] spriteRenderers;
+		private bool isFading = true;
+		private float fadeStartTime;
+		private float fadeTime;
+		private FadeType fadeType;
+
+		protected SpriteRenderer spriteRenderer;
+		protected SpriteRenderer[] childSprites;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			spriteRenderer = GetComponent <SpriteRenderer>();
 
 			if (affectChildren)
 			{
-				spriteRenderers = GetComponentsInChildren <SpriteRenderer>();
+				childSprites = GetComponentsInChildren <SpriteRenderer>();
 			}
+
+			SetAlpha (GetAlpha ());
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Forces the alpha value of a sprite to a specific value.</summary>
@@ -59,16 +66,18 @@ namespace AC
 		 */
 		public void SetAlpha (float _alpha)
 		{
-			if (affectChildren && spriteRenderers != null)
+			float remappedAlpha = Remap (_alpha, 0f, 1f, minAlpha, maxAlpha);
+
+			if (affectChildren && childSprites != null)
 			{
-				foreach (SpriteRenderer childRenderer in spriteRenderers)
+				foreach (SpriteRenderer childSprite in childSprites)
 				{
-					SetSpriteAlpha (childRenderer, _alpha);
+					SetSpriteAlpha (childSprite, remappedAlpha);
 				}
 			}
 			else
 			{
-				SetSpriteAlpha (spriteRenderer, _alpha);
+				SetSpriteAlpha (spriteRenderer, remappedAlpha);
 			}
 		}
 
@@ -79,7 +88,9 @@ namespace AC
 		 */
 		public float GetAlpha ()
 		{
-			return spriteRenderer.color.a;
+			float _alpha = spriteRenderer.color.a;
+			float remappedAlpha = Remap (_alpha, minAlpha, maxAlpha, 0f, 1f);
+			return Mathf.Clamp01 (remappedAlpha);
 		}
 
 
@@ -91,10 +102,10 @@ namespace AC
 		 */
 		public void Fade (FadeType _fadeType, float _fadeTime, float startAlpha = -1)
 		{
-			StopCoroutine ("DoFade");
+			StopAllCoroutines ();
 
 			float currentAlpha = GetAlpha ();
-
+			
 			if (startAlpha >= 0)
 			{
 				currentAlpha = startAlpha;
@@ -116,11 +127,11 @@ namespace AC
 
 			if (_fadeType == FadeType.fadeOut)
 			{
-				fadeStartTime = Time.time - (currentAlpha * _fadeTime);
+				fadeStartTime = Time.time - ((1f - currentAlpha) * _fadeTime);
 			}
 			else
 			{
-				fadeStartTime = Time.time - ((1f - currentAlpha) * _fadeTime);
+				fadeStartTime = Time.time - (currentAlpha * _fadeTime);
 			}
 		
 			fadeTime = _fadeTime;
@@ -128,7 +139,7 @@ namespace AC
 
 			if (fadeTime > 0f)
 			{
-				StartCoroutine ("DoFade");
+				StartCoroutine (DoFade ());
 			}
 			else
 			{
@@ -137,12 +148,10 @@ namespace AC
 		}
 
 
-		/**
-		 * Ends the sprite-fading effect, and sets the Sprite's alpha to its target value.
-		 */
+		/** Ends the sprite-fading effect, and sets the Sprite's alpha to its target value. */
 		public void EndFade ()
 		{
-			StopCoroutine ("DoFade");
+			StopAllCoroutines ();
 
 			isFading = false;
 
@@ -156,8 +165,18 @@ namespace AC
 			}
 		}
 
+		#endregion
 
-		private void SetSpriteAlpha (SpriteRenderer _spriteRenderer, float alpha)
+
+		#region ProtectedFunctions
+
+		protected float Remap (float value, float from1, float to1, float from2, float to2)
+		{
+			return (value - from1) / (to1 - from1) * (to2 - from2) + from2;
+		}
+
+
+		protected void SetSpriteAlpha (SpriteRenderer _spriteRenderer, float alpha)
 		{
 			Color color = _spriteRenderer.color;
 			color.a = alpha;
@@ -165,20 +184,20 @@ namespace AC
 		}
 
 
-		private void SetEnabledState (bool value)
+		protected void SetEnabledState (bool value)
 		{
 			spriteRenderer.enabled = value;
-			if (affectChildren && spriteRenderers != null)
+			if (affectChildren && childSprites != null)
 			{
-				foreach (SpriteRenderer childRenderer in spriteRenderers)
+				foreach (SpriteRenderer childSprite in childSprites)
 				{
-					childRenderer.enabled = value;
+					childSprite.enabled = value;
 				}
 			}
 		}
 
 
-		private IEnumerator DoFade ()
+		protected IEnumerator DoFade ()
 		{
 			SetEnabledState (true);
 
@@ -190,9 +209,9 @@ namespace AC
 			{
 				while (alpha < 1f)
 				{
-					alpha = -1f + AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null);
+					alpha = AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null);
 					SetAlpha (alpha);
-					yield return new WaitForFixedUpdate ();
+					yield return null;
 				}
 				SetAlpha (1f);
 			}
@@ -200,14 +219,30 @@ namespace AC
 			{
 				while (alpha > 0f)
 				{
-					alpha = 2f - AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null);
+					alpha = 1f - AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null);
 					SetAlpha (alpha);
-					yield return new WaitForFixedUpdate ();
+					yield return null;
 				}
 				SetAlpha (0f);
 			}
 			isFading = false;
 		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** True if the Sprite attached to the GameObject this script is attached to is currently fading */
+		public bool IsFading { get { return isFading; } }
+		/** The time at which the sprite began fading */
+		public float FadeStartTime { get { return fadeStartTime; } }
+		/** The duration of the sprite-fading effect */
+		public float FadeTime { get { return fadeTime; } }
+		/** The direction of the sprite-fading effect (fadeIn, fadeOut) */
+		public FadeType FadeType { get { return fadeType; } }
+
+		#endregion
 
 	}
 

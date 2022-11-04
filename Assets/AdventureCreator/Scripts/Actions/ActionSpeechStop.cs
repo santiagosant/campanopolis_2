@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSpeechStop.cs"
  * 
@@ -26,16 +26,12 @@ namespace AC
 		public string limitToCharacters = "";
 
 
-		public ActionSpeechStop ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Dialogue;
-			title = "Stop speech";
-			description = "Ends any currently-playing speech instantly.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Dialogue; }}
+		public override string Title { get { return "Stop speech"; }}
+		public override string Description { get { return "Ends any currently-playing speech instantly."; }}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			KickStarter.dialog.KillDialog (true, forceMenus, speechMenuLimit, speechMenuType, limitToCharacters);
 
@@ -45,7 +41,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			speechMenuLimit = (SpeechMenuLimit) EditorGUILayout.EnumPopup ("Speech to stop:", speechMenuLimit);
 			speechMenuType = (SpeechMenuType) EditorGUILayout.EnumPopup ("Characters to stop", speechMenuType);
@@ -62,8 +58,6 @@ namespace AC
 			}
 
 			forceMenus = EditorGUILayout.Toggle ("Force off subtitles?", forceMenus);
-
-			AfterRunningOption ();
 		}
 		
 		
@@ -85,7 +79,7 @@ namespace AC
 		 */
 		public static ActionSpeechStop CreateNew (SpeechMenuLimit speechToStop, SpeechMenuType charactersToStop, string specificCharacters = "", bool forceOffSubtitles = false)
 		{
-			ActionSpeechStop newAction = (ActionSpeechStop) CreateInstance <ActionSpeechStop>();
+			ActionSpeechStop newAction = CreateNew<ActionSpeechStop> ();
 			newAction.speechMenuLimit = speechToStop;
 			newAction.speechMenuType = charactersToStop;
 			newAction.limitToCharacters = specificCharacters;

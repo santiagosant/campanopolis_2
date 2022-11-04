@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -22,10 +24,10 @@ namespace AC
 
 		protected void SharedGUI (DragBase _target, bool isOnHinge)
 		{
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Collision settings:", EditorStyles.boldLabel);
 			_target.ignorePlayerCollider = CustomGUILayout.ToggleLeft ("Ignore Player's collider?", _target.ignorePlayerCollider, "", "If True, then the Physics system will ignore collisions between this object and the player");
-			_target.ignoreMoveableRigidbodies = CustomGUILayout.ToggleLeft ("Ignore Moveable Rigidbodies?", _target.ignoreMoveableRigidbodies, "", " If True, then the Physics system will ignore collisions between this object and the bounday colliders of any DragTrack that this is not locked to");
+			_target.ignoreMoveableRigidbodies = CustomGUILayout.ToggleLeft ("Ignore Moveable Rigidbodies?", _target.ignoreMoveableRigidbodies, "", " If True, then the Physics system will ignore collisions between this object and the boundary colliders of any DragTrack that this is not locked to");
 			_target.childrenShareLayer = CustomGUILayout.ToggleLeft ("Place children on same layer?", _target.childrenShareLayer, "", "If True, then this object's children will be placed on the same layer");
 
 			EditorGUILayout.BeginHorizontal ();
@@ -49,9 +51,11 @@ namespace AC
 			}
 			EditorGUILayout.EndHorizontal ();
 
-			EditorGUILayout.EndVertical ();
+			_target.limitToCamera = (_Camera) CustomGUILayout.ObjectField <_Camera> ("Limit to camera:", _target.limitToCamera, true, "", "If assigned, then the draggable  will only be interactive when the assigned _Camera is active");
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.EndVertical ();
+
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Icon settings:", EditorStyles.boldLabel);
 			_target.showIcon = CustomGUILayout.Toggle ("Icon at contact point?", _target.showIcon, "", "If True, then an icon will be displayed at the 'grab point' when the object is held");
 			if (_target.showIcon)
@@ -67,22 +71,25 @@ namespace AC
 					_target.iconID = -1;
 				}
 			}		
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Sound settings:", EditorStyles.boldLabel);
 			_target.moveSoundClip = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Move sound:", _target.moveSoundClip, false, "", "The sound to play when the object is moved");
+			_target.moveSound = (Sound) CustomGUILayout.ObjectField <Sound> ("Move Sound object:", _target.moveSound, true, "", "The Sound component to play move sounds from");
 			_target.slideSoundThreshold = CustomGUILayout.FloatField ("Min. move speed:", _target.slideSoundThreshold, "", "The minimum speed that the object must be moving by for sound to play");
 			_target.slidePitchFactor = CustomGUILayout.FloatField ("Pitch factor:", _target.slidePitchFactor, "", "The factor by which the movement sound's pitch is adjusted in relation to speed");
-
+		
 			_target.collideSoundClip = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Collide sound:", _target.collideSoundClip, false, "", "The sound to play when the object has a collision");
 			if (isOnHinge)
 			{
 				_target.onlyPlayLowerCollisionSound = CustomGUILayout.Toggle ("Only on lower boundary?", _target.onlyPlayLowerCollisionSound, "", "If True, then the collision sound will only play when the object collides with its lower boundary collider");
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 	}
 
 }
+
+#endif

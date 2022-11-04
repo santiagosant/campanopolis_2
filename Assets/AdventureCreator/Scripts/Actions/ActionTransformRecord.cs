@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTransformRecord.cs"
  * 
@@ -24,6 +24,7 @@ namespace AC
 	{
 
 		public bool isPlayer;
+		public int playerID = -1;
 		public GameObject obToRead;
 		public int obToReadParameterID = -1;
 		public int obToReadConstantID = 0;
@@ -42,32 +43,25 @@ namespace AC
 
 		protected GVar runtimeVariable;
 		protected Variables runtimeVariables;
-		private LocalVariables localVariables;
+		protected LocalVariables localVariables;
 
 
-		public ActionTransformRecord ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Record transform";
-			description = "Records the transform values of a GameObject.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Record transform"; }}
+		public override string Description { get { return "Records the transform values of a GameObject."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player != null)
-				{
-					runtimeObToRead = KickStarter.player.gameObject;
-				}
-				else
-				{
-					runtimeObToRead = null;
-				}
+				Player player = AssignPlayer (playerID, parameters, obToReadParameterID);
+				runtimeObToRead = (player != null) ? player.gameObject : null;
 			}
-			runtimeObToRead = AssignFile (parameters, obToReadParameterID, obToReadConstantID, obToRead);
+			else
+			{
+				runtimeObToRead = AssignFile (parameters, obToReadParameterID, obToReadConstantID, obToRead);
+			}
 
 			runtimeVariable = null;
 			switch (variableLocation)
@@ -98,7 +92,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -113,7 +107,7 @@ namespace AC
 		}
 
 
-		override public float Run ()	
+		public override float Run ()	
 		{
 			if (runtimeObToRead != null)
 			{
@@ -124,33 +118,33 @@ namespace AC
 						case TransformRecordType.Position:
 							if (transformLocation == GlobalLocal.Global)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.position);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.position;
 							}
 							else if (transformLocation == GlobalLocal.Local)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.localPosition);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.localPosition;
 							}
 							break;
 
 						case TransformRecordType.Rotation:
 							if (transformLocation == GlobalLocal.Global)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.eulerAngles);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.eulerAngles;
 							}
 							else if (transformLocation == GlobalLocal.Local)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.localEulerAngles);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.localEulerAngles;
 							}
 							break;
 
 						case TransformRecordType.Scale:
 							if (transformLocation == GlobalLocal.Global)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.lossyScale);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.lossyScale;
 							}
 							else if (transformLocation == GlobalLocal.Local)
 							{
-								runtimeVariable.SetVector3Value (runtimeObToRead.transform.localScale);
+								runtimeVariable.Vector3Value = runtimeObToRead.transform.localScale;
 							}
 							break;
 					}
@@ -165,10 +159,19 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Record Player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					obToReadParameterID = ChooseParameterGUI ("Player ID:", parameters, obToReadParameterID, ParameterType.Integer);
+					if (obToReadParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				obToReadParameterID = Action.ChooseParameterGUI ("Object to record:", parameters, obToReadParameterID, ParameterType.GameObject);
 				if (obToReadParameterID >= 0)
@@ -238,14 +241,15 @@ namespace AC
 					}
 					break;
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
-			AssignConstantID (obToRead, obToReadConstantID, obToReadParameterID);
+			if (!isPlayer)
+			{
+				AssignConstantID (obToRead, obToReadConstantID, obToReadParameterID);
+			}
 
 			if (variableLocation == VariableLocation.Component)
 			{
@@ -254,13 +258,39 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (obToRead != null)
 			{
 				return obToRead.name + " " + transformRecordType.ToString ();
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (!isPlayer && obToReadParameterID < 0)
+			{
+				if (obToRead && obToRead == gameObject) return true;
+				if (obToReadConstantID == id && id != 0) return true;
+			}
+			if (isPlayer && gameObject && gameObject.GetComponent <Player>()) return true;
+			if (variableParameterID < 0 && variableLocation == VariableLocation.Component)
+			{
+				if (variables && variables.gameObject == gameObject) return true;
+				if (variablesConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && obToReadParameterID < 0) return true;
+			return (obToReadParameterID < 0 && playerID == _playerID);
 		}
 
 		#endif
@@ -278,7 +308,7 @@ namespace AC
 		 */
 		public static ActionTransformRecord CreateNew (GameObject objectToRecord, TransformRecordType recordType, bool inWorldSpace, VariableLocation variableLocation, int variableID, Variables variables = null)
 		{
-			ActionTransformRecord newAction = (ActionTransformRecord) CreateInstance <ActionTransformRecord>();
+			ActionTransformRecord newAction = CreateNew<ActionTransformRecord> ();
 			newAction.obToRead = objectToRecord;
 			newAction.transformRecordType = recordType;
 			newAction.transformLocation = (inWorldSpace) ? GlobalLocal.Global : GlobalLocal.Local;

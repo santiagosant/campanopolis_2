@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Shapeable.cs"
  * 
@@ -10,8 +10,9 @@
  * 
  */
 
-using UnityEngine;
+using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace AC
 {
@@ -21,16 +22,17 @@ namespace AC
 	 * If LipSyncing is set to affect GameObjects, then this componentt is necessary to animate phoneme shapes.
 	 */
 	[AddComponentMenu("Adventure Creator/Misc/Shapeable")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_shapeable.html")]
-	#endif
 	public class Shapeable : MonoBehaviour
 	{
 
+		#region Variables
+
 		/** A List of user-defined ShapeGroup instances, that define how the blendshapes are sorted */
 		public List<ShapeGroup> shapeGroups = new List<ShapeGroup>();
-		
-		private SkinnedMeshRenderer skinnedMeshRenderer;
+		private Dictionary<int, float> blendshapeValueDict = new Dictionary<int, float> ();
+
+		protected SkinnedMeshRenderer skinnedMeshRenderer;
 		
 		// OLD
 		private bool isChanging = false;
@@ -40,27 +42,78 @@ namespace AC
 		private int shapeKey;
 		private float startTime;
 		private float deltaTime;
+
+		#endregion
+
+
+		#region UnityStandards		
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
-			AssignSkinnedMeshRenderer ();
-			
-			if (skinnedMeshRenderer != null)
+			if (SkinnedMeshRenderer)
 			{
 				// Set all values to zero
+				blendshapeValueDict.Clear ();
 				foreach (ShapeGroup shapeGroup in shapeGroups)
 				{
-					shapeGroup.SetSMR (skinnedMeshRenderer);
-					
 					foreach (ShapeKey shapeKey in shapeGroup.shapeKeys)
 					{
-						shapeKey.SetValue (0f, skinnedMeshRenderer);
+						shapeKey.SetValue (0f, ref blendshapeValueDict);
 					}
 				}
 			}
 		}
-		
+
+
+		protected void Update ()
+		{
+			if (SkinnedMeshRenderer == null)
+			{
+				return;
+			}
+
+			blendshapeValueDict.Clear ();
+			foreach (ShapeGroup shapeGroup in shapeGroups)
+			{
+				shapeGroup.UpdateKeys (ref blendshapeValueDict);
+			}
+		}
+
+
+		protected void LateUpdate ()
+		{
+			if (SkinnedMeshRenderer == null)
+			{
+				return;
+			}
+
+			foreach (int blendshapeIndex in blendshapeValueDict.Keys)
+			{
+				SkinnedMeshRenderer.SetBlendShapeWeight (blendshapeIndex, blendshapeValueDict[blendshapeIndex]);
+			}
+			
+			// OLD
+			if (isChanging)
+			{
+				actualShape = Mathf.Lerp (originalShape, targetShape, AdvGame.Interpolate (startTime, deltaTime, AC.MoveMethod.Linear, null));
+				
+				if (Time.time > startTime + deltaTime)
+				{
+					isChanging = false;
+					actualShape = targetShape;
+				}
+				
+				if (SkinnedMeshRenderer)
+				{
+					SkinnedMeshRenderer.SetBlendShapeWeight (shapeKey, actualShape);
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions		
 
 		/**
 		 * <summary>Disables all blendshapes within a ShapeGroup.</summary>
@@ -71,12 +124,27 @@ namespace AC
 		 */
 		public void DisableAllKeys (int _groupID, float _deltaTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
 		{
-			foreach (ShapeGroup shapeGroup in shapeGroups)
+			ShapeGroup shapeGroup = GetGroup (_groupID);
+			if (shapeGroup != null)
 			{
-				if (shapeGroup.ID == _groupID)
-				{
-					shapeGroup.SetActive (-1, 0f, _deltaTime, _moveMethod, _timeCurve);
-				}
+				shapeGroup.SetActive (-1, 0f, _deltaTime, _moveMethod, _timeCurve);
+			}
+		}
+
+
+		/**
+		 * <summary>Disables all blendshapes within a ShapeGroup.</summary>
+		 * <param name = "_groupID">The unique identifier of the ShapeGroup to affect</param>
+		 * <param name = "_deltaTime">The duration, in seconds, that the group's blendshapes should be disabled</param>
+		 * <param name = "_moveMethod">The interpolation method by which the blendshapes are affected (Linear, Smooth, Curved, EaseIn, EaseOut, CustomCurve)</param>
+		 * <param name = "_timeCurve">If _moveMethod = MoveMethod.CustomCurve, then the transition speed will be follow the shape of the supplied AnimationCurve. This curve can exceed "1" in the Y-scale, allowing for overshoot effects.</param>
+		 */
+		public void DisableAllKeys (string _groupLabel, float _deltaTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
+		{
+			ShapeGroup shapeGroup = GetGroup (_groupLabel);
+			if (shapeGroup != null)
+			{
+				shapeGroup.SetActive (-1, 0f, _deltaTime, _moveMethod, _timeCurve);
 			}
 		}
 		
@@ -92,12 +160,10 @@ namespace AC
 		 */
 		public void SetActiveKey (int _groupID, int _keyID, float _value, float _deltaTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
 		{
-			foreach (ShapeGroup shapeGroup in shapeGroups)
+			ShapeGroup shapeGroup = GetGroup (_groupID);
+			if (shapeGroup != null)
 			{
-				if (shapeGroup.ID == _groupID)
-				{
-					shapeGroup.SetActive (_keyID, _value, _deltaTime, _moveMethod, _timeCurve);
-				}
+				shapeGroup.SetActive (_keyID, _value, _deltaTime, _moveMethod, _timeCurve);
 			}
 		}
 
@@ -113,26 +179,32 @@ namespace AC
 		 */
 		public void SetActiveKey (int _groupID, string _keyLabel, float _value, float _deltaTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
 		{
-			foreach (ShapeGroup shapeGroup in shapeGroups)
+			ShapeGroup shapeGroup = GetGroup (_groupID);
+			if (shapeGroup != null)
 			{
-				if (shapeGroup.ID == _groupID)
-				{
-					shapeGroup.SetActive (_keyLabel, _value, _deltaTime, _moveMethod, _timeCurve);
-				}
+				shapeGroup.SetActive (_keyLabel, _value, _deltaTime, _moveMethod, _timeCurve);
 			}
 		}
-		
-		
-		private void AssignSkinnedMeshRenderer ()
+
+
+		/**
+		 * <summary>Sets a blendshape within a ShapeGroup as the "active" one, causing all others to be disabled.</summary>
+		 * <param name = "_groupLabel">The name of the ShapeGroup to affect</param>
+		 * <param name = "_keyLabel">The name of the blendshape to affect</param?
+		 * <param name = "_value">The value to set the active blendshape</param>
+		 * <param name = "_deltaTime">The duration, in seconds, that the group's blendshapes should be affected</param>
+		 * <param name = "_moveMethod">The interpolation method by which the blendshapes are affected (Linear, Smooth, Curved, EaseIn, EaseOut, CustomCurve)</param>
+		 * <param name = "_timeCurve">If _moveMethod = MoveMethod.CustomCurve, then the transition speed will be follow the shape of the supplied AnimationCurve. This curve can exceed "1" in the Y-scale, allowing for overshoot effects.</param>
+		 */
+		public void SetActiveKey (string _groupLabel, string _keyLabel, float _value, float _deltaTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
 		{
-			skinnedMeshRenderer = GetComponent <SkinnedMeshRenderer> ();
-			
-			if (skinnedMeshRenderer == null)
+			ShapeGroup shapeGroup = GetGroup (_groupLabel);
+			if (shapeGroup != null)
 			{
-				skinnedMeshRenderer = GetComponentInChildren <SkinnedMeshRenderer>();
+				shapeGroup.SetActive (_keyLabel, _value, _deltaTime, _moveMethod, _timeCurve);
 			}
 		}
-		
+
 
 		/**
 		 * <summary>Gets the ShapeGroup associated with an ID number.</summary>
@@ -141,8 +213,6 @@ namespace AC
 		 */
 		public ShapeGroup GetGroup (int ID)
 		{
-			AssignSkinnedMeshRenderer ();
-			
 			foreach (ShapeGroup shapeGroup in shapeGroups)
 			{
 				if (shapeGroup.ID == ID)
@@ -152,33 +222,25 @@ namespace AC
 			}
 			return null;
 		}
-		
-		
-		private void LateUpdate ()
+
+
+		/**
+		 * <summary>Gets the ShapeGroup associated with an ID number.</summary>
+		 * <param name = "label">The ShapeGroup's label</param>
+		 * <returns>The ShapeGroup associated with the ID number</returns>
+		 */
+		public ShapeGroup GetGroup (string label)
 		{
 			foreach (ShapeGroup shapeGroup in shapeGroups)
 			{
-				shapeGroup.UpdateKeys ();
-			}
-			
-			// OLD
-			if (isChanging)
-			{
-				actualShape = Mathf.Lerp (originalShape, targetShape, AdvGame.Interpolate (startTime, deltaTime, AC.MoveMethod.Linear, null));
-				
-				if (Time.time > startTime + deltaTime)
+				if (shapeGroup.label == label)
 				{
-					isChanging = false;
-					actualShape = targetShape;
-				}
-				
-				if (skinnedMeshRenderer)
-				{
-					skinnedMeshRenderer.SetBlendShapeWeight (shapeKey, actualShape);
+					return shapeGroup;
 				}
 			}
+			return null;
 		}
-		
+
 
 		/**
 		 * <summary>Sets the value of a specific blendshape on the SkinnedMeshRenderer.</summary>
@@ -203,18 +265,65 @@ namespace AC
 			startTime = Time.time;
 			shapeKey = _shapeKey;
 			
-			if (skinnedMeshRenderer)
+			if (SkinnedMeshRenderer)
 			{
-				originalShape = skinnedMeshRenderer.GetBlendShapeWeight (shapeKey);
+				originalShape = SkinnedMeshRenderer.GetBlendShapeWeight (shapeKey);
 			}
 		}
-		
+
+
+		public void SetTimelineOverride (int groupID, int keyID, int intensity)
+		{
+			ShapeGroup shapeGroup = GetGroup (groupID);
+			if (shapeGroup != null)
+			{
+				shapeGroup.SetTimelineOverride ( keyID, intensity, ref blendshapeValueDict);
+			}
+		}
+
+
+		public void SetTimelineOverride (int groupID, int keyID_A, int intensityA, int keyID_B, int intensityB)
+		{
+			ShapeGroup shapeGroup = GetGroup (groupID);
+			if (shapeGroup != null)
+			{
+				shapeGroup.SetTimelineOverride (keyID_A, intensityA, keyID_B, intensityB, ref blendshapeValueDict);
+			}
+		}
+
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The SkinnedMeshRenderer that this component controls */
+		protected SkinnedMeshRenderer SkinnedMeshRenderer
+		{
+			get
+			{
+				if (skinnedMeshRenderer == null)
+				{
+					skinnedMeshRenderer = GetComponent <SkinnedMeshRenderer> ();
+					if (skinnedMeshRenderer == null)
+					{
+						skinnedMeshRenderer = GetComponentInChildren <SkinnedMeshRenderer>();
+					}
+					if (skinnedMeshRenderer == null)
+					{
+						ACDebug.LogWarning ("No Skinned Mesh Renderer found on Shapeable GameObject!", this);
+					}
+				}
+				return skinnedMeshRenderer;
+			}
+		}
+
+		#endregion
+
 	}
 	
 
-	/**
-	 * A data container for a group of blendshapes on a SkinnedMeshRenderer. By grouping blendshapes, we can make one "active" and have all others disable
-	 */
+	/** A data container for a group of blendshapes on a SkinnedMeshRenderer. By grouping blendshapes, we can make one "active" and have all others disable */
 	[System.Serializable]
 	public class ShapeGroup
 	{
@@ -225,13 +334,14 @@ namespace AC
 		public int ID = 0;
 		/** A list of ShapeKey instances - each ShapeKey representing a blendshape */
 		public List<ShapeKey> shapeKeys = new List<ShapeKey>();
-		
-		private ShapeKey activeKey = null;
-		private SkinnedMeshRenderer smr;
-		private float startTime;
-		private float changeTime;
-		private AnimationCurve timeCurve;
-		private MoveMethod moveMethod;
+
+		protected ShapeKey activeKey = null;
+		protected float startTime;
+		protected float changeTime;
+		protected AnimationCurve timeCurve;
+		protected MoveMethod moveMethod;
+
+		protected bool isTimelineOverride;
 		
 
 		/**
@@ -250,15 +360,51 @@ namespace AC
 				}
 			}
 		}
-		
 
-		/**
-		 * <summary>Assigns the SkinnedMeshRenderer that this group is assocated with.</summary>
-		 * <param name = "_smr">The SkinnedMeshRenderer that this group is associated with.</param>
-		 */
-		public void SetSMR (SkinnedMeshRenderer _smr)
+
+		public void SetTimelineOverride (int keyID, int intensity, ref Dictionary<int, float> blendshapeValueDict)
 		{
-			smr = _smr;
+			isTimelineOverride = true;
+
+			for (int i=0; i<shapeKeys.Count; i++)
+			{
+				if (shapeKeys[i].ID == keyID)
+				{
+					shapeKeys[i].SetValue (intensity, ref blendshapeValueDict);
+				}
+				else
+				{
+					shapeKeys[i].SetValue (0, ref blendshapeValueDict);
+				}
+			}
+		}
+
+
+		public void SetTimelineOverride (int keyID_A, int intensityA, int keyID_B, int intensityB, ref Dictionary<int, float> blendshapeValueDict)
+		{
+			isTimelineOverride = true;
+
+			for (int i = 0; i < shapeKeys.Count; i++)
+			{
+				if (shapeKeys[i].ID == keyID_A)
+				{
+					shapeKeys[i].SetValue (intensityA, ref blendshapeValueDict);
+				}
+				else if (shapeKeys[i].ID == keyID_B)
+				{
+					shapeKeys[i].SetValue (intensityB, ref blendshapeValueDict);
+				}
+				else
+				{
+					shapeKeys[i].SetValue (0, ref blendshapeValueDict);
+				}
+			}
+		}
+
+
+		public void ReleaseTimelineOverride ()
+		{
+			isTimelineOverride = false;
 		}
 		
 
@@ -288,17 +434,17 @@ namespace AC
 			}
 			return 0f;
 		}
-		
+
 
 		/**
 		 * <summary>Sets a blendshape as the "active" one, causing all others to be disabled.</summary>
 		 * <param name = "_ID">The unique identifier of the blendshape to affect</param>
-		 * <param name = "_value">The value to set the active blendshape</param>
+		 * <param name = "_intensity">The intensity (value) to set the active blendshape</param>
 		 * <param name = "_changeTime">The duration, in seconds, that the group's blendshapes should be affected</param>
 		 * <param name = "_moveMethod">The interpolation method by which the blendshapes are affected (Linear, Smooth, Curved, EaseIn, EaseOut, CustomCurve)</param>
 		 * <param name = "_timeCurve">If _moveMethod = MoveMethod.CustomCurve, then the transition speed will be follow the shape of the supplied AnimationCurve. This curve can exceed "1" in the Y-scale, allowing for overshoot effects.</param>
 		 */
-		public void SetActive (int _ID, float _value, float _changeTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
+		public void SetActive (int _ID, float _intensity, float _changeTime = 0f, MoveMethod _moveMethod = MoveMethod.Linear, AnimationCurve _timeCurve = null)
 		{
 			if (_changeTime < 0f)
 			{
@@ -311,7 +457,7 @@ namespace AC
 				if (shapeKey.ID == _ID)
 				{
 					activeKey = shapeKey;
-					shapeKey.targetValue = _value;
+					shapeKey.targetValue = _intensity;
 				}
 				else
 				{
@@ -331,12 +477,12 @@ namespace AC
 		/**
 		 * <summary>Sets a blendshape as the "active" one, causing all others to be disabled.</summary>
 		 * <param name = "_label">The name of the blendshape to affect</param>
-		 * <param name = "_value">The value to set the active blendshape</param>
+		 * <param name = "_intensity">The inensity (value) to set the active blendshape</param>
 		 * <param name = "_changeTime">The duration, in seconds, that the group's blendshapes should be affected</param>
 		 * <param name = "_moveMethod">The interpolation method by which the blendshapes are affected (Linear, Smooth, Curved, EaseIn, EaseOut, CustomCurve)</param>
 		 * <param name = "_timeCurve">If _moveMethod = MoveMethod.CustomCurve, then the transition speed will be follow the shape of the supplied AnimationCurve. This curve can exceed "1" in the Y-scale, allowing for overshoot effects.</param>
 		 */
-		public void SetActive (string _label, float _value, float _changeTime, MoveMethod _moveMethod, AnimationCurve _timeCurve)
+		public void SetActive (string _label, float _intensity, float _changeTime = 0f, MoveMethod _moveMethod = MoveMethod.Linear, AnimationCurve _timeCurve = null)
 		{
 			if (_changeTime < 0f)
 			{
@@ -349,7 +495,7 @@ namespace AC
 				if (shapeKey.label == _label)
 				{
 					activeKey = shapeKey;
-					shapeKey.targetValue = _value;
+					shapeKey.targetValue = _intensity;
 				}
 				else
 				{
@@ -366,12 +512,10 @@ namespace AC
 		}
 		
 
-		/**
-		 * Updates the values of all blendshapes within the group.
-		 */
-		public void UpdateKeys ()
+		/** Updates the values of all blendshapes within the group. */
+		public void UpdateKeys (ref Dictionary<int, float> blendshapeValueDic)
 		{
-			if (smr == null)
+			if (isTimelineOverride)
 			{
 				return;
 			}
@@ -381,7 +525,7 @@ namespace AC
 				if (changeTime > 0f)
 				{
 					float newValue = Mathf.Lerp (shapeKey.InitialValue, shapeKey.targetValue, AdvGame.Interpolate (startTime, changeTime, moveMethod, timeCurve));
-					shapeKey.SetValue (newValue, smr);
+					shapeKey.SetValue (newValue, ref blendshapeValueDic);
 					if ((startTime + changeTime) < Time.time)
 					{
 						changeTime = 0f;
@@ -389,7 +533,7 @@ namespace AC
 				}
 				else
 				{
-					shapeKey.SetValue (shapeKey.targetValue, smr);
+					shapeKey.SetValue (shapeKey.targetValue, ref blendshapeValueDic);
 				}
 			}
 		}
@@ -397,15 +541,16 @@ namespace AC
 	}
 	
 
-	/**
-	 * A data container for a blendshape, stored within a ShapeGroup.
-	 */
-	[System.Serializable]
+	/** A data container for a blendshape, stored within a ShapeGroup. */
+	[Serializable]
 	public class ShapeKey
 	{
 
-		/** The index number of the SkinnedMeshRenderer's blendshapes that this is linked to */
-		public int index = 0;
+		/** Deprecated - use blendshapes instead */
+		[SerializeField] private int index = 0;
+
+		public List<ShapeKeyBlendshape> blendshapes = null;
+
 		/** An editor-friendly name of the blendshape */
 		public string label = "";
 		/** A unique identifier */
@@ -441,10 +586,15 @@ namespace AC
 		 * <param name = "_value">The value that the blendshape should have</param>
 		 * <param name = "smr">The SkinnedMeshRenderer component that the blendshape is a part of</param>
 		 */
-		public void SetValue (float _value, SkinnedMeshRenderer smr)
+		public void SetValue (float _value, ref Dictionary<int, float> blendshapeValueDict)
 		{
+			Upgrade ();
 			value = _value;
-			smr.SetBlendShapeWeight (index, value);
+
+			for (int i = 0; i < blendshapes.Count; i++)
+			{
+				blendshapes[i].Update (value, ref blendshapeValueDict);
+			}
 		}
 
 
@@ -452,6 +602,7 @@ namespace AC
 		{
 			get
 			{
+				Upgrade ();
 				return initialValue;
 			}
 		}
@@ -459,9 +610,56 @@ namespace AC
 
 		public void ResetInitialValue ()
 		{
+			Upgrade ();
 			initialValue = value;
 		}
+
+
+		public void Upgrade ()
+		{
+			if (blendshapes == null || index >= 0)
+			{
+				blendshapes = new List<ShapeKeyBlendshape> ();
+				blendshapes.Add (new ShapeKeyBlendshape (index));
+				index = -1;
+			}
+		}
 		
+	}
+
+
+	[Serializable]
+	public class ShapeKeyBlendshape
+	{
+
+		public int index;
+		public float relativeIntensity;
+
+
+		public ShapeKeyBlendshape (int _index, float _relativeIntensity = 100f)
+		{
+			index = _index;
+			relativeIntensity = _relativeIntensity;
+		}
+
+
+		public void Update (float value, ref Dictionary<int, float> blendshapeValueDict)
+		{
+			float finalIntensity = value * relativeIntensity / 100f;
+			float currentIntensity = 0f;
+			if (blendshapeValueDict.TryGetValue (index, out currentIntensity))
+			{
+				if (finalIntensity > currentIntensity)
+				{
+					blendshapeValueDict[index] = finalIntensity;
+				}
+			}
+			else
+			{
+				blendshapeValueDict.Add (index, finalIntensity);
+			}
+		}
+
 	}
 	
 }

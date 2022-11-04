@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"BackgroundImage.cs"
  * 
@@ -9,17 +9,13 @@
  * 
  */
 
-#if !UNITY_2017_3_OR_NEWER
-#define ALLOW_LEGACY_UI
-#endif
-
-#if UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2018_2_OR_NEWER
+#if UNITY_STANDALONE && !UNITY_2018_2_OR_NEWER
 #define ALLOW_MOVIETEXTURES
 #endif
 
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 using UnityEngine;
 using System.Collections;
@@ -33,20 +29,11 @@ namespace AC
 	/**
 	 * Controls a GUITexture for use in background images in 2.5D games.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_background_image.html")]
-	#endif
 	public class BackgroundImage : MonoBehaviour
 	{
 
-		#if ALLOW_LEGACY_UI
-
-		public enum BackgroundMethod25D { UnityUI, GUITexture };
-		/** How 2.5D backgrounds are renderered (GUITexture, UnityUI) */
-		public BackgroundMethod25D backgroundMethod25D = BackgroundMethod25D.GUITexture;
-
-		#endif
-
+		#region Variables
 
 		#if ALLOW_VIDEO
 
@@ -55,7 +42,7 @@ namespace AC
 		public BackgroundImageSource backgroundImageSource = BackgroundImageSource.Texture;
 		/** The VideoClip to use as a background, if animated */
 		public VideoClip backgroundVideo;
-		private VideoPlayer videoPlayer;
+		protected VideoPlayer videoPlayer;
 
 		#endif
 
@@ -73,21 +60,47 @@ namespace AC
 		#endif
 
 
-		private float shakeDuration;
-		private float startTime;
-		private float startShakeIntensity;
-		private float shakeIntensity;
-		private Rect originalPixelInset;
+		protected float shakeDuration;
+		protected float startTime;
+		protected float startShakeIntensity;
+		protected float shakeIntensity;
+		protected Rect originalPixelInset;
+		protected AnimationCurve shakeCurve;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			#if ALLOW_VIDEO
 			PrepareVideo ();
 			#endif
-			GetBackgroundTexture ();
 		}
 
+
+		protected void OnEnable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+		}
+
+
+		protected void Start ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+		}
+
+
+		protected void OnDisable ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Sets the background image to a supplied texture</summary>
@@ -113,32 +126,13 @@ namespace AC
 				gameObject.layer = LayerMask.NameToLayer (KickStarter.settingsManager.backgroundImageLayer);
 			}
 
-			#if ALLOW_LEGACY_UI
-
-			if (backgroundMethod25D == BackgroundMethod25D.GUITexture)
-			{
-				SetBackgroundCameraFarClipPlane (0.02f);
-				if (GUITexture)
-				{
-					GUITexture.enabled = true;
-				}
-			}
-			else if (backgroundMethod25D == BackgroundMethod25D.UnityUI)
-			{
-				TurnOnUI ();
-			}
-
-			#else
-
 			TurnOnUI ();
-
-			#endif
 
 			#if ALLOW_MOVIETEXTURES
 
-			if (GetBackgroundTexture () && GetBackgroundTexture () is MovieTexture)
+			if (backgroundTexture != null && backgroundTexture is MovieTexture)
 			{
-				MovieTexture movieTexture = (MovieTexture) GetBackgroundTexture ();
+				MovieTexture movieTexture = (MovieTexture) backgroundTexture;
 				if (restartMovieWhenTurnOn)
 				{
 					movieTexture.Stop ();
@@ -151,10 +145,58 @@ namespace AC
 		}
 
 
-		private void TurnOnUI ()
+		/**
+		 * Hides the background image from view.
+		 */
+		public void TurnOff ()
+		{
+			gameObject.layer = LayerMask.NameToLayer (KickStarter.settingsManager.deactivatedLayer);
+
+			TurnOffUI ();
+		}
+
+
+		/**
+		 * <summary>Shakes the background image (within the GUITexture) for an earthquake-like effect.</summary>
+		 * <param name = "_shakeIntensity">How intense the shake effect should be</param>
+		 * <param name = "_duration">How long the shake effect should last, in seconds</param>
+		 */
+		public void Shake (float _shakeIntensity, float _duration, AnimationCurve _shakeCurve = null)
+		{
+			shakeDuration = _duration;
+			startTime = Time.time;
+			shakeIntensity = _shakeIntensity;
+			shakeCurve = _shakeCurve;
+
+			startShakeIntensity = shakeIntensity;
+
+			StopCoroutine (UpdateShake ());
+			StartCoroutine (UpdateShake ());
+		}
+
+		
+		#if ALLOW_VIDEO
+
+		public void CancelVideoPlayback ()
+		{
+			if (videoPlayer)
+			{
+				videoPlayer.Stop ();
+			}
+			StopCoroutine ("PlayVideoCoroutine");
+		}
+
+		#endif
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void TurnOnUI ()
 		{
 			SetBackgroundCameraFarClipPlane (0.02f);
-			BackgroundImageUI.Instance.SetTexture (GetBackgroundTexture ());
+			BackgroundImageUI.Instance.SetTexture (backgroundTexture);
 
 			#if ALLOW_VIDEO
 
@@ -167,13 +209,97 @@ namespace AC
 		}
 
 
+		protected void TurnOffUI ()
+		{
+			#if ALLOW_VIDEO
+
+			if (backgroundImageSource == BackgroundImageSource.VideoClip)
+			{
+				if (Application.isPlaying)
+				{
+				
+					videoPlayer.Stop ();
+					if (videoPlayer.isPrepared)
+					{
+						if (videoPlayer.texture)
+						{
+							BackgroundImageUI.Instance.ClearTexture (videoPlayer.texture);
+						}
+						return;
+					}
+				}
+			}
+
+			#endif
+
+			Texture texture = backgroundTexture;
+			if (texture)
+			{
+				BackgroundImageUI.Instance.ClearTexture (texture);
+			}
+		}
+
+
+		protected void SetBackgroundCameraFarClipPlane (float value)
+		{
+			BackgroundCamera backgroundCamera = Object.FindObjectOfType <BackgroundCamera>();
+			if (backgroundCamera)
+			{
+				backgroundCamera.GetComponent <Camera>().farClipPlane = value;
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot find BackgroundCamera");
+			}
+		}
+
+
+		protected IEnumerator UpdateShake ()
+		{
+			while (shakeIntensity > 0f)
+			{
+				float _size = Random.Range (0, shakeIntensity) * 0.2f;
+
+				BackgroundImageUI.Instance.SetShakeIntensity (_size);
+
+				float lerpAmount = AdvGame.Interpolate (startTime, shakeDuration, MoveMethod.Linear, null);
+				if (lerpAmount >= 1f)
+				{
+					shakeIntensity = 0f;
+				}
+				else if (shakeCurve != null)
+				{
+					shakeIntensity = startShakeIntensity * shakeCurve.Evaluate (lerpAmount);
+					shakeIntensity = Mathf.Max (shakeIntensity, 0.001f);
+				}
+				else
+				{
+					shakeIntensity = Mathf.Lerp (startShakeIntensity, 0f, lerpAmount);
+					shakeIntensity = Mathf.Max (shakeIntensity, 0.001f);
+				}
+				
+				yield return new WaitForEndOfFrame ();
+			}
+			
+			shakeIntensity = 0f;
+
+			BackgroundImageUI.Instance.SetShakeIntensity (0f);
+		}
+
+
+		protected void SetBackgroundTexture (Texture _texture)
+		{
+			backgroundTexture = _texture;
+		}
+
+
 		#if ALLOW_VIDEO
 
-		private IEnumerator PlayVideoCoroutine ()
+		protected IEnumerator PlayVideoCoroutine ()
 		{
 			foreach (BackgroundImage backgroundImage in KickStarter.stateHandler.BackgroundImages)
 			{
-				if (backgroundImage != null)
+				if (backgroundImage)
 				{
 					backgroundImage.CancelVideoPlayback ();
 				}
@@ -192,214 +318,7 @@ namespace AC
 		}
 
 
-		public void CancelVideoPlayback ()
-		{
-			if (videoPlayer != null)
-			{
-				videoPlayer.Stop ();
-			}
-			StopCoroutine ("PlayVideoCoroutine");
-		}
-
-		#endif
-
-
-		private void TurnOffUI ()
-		{
-			#if ALLOW_VIDEO
-
-			if (backgroundImageSource == BackgroundImageSource.VideoClip)
-			{
-				if (Application.isPlaying)
-				{
-				
-					videoPlayer.Stop ();
-					if (videoPlayer.isPrepared)
-					{
-						if (videoPlayer.texture != null)
-						{
-							BackgroundImageUI.Instance.ClearTexture (videoPlayer.texture);
-						}
-						return;
-					}
-				}
-			}
-
-			#endif
-
-			Texture texture = GetBackgroundTexture ();
-			if (texture != null)
-			{
-				BackgroundImageUI.Instance.ClearTexture (texture);
-			}
-		}
-
-
-		private void SetBackgroundCameraFarClipPlane (float value)
-		{
-			BackgroundCamera backgroundCamera = Object.FindObjectOfType <BackgroundCamera>();
-			if (backgroundCamera)
-			{
-				backgroundCamera.GetComponent <Camera>().farClipPlane = value;
-			}
-			else
-			{
-				ACDebug.LogWarning ("Cannot find BackgroundCamera");
-			}
-		}
-		
-
-		/**
-		 * Hides the background image from view.
-		 */
-		public void TurnOff ()
-		{
-			gameObject.layer = LayerMask.NameToLayer (KickStarter.settingsManager.deactivatedLayer);
-
-			#if ALLOW_LEGACY_UI
-
-			if (backgroundMethod25D == BackgroundMethod25D.GUITexture)
-			{
-				if (GUITexture)
-				{
-					GUITexture.enabled = false;
-				}
-			}
-			else if (backgroundMethod25D == BackgroundMethod25D.UnityUI)
-			{
-				TurnOffUI ();
-			}
-
-			#else
-
-			TurnOffUI ();
-
-			#endif
-		}
-
-
-		/**
-		 * <summary>Shakes the background image (within the GUITexture) for an earthquake-like effect.</summary>
-		 * <param name = "_shakeIntensity">How intense the shake effect should be</param>
-		 * <param name = "_duration">How long the shake effect should last, in seconds</param>
-		 */
-		public void Shake (float _shakeIntensity, float _duration)
-		{
-			#if ALLOW_LEGACY_UI
-
-			if (backgroundMethod25D == BackgroundMethod25D.GUITexture && GUITexture)
-			{
-				if (shakeIntensity > 0f)
-				{
-					GUITexture.pixelInset = originalPixelInset;
-				}
-				originalPixelInset = GUITexture.pixelInset;
-			}
-
-			#endif
-
-			shakeDuration = _duration;
-			startTime = Time.time;
-			shakeIntensity = _shakeIntensity;
-
-			startShakeIntensity = shakeIntensity;
-
-			StopCoroutine (UpdateShake ());
-			StartCoroutine (UpdateShake ());
-		}
-		
-
-		private IEnumerator UpdateShake ()
-		{
-			while (shakeIntensity > 0f)
-			{
-				float _size = Random.Range (0, shakeIntensity) * 0.2f;
-
-				#if ALLOW_LEGACY_UI
-
-				if (backgroundMethod25D == BackgroundMethod25D.GUITexture && GUITexture)
-				{
-					GUITexture.pixelInset = new Rect
-					(
-						originalPixelInset.x - Random.Range (0, shakeIntensity) * 0.1f,
-						originalPixelInset.y - Random.Range (0, shakeIntensity) * 0.1f,
-						originalPixelInset.width + _size,
-						originalPixelInset.height + _size
-					);
-				}
-				else if (backgroundMethod25D == BackgroundMethod25D.UnityUI)
-				{
-					BackgroundImageUI.Instance.SetShakeIntensity (_size);
-				}
-
-				#else
-
-				BackgroundImageUI.Instance.SetShakeIntensity (_size);
-
-				#endif
-
-				shakeIntensity = Mathf.Lerp (startShakeIntensity, 0f, AdvGame.Interpolate (startTime, shakeDuration, MoveMethod.Linear, null));
-
-				yield return new WaitForEndOfFrame ();
-			}
-			
-			shakeIntensity = 0f;
-
-
-			#if ALLOW_LEGACY_UI
-
-			if (backgroundMethod25D == BackgroundMethod25D.GUITexture && GUITexture)
-			{
-				GUITexture.pixelInset = originalPixelInset;
-			}
-			else if (backgroundMethod25D == BackgroundMethod25D.UnityUI)
-			{
-				BackgroundImageUI.Instance.SetShakeIntensity (0f);
-			}
-
-			#else
-
-			BackgroundImageUI.Instance.SetShakeIntensity (0f);
-
-			#endif
-		}
-
-
-		private Texture GetBackgroundTexture ()
-		{
-			if (backgroundTexture == null)
-			{
-				#if ALLOW_LEGACY_UI
-
-				if (GUITexture)
-				{
-					backgroundTexture = GUITexture.texture;
-				}
-
-				#endif
-			}
-			return backgroundTexture;
-		}
-
-
-		private void SetBackgroundTexture (Texture _texture)
-		{
-			backgroundTexture = _texture;
-
-			#if ALLOW_LEGACY_UI
-
-			if (GUITexture)
-			{
-				GUITexture.texture = _texture;
-			}
-
-			#endif
-		}
-
-
-		#if ALLOW_VIDEO
-
-		private void PrepareVideo ()
+		protected void PrepareVideo ()
 		{
 			if (backgroundImageSource == BackgroundImageSource.VideoClip)
 			{
@@ -412,52 +331,13 @@ namespace AC
 				videoPlayer.playOnAwake = false;
 				videoPlayer.renderMode = VideoRenderMode.APIOnly;
 				videoPlayer.clip = backgroundVideo;
-				//videoPlayer.Prepare ();
 			}
 		}
 
 		#endif
 
+		#endregion
 
-		#if ALLOW_LEGACY_UI
-
-		private GUITexture _guiTexture;
-		public GUITexture GUITexture
-		{
-			get
-			{
-				if (_guiTexture == null)
-				{
-					_guiTexture = GetComponent<GUITexture>();
-					if (_guiTexture == null)
-					{
-						ACDebug.LogWarning (this.name + " has no GUITexture component", this);
-					}
-				}
-				return _guiTexture;
-			}
-		}
-
-		#endif
-
-
-		private void OnEnable ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
-
-
-		private void Start ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
-
-
-		private void OnDisable ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
-		}
-		
 	}
 
 }

@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -12,7 +14,7 @@ namespace AC
 		{
 			DragTrack_Hinge _target = (DragTrack_Hinge) target;
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Track shape:", EditorStyles.boldLabel);
 
 			_target.radius = CustomGUILayout.FloatField ("Radius:", _target.radius, "", "The track's radius (for visualising in the Scene window)");
@@ -46,7 +48,7 @@ namespace AC
 			
 			_target.discSize = CustomGUILayout.Slider ("Gizmo size:", _target.discSize, 0f, 2f, "", "The size of the track's ends, as seen in the Scene window");
 			
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			SnapDataGUI (_target, true);
 			
@@ -71,17 +73,14 @@ namespace AC
 
 			Handles.DrawWireArc (_target.transform.position, _target.transform.forward, _target.transform.right, _target.MaxAngle, _target.radius);
 
-			if (_target.doSnapping)
+			foreach (TrackSnapData trackSnapData in _target.allTrackSnapData)
 			{
-				foreach (TrackSnapData trackSnapData in _target.allTrackSnapData)
-				{
-					DrawSnapHandles (trackSnapData, _target);
-				}
+				DrawTrackRegions(trackSnapData, _target);
 			}
 		}
 
 
-		private void DrawSnapHandles (TrackSnapData trackSnapData, DragTrack_Hinge hingeTrack)
+		private void DrawTrackRegions(TrackSnapData trackSnapData, DragTrack_Hinge hingeTrack)
 		{
 			float minPositionAlong = Mathf.Clamp01 (trackSnapData.PositionAlong - trackSnapData.Width);
 			float maxPositionAlong = Mathf.Clamp01 (trackSnapData.PositionAlong + trackSnapData.Width);
@@ -118,3 +117,5 @@ namespace AC
 	}
 
 }
+
+#endif

@@ -1,11 +1,11 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Document.cs"
  * 
- *	An asset file that stores data for a document, which can be viewed/read in a Menu
+ *	Stores data for a document, which can be viewed/read in a Menu
  * 
  */
 
@@ -20,11 +20,13 @@ namespace AC
 {
 
 	/**
-	 * An asset file that stores data for a document, which can be viewed/read in a Menu
+	 * Stores data for a document, which can be viewed/read in a Menu
 	 */
 	[System.Serializable]
 	public class Document : ITranslatable
 	{
+
+		#region Variables
 
 		/** A unique identifier */
 		public int ID;
@@ -43,6 +45,10 @@ namespace AC
 		/** The ID number of the document's InvBin category, as defined in InventoryManager */
 		public int binID = 0;
 
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -85,10 +91,44 @@ namespace AC
 			ID = _ID;
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
-		 * The Document's title.  This will set the title to '(Untitled)' if empty.
+		 * <summary>Gets the text of a given page</summary>
+		 * <param name = "pageIndex">The index of the page</param>
+		 * <param name = "languageNumber">The index number of the language to get the text in, where 0 = original language and >0 = translations</param>
+		 * <returns>The page text</returns>
 		 */
+		public string GetPageText (int pageIndex, int languageNumber = 0)
+		{
+			if (pages != null && pageIndex < pages.Count && pageIndex >= 0)
+			{
+				JournalPage page = pages[pageIndex];
+				return KickStarter.runtimeLanguages.GetTranslation (page.text, page.lineID, languageNumber, GetTranslationType (0));
+			}
+			return string.Empty;
+		}
+
+
+		/**
+		 * <summary>Gets the Document's title</summary>
+		 * <param name = "languageNumber">The index number of the language to get the text in, where 0 = original language and >0 = translations</param>
+		 * <returns>The Document's title</returns>
+		 */
+		public string GetTitleText (int languageNumber = 0)
+		{
+			return KickStarter.runtimeLanguages.GetTranslation (title, titleLineID, languageNumber, GetTranslationType (0));
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The Document's title.  This will set the title to '(Untitled)' if empty. */
 		public string Title
 		{
 			get
@@ -101,13 +141,15 @@ namespace AC
 			}
 		}
 
+		#endregion
+
 
 		#if UNITY_EDITOR
 
-		private int sidePage;
-		private int selectedPage;
-		private Vector2 scrollPos;
-		private bool showPageGUI = true;
+		protected int sidePage;
+		protected int selectedPage;
+		protected Vector2 scrollPos;
+		protected bool showPageGUI = true;
 
 
 		public void ClearIDs ()
@@ -120,7 +162,7 @@ namespace AC
 		}
 
 
-		private int GetBinSlot (List<InvBin> bins, int _id)
+		protected int GetBinSlot (List<InvBin> bins, int _id)
 		{
 			int i = 0;
 			foreach (InvBin bin in bins)
@@ -136,7 +178,7 @@ namespace AC
 		}
 
 
-		public void ShowGUI (string apiPrefix, List<InvBin> bins)
+		public void ShowGUI (string apiPrefix, List<InvBin> bins, float windowWidth)
 		{
 			title = CustomGUILayout.TextField ("Title:", title, apiPrefix + ".title");
 			if (titleLineID > -1)
@@ -169,6 +211,8 @@ namespace AC
 
 			EditorGUILayout.Space ();
 
+			EditorGUILayout.LabelField ("Document pages:");
+
 			if (pages == null || pages.Count == 0)
 			{
 				pages.Clear ();
@@ -189,7 +233,7 @@ namespace AC
 					}
 				}
 
-				if (GUILayout.Button ("", CustomStyles.IconCog))
+				if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
 				{
 					sidePage = i;
 					EditorGUIUtility.editingTextField = false;
@@ -210,25 +254,26 @@ namespace AC
 					EditorGUIUtility.editingTextField = false;
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			EditorGUILayout.Space ();
 
 			if (selectedPage >= 0 && pages.Count > selectedPage)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				showPageGUI = CustomGUILayout.ToggleHeader (showPageGUI, "Document page #" + selectedPage);
 				if (showPageGUI)
 				{
 					CustomGUILayout.LabelField ("Page text:", apiPrefix + ".pages[" + selectedPage + "].text");
-					pages[selectedPage].text = EditorGUILayout.TextArea (pages[selectedPage].text);
+					EditorStyles.textField.wordWrap = true;
+					pages[selectedPage].text = EditorGUILayout.TextArea (pages[selectedPage].text, GUILayout.MaxWidth (windowWidth));
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 		}
 
 
-		private void SidePageMenu ()
+		protected void SidePageMenu ()
 		{
 			GenericMenu menu = new GenericMenu ();
 
@@ -257,7 +302,7 @@ namespace AC
 		}
 
 
-		private void PageCallback (object obj)
+		protected void PageCallback (object obj)
 		{
 			if (sidePage >= 0)
 			{
@@ -319,7 +364,7 @@ namespace AC
 		}
 
 
-		private void MovePageToTop (int a1)
+		protected void MovePageToTop (int a1)
 		{
 			JournalPage tempPage = pages[a1];
 			pages.Insert (0, tempPage);
@@ -327,7 +372,7 @@ namespace AC
 		}
 
 
-		private void MovePageToBottom (int a1)
+		protected void MovePageToBottom (int a1)
 		{
 			JournalPage tempPage = pages[a1];
 			pages.Add (tempPage);
@@ -335,7 +380,7 @@ namespace AC
 		}
 		
 
-		private void SwapPages (int a1, int a2)
+		protected void SwapPages (int a1, int a2)
 		{
 			JournalPage tempPage = pages[a1];
 			pages[a1] = pages[a2];
@@ -345,7 +390,7 @@ namespace AC
 		#endif
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -373,7 +418,26 @@ namespace AC
 		}
 
 
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.Document;
+		}
+
+
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (index == 0)
+			{
+				title = updatedText;
+			}
+			else if ((index-1) < pages.Count)
+			{
+				pages[index-1].text = updatedText;
+			}
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -421,12 +485,6 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC_TextType.Document;
-		}
-
-
 		public bool CanTranslate (int index)
 		{
 			if (index == 0)
@@ -437,6 +495,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 
 	}
 

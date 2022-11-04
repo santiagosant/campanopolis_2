@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SpeechLine.cs"
  * 
@@ -18,9 +18,13 @@ using System.Collections.Generic;
 using UnityEditor;
 #endif
 
+#if LocalizationIsPresent
+using UnityEngine.Localization;
+#endif
+
 namespace AC
 {
-	
+
 	/**
 	 * A container class for text gathered by the Speech Manager.
 	 * It is not limited to just speech, as all text displayed in a game will be gathered.
@@ -28,6 +32,8 @@ namespace AC
 	[System.Serializable]
 	public class SpeechLine
 	{
+
+		#region Variables
 		
 		/** True if this is a speech line spoken by the Player */
 		public bool isPlayer;
@@ -55,16 +61,42 @@ namespace AC
 		public List<Object> customTranslationLipsyncFiles;
 		/** The ID of the associated SpeechTag, if a speech line */
 		public int tagID;
+		/** If True, and the textType = AC_TextType.Speech, then the speech line can only be played once. Additional calls to play it will be ignored */
+		public bool onlyPlaySpeechOnce = false;
+		/** If True, then this class instance will not be removed by the Speech Manager's "Gather text" and "Reset text" processes. This flag should be used under caution, as this will not affect the state of any linked iTranslatable interface */
+		public bool alwaysRetainInSpeechManager = false;
+		/** If True, then this line will not be included in CSV exports, even if it matches the criteria set in the Export Wizard window */
+		public bool ignoreDuringExport = false;
+
+		#if LocalizationIsPresent
+		#if UNITY_EDITOR
+		SerializedProperty localizedStringProperty;
+		SerializedObject serializedObject;
+		#endif
+		/** If True, then the line's text will be pulled from Unity's Localization tables */
+		public bool useLocalizedString;
+		/** The Localization string to use, if useLocalizedString is True */
+		public LocalizedString localizedString;
+		#endif
+
+		public string customFilename = "";
 
 		#if UNITY_EDITOR
 		public int orderID = -1;
 		public string orderPrefix = "";
 		#endif
 
-		private bool gotCommentFromDescription;
-		private static string[] badChars = new string[] {"/", "`", "'", "!", "@", "£", "$", "%", "^", "&", "*", "(", ")", "{", "}", ":", ";", ".", "|", "<", ",", ">", "?", "#", "-", "=", "+", "-"};
+		protected bool gotCommentFromDescription;
+		protected static string[] badChars = new string[] {"/", "`", "'", "!", "@", "£", "$", "%", "^", "&", "*", "(", ")", "{", "}", ":", ";", ".", "|", "<", ",", ">", "?", "#", "-", "=", "+", "-"};
 
-		
+		private static string speechMarkAsString;
+		private const float labelWidth = 85f;
+
+		#endregion
+
+
+		#region Constructors
+
 		/**
 		 * A Constructor that copies all values from another SpeechLine.
 		 * This way ensures that no connection remains to the original class.
@@ -84,10 +116,19 @@ namespace AC
 			customTranslationAudioClips = _speechLine.customTranslationAudioClips;
 			customTranslationLipsyncFiles = _speechLine.customTranslationLipsyncFiles;
 			tagID = _speechLine.tagID;
+			onlyPlaySpeechOnce = _speechLine.onlyPlaySpeechOnce;
+			customFilename = _speechLine.customFilename;
+			alwaysRetainInSpeechManager = _speechLine.alwaysRetainInSpeechManager;
+			ignoreDuringExport = _speechLine.ignoreDuringExport;
 
 			#if UNITY_EDITOR
 			orderID = _speechLine.orderID;
 			orderPrefix = _speechLine.orderPrefix;
+			#endif
+
+			#if LocalizationIsPresent
+			useLocalizedString = _speechLine.useLocalizedString;
+			localizedString = _speechLine.localizedString;
 			#endif
 		}
 
@@ -107,10 +148,19 @@ namespace AC
 			customTranslationAudioClips = GetAudioListForTranslation (_speechLine.customTranslationAudioClips, voiceLanguage);
 			customTranslationLipsyncFiles = GetLipsyncListForTranslation (_speechLine.customTranslationLipsyncFiles, voiceLanguage);
 			tagID = _speechLine.tagID;
+			onlyPlaySpeechOnce = _speechLine.onlyPlaySpeechOnce;
+			customFilename = _speechLine.customFilename;
+			alwaysRetainInSpeechManager = _speechLine.alwaysRetainInSpeechManager;
+			ignoreDuringExport = _speechLine.ignoreDuringExport;
 
 			#if UNITY_EDITOR
 			orderID = _speechLine.orderID;
 			orderPrefix = _speechLine.orderPrefix;
+			#endif
+
+			#if LocalizationIsPresent
+			useLocalizedString = _speechLine.useLocalizedString;
+			localizedString = _speechLine.localizedString;
 			#endif
 		}
 
@@ -132,20 +182,65 @@ namespace AC
 			customTranslationAudioClips = new List<AudioClip>();
 			customTranslationLipsyncFiles = new List<Object>();
 			tagID = -1;
+			onlyPlaySpeechOnce = false;
+			customFilename = string.Empty;
+			alwaysRetainInSpeechManager = false;
+			ignoreDuringExport = false;
 			
 			translationText = new List<string>();
 			for (int i=0; i<_languagues; i++)
 			{
-				translationText.Add (_text);
+				translationText.Add (string.Empty);
 			}
 
 			#if UNITY_EDITOR
 			orderID = -1;
 			orderPrefix = string.Empty;
 			#endif
+
+			#if LocalizationIsPresent
+			useLocalizedString = false;
+			localizedString = null;
+			#endif
 		}
 
-		
+		#endregion
+
+
+		#region PublicFunctions
+
+		public void CopyValues (SpeechLine _speechLine)
+		{
+			isPlayer = _speechLine.isPlayer;
+			lineID = _speechLine.lineID;
+			scene = _speechLine.scene;
+			owner = _speechLine.owner;
+			text = _speechLine.text;
+			description = _speechLine.description;
+			textType = _speechLine.textType;
+			translationText = _speechLine.translationText;
+			customAudioClip = _speechLine.customAudioClip;
+			customLipsyncFile = _speechLine.customLipsyncFile;
+			customTranslationAudioClips = _speechLine.customTranslationAudioClips;
+			customTranslationLipsyncFiles = _speechLine.customTranslationLipsyncFiles;
+			tagID = _speechLine.tagID;
+			onlyPlaySpeechOnce = _speechLine.onlyPlaySpeechOnce;
+			customFilename = _speechLine.customFilename;
+			alwaysRetainInSpeechManager = _speechLine.alwaysRetainInSpeechManager;
+			ignoreDuringExport = _speechLine.ignoreDuringExport;
+
+			#if UNITY_EDITOR
+			orderID = _speechLine.orderID;
+			orderPrefix = _speechLine.orderPrefix;
+			#endif
+
+			#if LocalizationIsPresent
+			useLocalizedString = _speechLine.useLocalizedString;
+			localizedString = _speechLine.localizedString;
+			#endif
+		}
+
+
 		/**
 		 * <summary>Checks if the class matches another, in terms of line ID, text, type and owner.
 		 * Used to determine if a speech line is a duplicate of another.</summary>
@@ -164,6 +259,7 @@ namespace AC
 			}
 			return false;
 		}
+
 
 		public void TransferActionComment (string comment, string gameObjectName)
 		{
@@ -190,60 +286,196 @@ namespace AC
 			customLipsyncFile = backupLine.customLipsyncFile;
 			customTranslationAudioClips = backupLine.customTranslationAudioClips;
 			customTranslationLipsyncFiles = backupLine.customTranslationLipsyncFiles;
+			onlyPlaySpeechOnce = backupLine.onlyPlaySpeechOnce;
+			customFilename = backupLine.customFilename;
+			alwaysRetainInSpeechManager = backupLine.alwaysRetainInSpeechManager;
+			ignoreDuringExport = backupLine.ignoreDuringExport;
 
 			if (!gotCommentFromDescription && !string.IsNullOrEmpty (backupLine.description))
 			{
 				description = backupLine.description;
 			}
+
+			#if LocalizationIsPresent
+			useLocalizedString = backupLine.useLocalizedString;
+			localizedString = backupLine.localizedString;
+			#endif
 		}
-		
-		
-		#if UNITY_EDITOR
+
 
 		/**
-		 * <summary>Displays the GUI of the class's entry within the Speech Manager.</summary>
+		 * <summary>Gets the full folder and filename for a speech line's audio or lipsync file, relative to the "Resources" Assets directory in which it is placed.</summary>
+		 * <param name = "language">The language of the audio</param>
+		 * <param name = "forLipSync">True if this is for a lipsync file</param>
+		 * <param name = "overrideName">If set, then this string (with special characters removed) will be used instead</param>
+		 * <returns>A string of the folder name that the audio or lipsync file should be placed in</returns>
 		 */
-		public void ShowGUI ()
+		public string GetAutoAssetPathAndName (string language, bool forLipsync = false, string overrideName = "")
 		{
+			return GetRelativePath (language, forLipsync, overrideName) + GetFilename (overrideName);
+		}
+
+
+		/**
+		 * <summary>Checks if the line is shared by multiple player characters, each with their own audio and lipsync files.</summary>
+		 * <returns>True if the line is shared by multiple player characters, each with their own audio and lipsync files.</returns>
+		 */
+		public bool SeparatePlayerAudio ()
+		{
+			if (isPlayer &&
+				textType == AC_TextType.Speech &&
+				owner == "Player" &&
+				KickStarter.speechManager.usePlayerRealName &&
+				KickStarter.speechManager.separateSharedPlayerAudio &&
+				KickStarter.settingsManager != null &&
+				KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+			{
+				return true;
+			}
+			return false;
+		}
+
+		
+		/**
+		 * <summary>Gets the clean-formatted filename for a speech line's audio file.</summary>
+		 * <param name = "overrideName">If set, then this string (with special characters removed) will be used instead</param>
+		 * <returns>The filename</returns>
+		 */
+		public string GetFilename (string overrideName = "")
+		{
+			switch (KickStarter.speechManager.referenceSpeechFiles)
+			{
+				case ReferenceSpeechFiles.ByNamingConvention:
+				case ReferenceSpeechFiles.ByAssetBundle:
+					if (!string.IsNullOrEmpty (customFilename) && string.IsNullOrEmpty (overrideName))
+					{
+						return customFilename;
+					}
+					break;
+
+				case ReferenceSpeechFiles.ByAddressable:
+					if (Application.isPlaying && KickStarter.speechManager.translateAudio && Options.GetLanguage () > 0)
+					{
+						return GetSubfolderPath (overrideName) + lineID.ToString () + "_" + Options.GetLanguageName ();
+					}
+					break;
+
+				default:
+					break;
+			}
+
+			
+
+			return GetSubfolderPath (overrideName) + lineID.ToString ();
+		}
+
+
+		/**
+		 * <summary>Gets the translation for a given language index.</summary>
+		 * <param name = "originalText">The original text, returned if the language index is invalid</param>
+		 * <param name = "language">The language index</param>
+		 * <returns>The translation text</returns>
+		 */
+		public string GetTranslation (string originalText, int language)
+		{
+			if (language <= 0)
+			{
+				return originalText;
+			}
+			if (translationText.Count > (language - 1))
+			{
+				return translationText[language - 1];
+			}
+			ACDebug.LogWarning ("A translation is being requested that does not exist!");
+			return originalText;
+		}
+
+		#endregion
+
+
+		#region UnityEditor
+
+		#if UNITY_EDITOR
+
+		/** Displays the GUI of the class's entry within the Speech Manager. */
+		public void ShowGUI (float maxWidth)
+		{
+			CustomGUILayout.DrawUILine ();
+
 			SpeechManager speechManager = AdvGame.GetReferences ().speechManager;
 			string apiPrefix = "KickStarter.speechManager.GetLine (" + lineID + ")";
 
 			if (lineID == speechManager.activeLineID)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 
 				EditorGUILayout.BeginHorizontal ();
 
-				EditorGUILayout.LabelField ("ID #:", GUILayout.Width (85f));
-				EditorGUILayout.LabelField (lineID.ToString (), GUILayout.MaxWidth (570f));
+				EditorGUILayout.LabelField ("ID #:", GUILayout.Width (labelWidth));
+				EditorGUILayout.LabelField (lineID.ToString (), GUILayout.MaxWidth (maxWidth - labelWidth));
 
-
-				if ((textType == AC_TextType.Speech || textType == AC_TextType.DialogueOption) && GUILayout.Button ("Locate source", GUILayout.MaxWidth (100)))
+				if ((textType == AC_TextType.Speech || textType == AC_TextType.DialogueOption) && GUILayout.Button ("Locate source", GUILayout.Width (100)))
 				{
 					KickStarter.speechManager.LocateLine (this);
 				}
 				EditorGUILayout.EndHorizontal ();
-		EditorGUILayout.LabelField ("Identifier: " +OrderIdentifier);
-
-				ShowField ("Type:", textType.ToString (), false, apiPrefix + ".textType");
-				ShowField ("Original text:", text, true, apiPrefix + ".text");
+		
+				ShowField ("Type:", textType.ToString (), false, maxWidth, apiPrefix + ".textType", "The type of text this is.");
+				ShowField ("Original text:", text, true, maxWidth, apiPrefix + ".text", "The original text as recorded during the 'Gather text' process");
 
 				string sceneName = scene.Replace ("Assets/", string.Empty);
 				sceneName = sceneName.Replace (".unity", string.Empty);
-				ShowField ("Scene:", sceneName, true, apiPrefix + ".scene");
+				ShowField ("Scene:", sceneName, true, maxWidth, apiPrefix + ".scene", "The name of the scene that the text was found in");
 				
 				if (textType == AC_TextType.Speech)
 				{
-					ShowField ("Speaker:", GetSpeakerName (), false, apiPrefix + ".owner");
+					ShowField ("Speaker:", GetSpeakerName (), false, maxWidth, apiPrefix + ".owner", "The character who says the line");
 				}
-				
-				if (speechManager.languages != null && speechManager.languages.Count > 1)
+
+				#if LocalizationIsPresent
+				useLocalizedString = CustomGUILayout.Toggle ("Rely on Localization?", useLocalizedString, apiPrefix + ".useLocalizedString", "If True, then the line's text will be pulled from Unity's Localization tables");
+				if (useLocalizedString)
 				{
-					for (int i=0; i<speechManager.languages.Count; i++)
+					if (serializedObject == null)
 					{
-						if (i==0)
+						serializedObject = new SerializedObject (KickStarter.speechManager);
+					}
+					if (localizedStringProperty == null)
+					{
+						int index = -1;
+						for (int i = 0; i < KickStarter.speechManager.lines.Count; i++)
 						{
-							if (speechManager.languages.Count > 1 && speechManager.translateAudio && !speechManager.ignoreOriginalText && textType == AC_TextType.Speech)
+							if (KickStarter.speechManager.lines[i].lineID == lineID)
+							{
+								index = i;
+							}
+						}
+
+						string propertyName = "lines.Array.data[" + index + "].localizedString";
+						localizedStringProperty = serializedObject.FindProperty (propertyName);
+
+						if (localizedStringProperty == null)
+						{
+							EditorGUILayout.HelpBox ("Cannot find property ' " + propertyName + "' to serialize!", MessageType.Warning);
+						}
+					}
+
+					if (localizedStringProperty != null)
+					{
+						serializedObject.Update ();
+						EditorGUILayout.PropertyField (localizedStringProperty, new GUIContent ("Localized string:"));
+						serializedObject.ApplyModifiedProperties ();
+					}
+				}
+				#endif
+
+				if (speechManager.Languages != null && speechManager.Languages.Count > 1)
+				{
+					for (int i=0; i<speechManager.Languages.Count; i++)
+					{
+						if (i == 0)
+						{
+							if (speechManager.Languages.Count > 1 && speechManager.translateAudio && textType == AC_TextType.Speech)
 							{
 								EditorGUILayout.Space ();
 								EditorGUILayout.LabelField ("Original language:");
@@ -251,94 +483,140 @@ namespace AC
 						}
 						else if (translationText.Count > (i-1))
 						{
-							translationText [i-1] = EditField (speechManager.languages[i] + ":", translationText [i-1], true);
+							#if LocalizationIsPresent
+							if (!useLocalizedString)
+							#endif
+							{
+								translationText [i-1] = EditField (speechManager.Languages[i].name + ":", translationText [i-1], true, maxWidth, "", "The display text in '" + speechManager.Languages[i].name + "'");
+							}
 						}
 						else
 						{
-							ShowField (speechManager.languages[i] + ":", "(Not defined)", false);
+							ShowField (speechManager.Languages[i].name + ":", "(Not defined)", false, maxWidth);
 						}
 						
 						if (speechManager.translateAudio && textType == AC_TextType.Speech)
 						{
-							string language = string.Empty;
-							if (i > 0)
-							{
-								language = speechManager.languages[i];
-							}
-							else if (speechManager.ignoreOriginalText && speechManager.languages.Count > 1)
+							string languageName = string.Empty;
+							if (speechManager.Languages[i].isDisabled)
 							{
 								continue;
 							}
-							
-							if (speechManager.autoNameSpeechFiles)
+							else if (i > 0)
 							{
-								if (SeparatePlayerAudio () && speechManager.placeAudioInSubfolders)
-								{
-									for (int j=0; j<KickStarter.settingsManager.players.Count; j++)
+								languageName = speechManager.Languages[i].name;
+							}
+							
+							switch (speechManager.referenceSpeechFiles)
+							{
+								case ReferenceSpeechFiles.ByNamingConvention:
 									{
-										if (KickStarter.settingsManager.players[j].playerOb)
+										if (SeparatePlayerAudio () && speechManager.placeAudioInSubfolders)
+										{
+											for (int j = 0; j < KickStarter.settingsManager.players.Count; j++)
+											{
+												if (KickStarter.settingsManager.players[j].playerOb)
+												{
+													if (speechManager.UseFileBasedLipSyncing ())
+													{
+														ShowField (" Lipsync path " + j.ToString () + ":", GetFolderName (languageName, true, KickStarter.settingsManager.players[j].playerOb.name), false, maxWidth);
+													}
+													ShowField (" Audio Path " + j.ToString () + ":", GetFolderName (languageName, false, KickStarter.settingsManager.players[j].playerOb.name), false, maxWidth);
+												}
+											}
+										}
+										else
 										{
 											if (speechManager.UseFileBasedLipSyncing ())
 											{
-												ShowField ("Lipsync path " + j.ToString () + ":", GetFolderName (language, true, KickStarter.settingsManager.players[j].playerOb.name), false);
+												EditorGUILayout.BeginHorizontal ();
+												ShowField (" Lipsync path:", GetFolderName (languageName, true), false, maxWidth);
+												ShowLocateButton (i, true);
+												EditorGUILayout.EndHorizontal ();
 											}
-											ShowField ("Audio Path " + j.ToString () + ":", GetFolderName (language, false, KickStarter.settingsManager.players[j].playerOb.name), false);
-										}
-									}
-								}
-								else
-								{
-									if (speechManager.useAssetBundles)
-									{
-										if (speechManager.UseFileBasedLipSyncing ())
-										{
-											if (!string.IsNullOrEmpty (speechManager.languageLipsyncAssetBundles[i]))
-											{
-												ShowField (" (Lipsync AB):", "StreamingAssets/" + speechManager.languageLipsyncAssetBundles[i], false);
-											}
-										}
 
-										if (!string.IsNullOrEmpty (speechManager.languageAudioAssetBundles[i]))
-										{
-											ShowField (" (Audio AB):", "StreamingAssets/" + speechManager.languageAudioAssetBundles[i], false);
-										}
-									}
-									else
-									{
-										if (speechManager.UseFileBasedLipSyncing ())
-										{
 											EditorGUILayout.BeginHorizontal ();
-											ShowField (" (Lipsync path):", GetFolderName (language, true), false);
-											ShowLocateButton (i, true);
+											ShowField (" Audio path:", GetFolderName (languageName), false, maxWidth);
+											ShowLocateButton (i);
 											EditorGUILayout.EndHorizontal ();
 										}
+									}
+									break;
 
-										EditorGUILayout.BeginHorizontal ();
-										ShowField (" (Audio path):", GetFolderName (language), false);
-										ShowLocateButton (i);
-										EditorGUILayout.EndHorizontal ();
-									}
-								}
-							}
-							else
-							{
-								if (i > 0)
-								{
-									SetCustomArraySizes (speechManager.languages.Count-1);
-									if (speechManager.UseFileBasedLipSyncing ())
+								case ReferenceSpeechFiles.ByAssetBundle:
 									{
-										customTranslationLipsyncFiles[i-1] = EditField <Object> ("Lipsync file:", customTranslationLipsyncFiles[i-1], apiPrefix + ".customTranslationLipsyncFiles[i-1]");
+										if (speechManager.UseFileBasedLipSyncing ())
+										{
+											if (!string.IsNullOrEmpty (speechManager.Languages[i].lipsyncAssetBundle))
+											{
+												ShowField (" Lipsync AB:", "StreamingAssets/" + speechManager.Languages[i].lipsyncAssetBundle, false, maxWidth);
+											}
+										}
+
+										if (!string.IsNullOrEmpty (speechManager.Languages[i].audioAssetBundle))
+										{
+											ShowField (" Audio AB:", "StreamingAssets/" + speechManager.Languages[i].audioAssetBundle, false, maxWidth);
+										}
 									}
-									customTranslationAudioClips[i-1] = EditField <AudioClip> ("Audio clip:", customTranslationAudioClips[i-1], apiPrefix + ".customTranslationAudioClips[i-1]");
-								}
-								else
-								{
-									if (speechManager.UseFileBasedLipSyncing ())
+									break;
+
+								case ReferenceSpeechFiles.ByDirectReference:
 									{
-										customLipsyncFile = EditField <Object> ("Lipsync file:", customLipsyncFile, apiPrefix + ".customLipsyncFile");
+										if (i > 0)
+										{
+											SetCustomArraySizes (speechManager.Languages.Count - 1);
+											if (speechManager.UseFileBasedLipSyncing ())
+											{
+												customTranslationLipsyncFiles[i - 1] = EditField<Object> (" Lipsync file:", customTranslationLipsyncFiles[i - 1], maxWidth, apiPrefix + ".customTranslationLipsyncFiles[i-1]", "The text file to use for lipsyncing");
+											}
+											customTranslationAudioClips[i - 1] = EditField<AudioClip> (" Audio clip:", customTranslationAudioClips[i - 1], maxWidth, apiPrefix + ".customTranslationAudioClips[i-1]", "The voice AudioClip to play");
+										}
+										else
+										{
+											if (speechManager.UseFileBasedLipSyncing ())
+											{
+												customLipsyncFile = EditField<Object> (" Lipsync file:", customLipsyncFile, maxWidth, apiPrefix + ".customLipsyncFile", "The text file to use for lipsyncing in the original language");
+											}
+											customAudioClip = EditField<AudioClip> (" Audio clip:", customAudioClip, maxWidth, apiPrefix + ".customAudioClip", "The voice AudioClip to play in the original language");
+										}
 									}
-									customAudioClip = EditField <AudioClip> ("Audio clip:", customAudioClip, apiPrefix + ".customAudioClip");
-								}
+									break;
+
+								case ReferenceSpeechFiles.ByAddressable:
+									{
+										if (SeparatePlayerAudio ())
+										{
+											for (int p = 0; p < KickStarter.settingsManager.players.Count; p++)
+											{
+												if (KickStarter.settingsManager.players[p].playerOb)
+												{
+													if (i > 0)
+													{
+														ShowField ("Addressable " + p.ToString () + ":", GetFilename (KickStarter.settingsManager.players[p].playerOb.name) + "_" + languageName, false, maxWidth);
+													}
+													else
+													{
+														ShowField ("Addressable " + p.ToString () + ":", GetFilename (KickStarter.settingsManager.players[p].playerOb.name), false, maxWidth);
+													}
+												}
+											}
+										}
+										else
+										{
+											if (i > 0)
+											{
+												ShowField (" Addressable:", GetFilename () + "_" + languageName, false, maxWidth);
+											}
+											else
+											{
+												ShowField (" Addressable:", GetFilename (), false, maxWidth);
+											}
+										}
+									}
+									break;
+
+								default:
+									break;
 							}
 
 							EditorGUILayout.Space ();
@@ -349,84 +627,134 @@ namespace AC
 				// Original language
 				if (textType == AC_TextType.Speech)
 				{
-					if (speechManager.languages == null || speechManager.languages.Count <= 1 || !speechManager.translateAudio)
+					if (speechManager.Languages == null || speechManager.Languages.Count <= 1 || !speechManager.translateAudio)
 					{
-						if (speechManager.autoNameSpeechFiles)
+						Language language = speechManager.Languages[0];
+
+						switch (speechManager.referenceSpeechFiles)
 						{
-							if (SeparatePlayerAudio () && speechManager.placeAudioInSubfolders)
-							{
-								for (int i=0; i<KickStarter.settingsManager.players.Count; i++)
+							case ReferenceSpeechFiles.ByNamingConvention:
 								{
-									if (KickStarter.settingsManager.players[i].playerOb)
+									if (SeparatePlayerAudio () && speechManager.placeAudioInSubfolders)
+									{
+										for (int i = 0; i < KickStarter.settingsManager.players.Count; i++)
+										{
+											if (KickStarter.settingsManager.players[i].playerOb)
+											{
+												if (speechManager.UseFileBasedLipSyncing ())
+												{
+													ShowField ("Lipsync path " + i.ToString () + ":", GetFolderName (string.Empty, true, KickStarter.settingsManager.players[i].playerOb.name), false, maxWidth, "", "The filepath to the text asset file to rely on for Lipsyncing");
+												}
+												ShowField ("Audio Path " + i.ToString () + ":", GetFolderName (string.Empty, false, KickStarter.settingsManager.players[i].playerOb.name), false, maxWidth, "", "The filepath to the voice AudioClip asset file to play");
+											}
+										}
+									}
+									else
 									{
 										if (speechManager.UseFileBasedLipSyncing ())
 										{
-											ShowField ("Lipsync path " + i.ToString () + ":", GetFolderName (string.Empty, true, KickStarter.settingsManager.players[i].playerOb.name), false);
+											EditorGUILayout.BeginHorizontal ();
+											ShowField ("Lipsync path:", GetFolderName (string.Empty, true), false, maxWidth);
+											ShowLocateButton (0, true);
+											EditorGUILayout.EndHorizontal ();
 										}
-										ShowField ("Audio Path " + i.ToString () + ":", GetFolderName (string.Empty, false, KickStarter.settingsManager.players[i].playerOb.name), false);
+
+										EditorGUILayout.BeginHorizontal ();
+										ShowField ("Audio Path:", GetFolderName (string.Empty), false, maxWidth);
+										ShowLocateButton (0);
+										EditorGUILayout.EndHorizontal ();
 									}
 								}
-							}
-							else
-							{
-								if (speechManager.useAssetBundles)
+								break;
+
+							case ReferenceSpeechFiles.ByAssetBundle:
 								{
 									if (speechManager.UseFileBasedLipSyncing ())
 									{
-										if (!string.IsNullOrEmpty (speechManager.languageLipsyncAssetBundles[0]))
+										if (!string.IsNullOrEmpty (language.lipsyncAssetBundle))
 										{
-											ShowField ("Lipsync AB:", "StreamingAssets/" + speechManager.languageLipsyncAssetBundles[0], false);
+											ShowField ("Lipsync AB:", "StreamingAssets/" + language.lipsyncAssetBundle, false, maxWidth);
 										}
 									}
 
-									if (!string.IsNullOrEmpty (speechManager.languageAudioAssetBundles[0]))
+									if (!string.IsNullOrEmpty (language.audioAssetBundle))
 									{
-										ShowField ("Audio AB:", "StreamingAssets/" + speechManager.languageAudioAssetBundles[0], false);
+										ShowField ("Audio AB:", "StreamingAssets/" + language.audioAssetBundle, false, maxWidth);
+									}
+								}
+								break;
+
+							case ReferenceSpeechFiles.ByDirectReference:
+								{
+									if (speechManager.UseFileBasedLipSyncing ())
+									{
+										customLipsyncFile = EditField<Object> ("Lipsync file:", customLipsyncFile, maxWidth, apiPrefix + ".customLipsyncFile", "The text file to use for lipsyncing in the original language");
+									}
+									customAudioClip = EditField<AudioClip> ("Audio clip:", customAudioClip, maxWidth, apiPrefix + ".customAudioClip", "The voice AudioClip to play in the original language");
+								}
+								break;
+
+							case ReferenceSpeechFiles.ByAddressable:
+								{
+									if (SeparatePlayerAudio ())
+									{
+										for (int i = 0; i < KickStarter.settingsManager.players.Count; i++)
+										{
+											if (KickStarter.settingsManager.players[i].playerOb)
+											{
+												ShowField ("Addressable " + i.ToString () + ":", GetFilename (KickStarter.settingsManager.players[i].playerOb.name), false, maxWidth);
+											}
+										}
+									}
+									else
+									{
+										ShowField ("Addressable:", GetFilename (), false, maxWidth);
+									}
+								}
+								break;
+
+							default:
+								break;
+						}
+					}
+
+					switch (speechManager.referenceSpeechFiles)
+					{
+						case ReferenceSpeechFiles.ByNamingConvention:
+						case ReferenceSpeechFiles.ByAssetBundle:
+							{
+								if (SeparatePlayerAudio ())
+								{
+									for (int i = 0; i < KickStarter.settingsManager.players.Count; i++)
+									{
+										if (KickStarter.settingsManager.players[i].playerOb)
+										{
+											ShowField ("Filename " + i.ToString () + ":", GetFilename (KickStarter.settingsManager.players[i].playerOb.name), false, maxWidth);
+										}
 									}
 								}
 								else
 								{
-									if (speechManager.UseFileBasedLipSyncing ())
+									if (string.IsNullOrEmpty (customFilename))
 									{
 										EditorGUILayout.BeginHorizontal ();
-										ShowField ("Lipsync path:", GetFolderName (string.Empty, true), false);
-										ShowLocateButton (0, true);
+										ShowField ("Filename:", GetFilename (), false, maxWidth);
+										if (GUILayout.Button ("Set custom", GUILayout.Width (100f)))
+										{
+											customFilename = GetFilename ();
+										}
 										EditorGUILayout.EndHorizontal ();
 									}
-
-									EditorGUILayout.BeginHorizontal ();
-									ShowField ("Audio Path:", GetFolderName (string.Empty), false);
-									ShowLocateButton (0);
-									EditorGUILayout.EndHorizontal ();
+									else
+									{
+										customFilename = EditField ("Filename:", customFilename, false, maxWidth, apiPrefix + ".customFilename");
+									}
 								}
 							}
-						}
-						else
-						{
-							if (speechManager.UseFileBasedLipSyncing ())
-							{
-								customLipsyncFile = EditField <Object> ("Lipsync file:", customLipsyncFile, apiPrefix + ".customLipsyncFile");
-							}
-							customAudioClip = EditField <AudioClip> ("Audio clip:", customAudioClip, apiPrefix + ".customAudioClip");
-						}
-					}
+							break;
 
-					if (speechManager.autoNameSpeechFiles)
-					{
-						if (SeparatePlayerAudio ())
-						{
-							for (int i=0; i<KickStarter.settingsManager.players.Count; i++)
-							{
-								if (KickStarter.settingsManager.players[i].playerOb)
-								{
-									ShowField ("Filename " + i.ToString () + ":", GetFilename (KickStarter.settingsManager.players[i].playerOb.name) + lineID.ToString (), false);
-								}
-							}
-						}
-						else
-						{
-							ShowField ("Filename:", GetFilename () + lineID.ToString (), false);
-						}
+						default:
+							break;
 					}
 
 					if (tagID >= 0 && speechManager.useSpeechTags)
@@ -434,21 +762,26 @@ namespace AC
 						SpeechTag speechTag = speechManager.GetSpeechTag (tagID);
 						if (speechTag != null && speechTag.label.Length > 0)
 						{
-							ShowField ("Tag: ", speechTag.label, false, apiPrefix + ".tagID");
+							ShowField ("Tag: ", speechTag.label, false, maxWidth, apiPrefix + ".tagID");
 						}
 					}
+
+					EditorGUILayout.BeginHorizontal ();
+					EditorGUILayout.LabelField (new GUIContent ("Only say once?", "If True, then this line can only be spoken once. Additional calls to play it will be ignored."), GUILayout.Width (labelWidth));
+					onlyPlaySpeechOnce = CustomGUILayout.Toggle (onlyPlaySpeechOnce, GUILayout.MaxWidth (maxWidth - labelWidth), apiPrefix + ".onlyPlaySpeechOnce");
+					EditorGUILayout.EndHorizontal ();
 				}
 
 				if (SupportsDescriptions ())
 				{
-					description = EditField ("Description:", description, true, apiPrefix + ".description");
+					description = EditField ("Description:", description, true, maxWidth, apiPrefix + ".description", "An Editor-only description");
 				}
 				
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 			else
 			{
-				if (GUILayout.Button (lineID.ToString () + ": '" + GetShortText () + "'", EditorStyles.label, GUILayout.MaxWidth (300)))
+				if (GUILayout.Button (lineID.ToString () + ": '" + text + "'", EditorStyles.label, GUILayout.MaxWidth (maxWidth)))
 				{
 					speechManager.activeLineID = lineID;
 					EditorGUIUtility.editingTextField = false;
@@ -460,17 +793,8 @@ namespace AC
 
 		private bool SupportsDescriptions ()
 		{
-			return (textType == AC_TextType.Speech || textType == AC_TextType.DialogueOption);
-		}
-
-
-		private string GetShortText ()
-		{
-			if (text.Length > 100)
-			{
-				return text.Substring (0, 100) + "..)";
-			}
-			return text;
+			return true;
+			//return (textType == AC_TextType.Speech || textType == AC_TextType.DialogueOption);
 		}
 
 
@@ -480,53 +804,54 @@ namespace AC
 		 * <param name = "field">The field to display</param>
 		 * <param name = "multiLine">True if the field should be word-wrapped</param>
 		 */
-		public static void ShowField (string label, string field, bool multiLine, string api = "")
+		public static void ShowField (string label, string field, bool multiLine, float maxWidth = 570f, string api = "", string tooltip = "")
 		{
 			if (string.IsNullOrEmpty (field)) return;
 			
 			EditorGUILayout.BeginHorizontal ();
-			EditorGUILayout.LabelField (label, GUILayout.Width (85f));
+			EditorGUILayout.LabelField (new GUIContent (label, tooltip), GUILayout.Width (labelWidth));
 			
 			if (multiLine)
 			{
 				GUIStyle style = new GUIStyle ();
-				#if UNITY_PRO_LICENSE
-				style.normal.textColor = Color.white;
-				#endif
+				if (EditorGUIUtility.isProSkin)
+				{
+					style.normal.textColor = new Color (0.8f, 0.8f, 0.8f);
+				}
 				style.wordWrap = true;
 				style.alignment = TextAnchor.MiddleLeft;
-				EditorGUILayout.LabelField (field, style, GUILayout.MaxWidth (570f));
+				EditorGUILayout.LabelField (field, style, GUILayout.MaxWidth (maxWidth - labelWidth));
 			}
 			else
 			{
-				EditorGUILayout.LabelField (field, GUILayout.MaxWidth (570f));
+				EditorGUILayout.LabelField (field, GUILayout.MaxWidth (maxWidth));
 			}
 			EditorGUILayout.EndHorizontal ();
 		}
 		
 		
-		private string EditField (string label, string field, bool multiLine, string api = "")
+		private string EditField (string label, string field, bool multiLine, float maxWidth = 570f, string api = "", string tooltip = "")
 		{
 			EditorGUILayout.BeginHorizontal ();
-			EditorGUILayout.LabelField (label, GUILayout.Width (85f));
+			EditorGUILayout.LabelField (new GUIContent (label, tooltip), GUILayout.Width (labelWidth));
 			if (multiLine)
 			{
-				field = CustomGUILayout.TextArea (field, GUILayout.MaxWidth (570f), api);
+				field = CustomGUILayout.TextArea (field, GUILayout.MaxWidth (maxWidth - labelWidth), api);
 			}
 			else
 			{
-				field = CustomGUILayout.TextField (field, GUILayout.MaxWidth (570f), api);
+				field = CustomGUILayout.DelayedTextField (field, GUILayout.MaxWidth (maxWidth - labelWidth), api);
 			}
 			EditorGUILayout.EndHorizontal ();
 			return field;
 		}
 		
 		
-		private T EditField <T> (string label, T field, string api = "") where T : Object
+		private T EditField <T> (string label, T field, float maxWidth = 570f, string api = "", string tooltip = "") where T : Object
 		{
 			EditorGUILayout.BeginHorizontal ();
-			EditorGUILayout.LabelField (label, GUILayout.Width (85f));
-			field = (T) CustomGUILayout.ObjectField <T> (field, false, GUILayout.MaxWidth (570f), api);
+			EditorGUILayout.LabelField (new GUIContent (label, tooltip), GUILayout.Width (labelWidth));
+			field = (T) CustomGUILayout.ObjectField <T> (field, false, GUILayout.MaxWidth (maxWidth - labelWidth), api);
 			EditorGUILayout.EndHorizontal ();
 			return field;
 		}
@@ -636,65 +961,73 @@ namespace AC
 
 			result += "<tr><td><b>Line text:</b></td><td>" + lineText + "</td></tr>\n";
 			
-			if (description != null && description.Length > 0 && includeDescriptions)
+			if (!string.IsNullOrEmpty (description) && includeDescriptions)
 			{
 				result += "<tr><td><b>Description:</b></td><td>" + description + "</td></tr>\n";
 			}
 			
-			string language = string.Empty;
+			string languageName = string.Empty;
 			SpeechManager speechManager = AdvGame.GetReferences ().speechManager;
 			if (i > 0 && speechManager.translateAudio)
 			{
-				language = AdvGame.GetReferences ().speechManager.languages[i];
+				languageName = AdvGame.GetReferences ().speechManager.Languages[i].name;
 			}
 			
-			if (speechManager.autoNameSpeechFiles)
+			switch (speechManager.referenceSpeechFiles)
 			{
-				if (SeparatePlayerAudio ())
-				{
-					if (speechManager.UseFileBasedLipSyncing ())
+				case ReferenceSpeechFiles.ByNamingConvention:
 					{
-						for (int j=0; j<KickStarter.settingsManager.players.Count; j++)
+						if (SeparatePlayerAudio ())
 						{
-							if (KickStarter.settingsManager.players[j].playerOb != null)
+							if (speechManager.UseFileBasedLipSyncing ())
 							{
-								string overrideName = KickStarter.settingsManager.players[j].playerOb.name;
-								result += "<td><b>Lipsync file:</b></td><td>" + GetFolderName (language, true, overrideName) + GetFilename (overrideName) + lineID.ToString () + "</td></tr>\n";
+								for (int j = 0; j < KickStarter.settingsManager.players.Count; j++)
+								{
+									if (KickStarter.settingsManager.players[j].playerOb)
+									{
+										string overrideName = KickStarter.settingsManager.players[j].playerOb.name;
+										result += "<td><b>Lipsync file:</b></td><td>" + GetFolderName (languageName, true, overrideName) + GetFilename (overrideName) + "</td></tr>\n";
+									}
+								}
+							}
+
+							for (int j = 0; j < KickStarter.settingsManager.players.Count; j++)
+							{
+								if (KickStarter.settingsManager.players[j].playerOb)
+								{
+									string overrideName = KickStarter.settingsManager.players[j].playerOb.name;
+									result += "<tr><td><b>Audio file:</b></td><td>" + GetFolderName (languageName, false, overrideName) + GetFilename (overrideName) + "</td></tr>\n";
+								}
 							}
 						}
-					}
-
-					for (int j=0; j<KickStarter.settingsManager.players.Count; j++)
-					{
-						if (KickStarter.settingsManager.players[j].playerOb != null)
+						else
 						{
-							string overrideName = KickStarter.settingsManager.players[j].playerOb.name;
-							result += "<tr><td><b>Audio file:</b></td><td>" + GetFolderName (language, false, overrideName) + GetFilename (overrideName) + lineID.ToString () + "</td></tr>\n";
+							if (speechManager.UseFileBasedLipSyncing ())
+							{
+								result += "<td><b>Lipsync file:</b></td><td>" + GetFolderName (languageName, true) + GetFilename () + "</td></tr>\n";
+							}
+							result += "<tr><td><b>Audio file:</b></td><td>" + GetFolderName (languageName, false) + GetFilename () + "</td></tr>\n";
 						}
 					}
-				}
-				else
-				{
-					if (speechManager.UseFileBasedLipSyncing ())
-					{
-						result += "<td><b>Lipsync file:</b></td><td>" + GetFolderName (language, true) + GetFilename () + lineID.ToString () + "</td></tr>\n";
-					}
-					result += "<tr><td><b>Audio file:</b></td><td>" + GetFolderName (language, false) + GetFilename () + lineID.ToString () + "</td></tr>\n";
-				}
+					break;
 
+				case ReferenceSpeechFiles.ByDirectReference:
+					{
+						if (speechManager.UseFileBasedLipSyncing () && customLipsyncFile)
+						{
+							result += "<td><b>Lipsync file:</b></td><td>" + customLipsyncFile.name + "</td></tr>\n";
+						}
+						if (customAudioClip)
+						{
+							result += "<tr><td><b>Audio file:</b></td><td>" + customAudioClip.name + "</td></tr>\n";
+						}
+					}
+					break;
+
+				default:
+					break;
 			}
-			else
-			{
-				if (speechManager.UseFileBasedLipSyncing () && customLipsyncFile != null)
-				{
-					result += "<td><b>Lipsync file:</b></td><td>" + customLipsyncFile.name + "</td></tr>\n";
-				}
-				if (customAudioClip != null)
-				{
-					result += "<tr><td><b>Audio file:</b></td><td>" + customAudioClip.name + "</td></tr>\n";
-				}
-			}
-			
+
 			result += "</table>\n\n";
 			result += "<br/>\n";
 			return result;
@@ -715,7 +1048,7 @@ namespace AC
 
 			if (KickStarter.speechManager.translateAudio)
 			{
-				int numLanguages = (KickStarter.speechManager.languages != null) ? KickStarter.speechManager.languages.Count : 1;
+				int numLanguages = (KickStarter.speechManager.Languages != null) ? KickStarter.speechManager.Languages.Count : 1;
 				for (int i=0; i<numLanguages; i++)
 				{
 					if (!HasAudio (i))
@@ -734,27 +1067,27 @@ namespace AC
 
 		private void ShowLocateButton (int languageIndex, bool forLipSync = false)
 		{
-			if (GUILayout.Button ("Ping file"))
+			if (GUILayout.Button ("Ping file", GUILayout.Width (100f)))
 			{
-				string language = (languageIndex == 0) ? string.Empty : AdvGame.GetReferences ().speechManager.languages[languageIndex];
+				string languageName = (languageIndex == 0) ? string.Empty : AdvGame.GetReferences ().speechManager.Languages[languageIndex].name;
 				string fullName = string.Empty;
 
 				Object foundClp = null;
 
-				if (KickStarter.settingsManager != null && SeparatePlayerAudio ())
+				if (KickStarter.settingsManager && SeparatePlayerAudio ())
 				{
 					foreach (PlayerPrefab player in KickStarter.settingsManager.players)
 					{
-						if (player != null && player.playerOb != null)
+						if (player != null && player.playerOb)
 						{
-							fullName = GetAutoAssetPathAndName (language, forLipSync, player.playerOb.name);
+							fullName = GetAutoAssetPathAndName (languageName, forLipSync, player.playerOb.name);
 
 							if (forLipSync)
 							{
 								if (KickStarter.speechManager.lipSyncMode == LipSyncMode.RogoLipSync)
 								{
 									Object lipSyncFile = RogoLipSyncIntegration.GetObjectToPing (fullName);
-									if (lipSyncFile != null)
+									if (lipSyncFile)
 									{
 										foundClp = lipSyncFile;
 									}
@@ -762,7 +1095,7 @@ namespace AC
 								else
 								{
 									TextAsset textFile = Resources.Load (fullName) as TextAsset;
-									if (textFile != null)
+									if (textFile )
 									{
 										foundClp = textFile;
 									}
@@ -771,7 +1104,7 @@ namespace AC
 							else
 							{
 								AudioClip clipObj = Resources.Load (fullName) as AudioClip;
-								if (clipObj != null)
+								if (clipObj)
 								{
 									foundClp = clipObj;
 									break;
@@ -782,7 +1115,7 @@ namespace AC
 				}
 				else
 				{
-					fullName = GetAutoAssetPathAndName (language, forLipSync);
+					fullName = GetAutoAssetPathAndName (languageName, forLipSync);
 
 					if (forLipSync)
 					{
@@ -803,13 +1136,13 @@ namespace AC
 					}
 				}
 
-				if (foundClp != null)
+				if (foundClp)
 				{
 					EditorGUIUtility.PingObject (foundClp);
 				}
 				else
 				{
-					ACDebug.Log (((forLipSync) ? "Text" : "Audio") + " file '/Resources/" + fullName + "' was found.");
+					ACDebug.Log (((forLipSync) ? "Text" : "Audio") + " file '/Resources/" + fullName + "' was not found.");
 				}
 			}
 		}
@@ -827,124 +1160,80 @@ namespace AC
 			SpeechManager speechManager = KickStarter.speechManager;
 			if (speechManager == null) return false;
 
-			if (speechManager.autoNameSpeechFiles)
+			switch (speechManager.referenceSpeechFiles)
 			{
-				string language = (languageIndex == 0) ? string.Empty : speechManager.languages[languageIndex];
-
-				if (KickStarter.settingsManager != null && SeparatePlayerAudio ())
-				{
-					bool doDisplay = false; 
-					foreach (PlayerPrefab player in KickStarter.settingsManager.players)
+				case ReferenceSpeechFiles.ByNamingConvention:
 					{
-						if (player != null && player.playerOb != null)
+						string languageName = (languageIndex == 0) ? string.Empty : speechManager.Languages[languageIndex].name;
+
+						if (SeparatePlayerAudio ())
 						{
-							string fullName = GetAutoAssetPathAndName (language, false, player.playerOb.name);
+							bool doDisplay = false;
+							foreach (PlayerPrefab player in KickStarter.settingsManager.players)
+							{
+								if (player != null && player.playerOb)
+								{
+									string fullName = GetAutoAssetPathAndName (languageName, false, player.playerOb.name);
+									AudioClip clipObj = Resources.Load (fullName) as AudioClip;
+
+									if (clipObj == null)
+									{
+										doDisplay = true;
+									}
+								}
+							}
+
+							if (!doDisplay)
+							{
+								return false;
+							}
+							return true;
+						}
+						else
+						{
+							string fullName = GetAutoAssetPathAndName (languageName);
 							AudioClip clipObj = Resources.Load (fullName) as AudioClip;
 
-							if (clipObj == null)
+							if (clipObj)
 							{
-								doDisplay = true;
+								return true;
 							}
 						}
 					}
+					break;
 
-					if (!doDisplay)
+				case ReferenceSpeechFiles.ByDirectReference:
 					{
-						return false;
+						if (languageIndex == 0 && customAudioClip)
+						{
+							return true;
+						}
+						if (speechManager.translateAudio && languageIndex > 0 && customTranslationAudioClips.Count > (languageIndex - 1) && customTranslationAudioClips[languageIndex - 1])
+						{
+							return true;
+						}
+						if (!speechManager.translateAudio && customAudioClip)
+						{
+							return true;
+						}
 					}
-					return true;
-				}
-				else
-				{
-					string fullName = GetAutoAssetPathAndName (language);
-					AudioClip clipObj = Resources.Load (fullName) as AudioClip;
+					break;
 
-					if (clipObj != null)
-					{
-						return true;
-					}
-				}
-			}
-			else
-			{
-				if (languageIndex == 0 && customAudioClip != null)
-				{
-					return true;
-				}
-				if (speechManager.translateAudio && languageIndex > 0 && customTranslationAudioClips.Count > (languageIndex - 1) && customTranslationAudioClips[languageIndex-1] != null)
-				{
-					return true;
-				}
-				if (!speechManager.translateAudio && customAudioClip != null)
-				{
-					return true;
-				}
+				default:
+					break;
 			}
 
 			return false;
 		}
-		
+
 		#endif
 
-
-		/**
-		 * <summary>Gets the full folder and filename for a speech line's audio or lipsync file, relative to the "Resources" Assets directory in which it is placed.</summary>
-		 * <param name = "language">The language of the audio</param>
-		 * <param name = "forLipSync">True if this is for a lipsync file</param>
-		 * <param name = "overrideName">If set, then this string (with special characters removed) will be used instead</param>
-		 * <returns>A string of the folder name that the audio or lipsync file should be placed in</returns>
-		 */
-		public string GetAutoAssetPathAndName (string language, bool forLipsync = false, string overrideName = "")
-		{
-			return GetRelativePath (language, forLipsync, overrideName) + GetFilename (overrideName) + lineID;
-		}
+		#endregion
 
 
-		private string GetRelativePath (string language, bool forLipsync = false, string overrideName = "")
-		{
-			string folderName = (forLipsync) ? KickStarter.speechManager.AutoLipsyncFolder : KickStarter.speechManager.AutoSpeechFolder;
-			string fileName = GetFilename (overrideName);
+		#region ProtectedFunctions
 
-			if (!string.IsNullOrEmpty (language) && KickStarter.speechManager.translateAudio)
-			{
-				// Not in original language
-				folderName += language + "/";
-			}
-			if (KickStarter.speechManager.placeAudioInSubfolders)
-			{
-				folderName += fileName + "/";
-			}
-
-			return folderName;
-		}
-
-
-		/**
-		 * <summary>Checks if the line is shared by multiple player characters, each with their own audio and lipsync files.</summary>
-		 * <returns>True if the line is shared by multiple player characters, each with their own audio and lipsync files.</returns>
-		 */
-		public bool SeparatePlayerAudio ()
-		{
-			if (isPlayer &&
-				textType == AC_TextType.Speech &&
-				owner == "Player" &&
-				KickStarter.speechManager.usePlayerRealName &&
-				KickStarter.speechManager.separateSharedPlayerAudio &&
-				KickStarter.settingsManager != null &&
-				KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
-			{
-				return true;
-			}
-			return false;
-		}
-
-		
-		/**
-		 * <summary>Gets the clean-formatted filename for a speech line's audio file.</summary>
-		 * <param name = "overrideName">If set, then this string (with special characters removed) will be used instead</param>
-		 * <returns>The filename</returns>
-		 */
-		public string GetFilename (string overrideName = "")
+		protected string GetSubfolderPath (string overrideName = "")
 		{
 			string filename = string.Empty;
 			if (SeparatePlayerAudio () && !string.IsNullOrEmpty (overrideName))
@@ -954,7 +1243,7 @@ namespace AC
 			else if (!string.IsNullOrEmpty (owner))
 			{
 				filename = owner;
-				
+
 				if (isPlayer &&
 					textType == AC_TextType.Speech &&
 					(KickStarter.speechManager == null || !KickStarter.speechManager.usePlayerRealName))
@@ -967,7 +1256,7 @@ namespace AC
 				filename = "Narrator";
 			}
 
-			for (int i=0; i<badChars.Length; i++)
+			for (int i = 0; i < badChars.Length; i++)
 			{
 				filename = filename.Replace (badChars[i], "_");
 			}
@@ -976,21 +1265,25 @@ namespace AC
 		}
 
 
-		private static string speechMarkAsString;
-		private static string SpeechMarkAsString
+		protected string GetRelativePath (string language, bool forLipsync = false, string overrideName = "")
 		{
-			get
+			string folderName = (forLipsync) ? KickStarter.speechManager.AutoLipsyncFolder : KickStarter.speechManager.AutoSpeechFolder;
+			
+			if (!string.IsNullOrEmpty (language) && KickStarter.speechManager.translateAudio)
 			{
-				if (string.IsNullOrEmpty (speechMarkAsString))
-				{
-					speechMarkAsString = '"'.ToString ();
-				}
-				return speechMarkAsString;
+				// Not in original language
+				folderName += language + "/";
 			}
+			if (KickStarter.speechManager.placeAudioInSubfolders)
+			{
+				folderName += GetSubfolderPath (overrideName) + "/";
+			}
+
+			return folderName;
 		}
 
-		
-		private string GetSpeakerName ()
+
+		protected string GetSpeakerName ()
 		{
 			if (isPlayer && (AdvGame.GetReferences ().speechManager == null || !AdvGame.GetReferences ().speechManager.usePlayerRealName))
 			{
@@ -1000,7 +1293,7 @@ namespace AC
 		}
 
 
-		private void SetCustomArraySizes (int newCount)
+		protected void SetCustomArraySizes (int newCount)
 		{
 			if (customTranslationAudioClips == null)
 			{
@@ -1050,7 +1343,7 @@ namespace AC
 		}
 
 
-		private List<AudioClip> GetAudioListForTranslation (List<AudioClip> audioClips, int language)
+		protected List<AudioClip> GetAudioListForTranslation (List<AudioClip> audioClips, int language)
 		{
 			List<AudioClip> audioList = new List<AudioClip>();
 
@@ -1068,7 +1361,7 @@ namespace AC
 		}
 
 
-		private List<Object> GetLipsyncListForTranslation (List<Object> lipsyncFiles, int language)
+		protected List<Object> GetLipsyncListForTranslation (List<Object> lipsyncFiles, int language)
 		{
 			List<Object> lipsyncList = new List<Object>();
 
@@ -1085,6 +1378,10 @@ namespace AC
 			return lipsyncList;
 		}
 
+		#endregion
+
+
+		#region GetSet
 
 		#if UNITY_EDITOR
 
@@ -1095,8 +1392,33 @@ namespace AC
 				return orderPrefix + orderID.ToString ("D4");
 			}
 		}
-	
+
 		#endif
+
+
+		/** The line's default filenames - used unless overridden by custom filenaming */
+		public string DefaultFilename
+		{
+			get
+			{
+				return GetSubfolderPath () + lineID.ToString ();
+			}
+		}
+
+
+		protected static string SpeechMarkAsString
+		{
+			get
+			{
+				if (string.IsNullOrEmpty (speechMarkAsString))
+				{
+					speechMarkAsString = '"'.ToString ();
+				}
+				return speechMarkAsString;
+			}
+		}
+
+		#endregion
 		
 	}
 	

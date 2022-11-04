@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionParent.cs"
  * 
@@ -37,69 +37,95 @@ namespace AC
 		public GameObject obToAffect;
 		protected GameObject runtimeObToAffect;
 		public bool isPlayer;
-		
+		public int playerID = -1;
+		public int playerParameterID = -1;
+
 		public bool setPosition;
 		public Vector3 newPosition;
 		
 		public bool setRotation;
 		public Vector3 newRotation;
-		
-
-		public ActionParent ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Set parent";
-			description = "Parent one GameObject to another. Can also set the child's local position and rotation.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Set parent"; }}
+		public override string Description { get { return "Parent one GameObject to another. Can also set the child's local position and rotation."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeParentTransform = AssignFile (parameters, parentTransformParameterID, parentTransformID, parentTransform);
-			runtimeObToAffect = AssignFile (parameters, obToAffectParameterID, obToAffectID, obToAffect);
 
-			if (isPlayer && KickStarter.player)
+			if (isPlayer)
 			{
-				runtimeObToAffect = KickStarter.player.gameObject;
+				Player player = AssignPlayer (playerID, parameters, playerParameterID);
+				runtimeObToAffect = (player != null) ? player.gameObject : null;
+			}
+			else
+			{
+				runtimeObToAffect = AssignFile (parameters, obToAffectParameterID, obToAffectID, obToAffect);
 			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			if (parentAction == ParentAction.SetParent && runtimeParentTransform)
-			{
-				runtimeObToAffect.transform.parent = runtimeParentTransform;
-				
-				if (setPosition)
-				{
-					runtimeObToAffect.transform.localPosition = newPosition;
-				}
-				
-				if (setRotation)
-				{
-					runtimeObToAffect.transform.localRotation = Quaternion.LookRotation (newRotation);
-				}
+			switch (parentAction)
+			{ 
+				case ParentAction.SetParent:
+					if (runtimeParentTransform)
+					{
+						runtimeObToAffect.transform.parent = runtimeParentTransform;
+
+						if (setPosition)
+						{
+							runtimeObToAffect.transform.localPosition = newPosition;
+						}
+
+						if (setRotation)
+						{
+							runtimeObToAffect.transform.localRotation = Quaternion.LookRotation (newRotation);
+						}
+					}
+					break;
+
+				case ParentAction.ClearParent:
+					if (runtimeObToAffect.transform.parent)
+					{
+						if (runtimeObToAffect.transform.parent.gameObject.IsPersistent ())
+						{
+							runtimeObToAffect.transform.parent = null;
+							UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene (runtimeObToAffect, KickStarter.kickStarter.gameObject.scene);
+						}
+						else
+						{
+							runtimeObToAffect.transform.parent = null;
+						}
+					}
+					break;
 			}
 
-			else if (parentAction == ParentAction.ClearParent)
-			{
-				runtimeObToAffect.transform.parent = null;
-			}
-			
 			return 0f;
 		}
 		
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
-			if (!isPlayer)
+			isPlayer = EditorGUILayout.Toggle ("Affect Player?", isPlayer);
+			if (isPlayer)
 			{
-				obToAffectParameterID = Action.ChooseParameterGUI ("Object to affect:", parameters, obToAffectParameterID, ParameterType.GameObject);
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+					if (playerParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
+			{
+				obToAffectParameterID = ChooseParameterGUI ("Object to affect:", parameters, obToAffectParameterID, ParameterType.GameObject);
 				if (obToAffectParameterID >= 0)
 				{
 					obToAffectID = 0;
@@ -143,12 +169,10 @@ namespace AC
 					newRotation = EditorGUILayout.Vector3Field ("Rotation vector:", newRotation);
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -157,13 +181,17 @@ namespace AC
 				{
 					AddSaveScript <ConstantID> (parentTransform.gameObject);
 				}
-				if (obToAffect != null && obToAffect.GetComponent <RememberTransform>())
-				{
-					obToAffect.GetComponent <RememberTransform>().saveParent = true;
 
-					if (obToAffect.transform.parent)
+				if (!isPlayer)
+				{
+					if (obToAffect != null && obToAffect.GetComponent<RememberTransform> ())
 					{
-						AddSaveScript <ConstantID> (obToAffect.transform.parent.gameObject);
+						obToAffect.GetComponent<RememberTransform> ().saveParent = true;
+
+						if (obToAffect.transform.parent)
+						{
+							AddSaveScript<ConstantID> (obToAffect.transform.parent.gameObject);
+						}
 					}
 				}
 			}
@@ -173,13 +201,39 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (obToAffect != null)
 			{
 				return obToAffect.name;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parentAction == ParentAction.SetParent && parentTransformParameterID < 0)
+			{
+				if (parentTransform && parentTransform.gameObject == gameObject) return true;
+				if (parentTransformID == id) return true;
+			}
+			if (!isPlayer && obToAffectParameterID < 0)
+			{
+				if (obToAffect && obToAffect == gameObject) return true;
+				if (obToAffectID == id && id != 0) return true;
+			}
+			if (isPlayer && gameObject && gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
 		}
 
 		#endif
@@ -193,7 +247,7 @@ namespace AC
 		 */
 		public static ActionParent CreateNew_SetParent (GameObject objectToParent, Transform newParent)
 		{
-			ActionParent newAction = (ActionParent) CreateInstance <ActionParent>();
+			ActionParent newAction = CreateNew<ActionParent> ();
 			newAction.parentAction = ParentAction.SetParent;
 			newAction.obToAffect = objectToParent;
 			newAction.parentTransform = newParent;
@@ -209,7 +263,7 @@ namespace AC
 		 */
 		public static ActionParent CreateNew_ClearParent (GameObject objectToClear)
 		{
-			ActionParent newAction = (ActionParent) CreateInstance <ActionParent>();
+			ActionParent newAction = CreateNew<ActionParent> ();
 			newAction.parentAction = ParentAction.ClearParent;
 			newAction.obToAffect = objectToClear;
 

@@ -1,7 +1,9 @@
-﻿/*
- *
+﻿#if UNITY_EDITOR
+
+/*
+*
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ACInstaller.cs"
  * 
@@ -32,6 +34,11 @@ namespace AC
 
 		public static bool IsInstalled ()
 		{
+			if (ACEditorPrefs.DisableInstaller)
+			{
+				return true;
+			}
+
 			if (IsAxisDefined (defaultMenuAxis) && IsLayerDefined (defaultNavMeshLayer) && IsLayerDefined (defaultBackgroundImageLayer) && IsLayerDefined (defaultDistantHotspotLayer))
 			{
 				return true;
@@ -58,7 +65,8 @@ namespace AC
 
 			if (!gotMenu || !gotNavMesh || !gotBackgroundImage || !gotDistantHotspot)
 			{
-				string changesToMake = "";
+				string changesToMake = string.Empty;
+				
 				if (!gotMenu)
 				{
 					changesToMake += "'Menu' - an input used to open the Pause menu\r\n";
@@ -76,7 +84,7 @@ namespace AC
 					changesToMake += "'" + defaultDistantHotspotLayer + "' - a Layer used by Hotspots too far away\r\n";
 				}
 
-				bool canProceed = EditorUtility.DisplayDialog ("Adventure Creator installation", "Adventure Creator requires that the following be created:\r\n\r\n" + changesToMake + "\r\nAC can make the necessary changes for you, if you wish. Proceed?", "OK", "Cancel");
+				bool canProceed = EditorUtility.DisplayDialog ("Adventure Creator installation", "Adventure Creator requires that the following be created:\r\n\r\n" + changesToMake + "\r\nAC will now make the necessary changes automatically.", "OK");
 				if (canProceed)
 				{
 					DefineInputs ();
@@ -186,15 +194,17 @@ namespace AC
 		private static SerializedProperty GetChildProperty (SerializedProperty parent, string nameToFind)
 		{
 			SerializedProperty child = parent.Copy ();
-			child.Next (true);
-			do
+			if (child.Next (true))
 			{
-				if (child.name == nameToFind)
+				do
 				{
-					return child;
+					if (child.name == nameToFind)
+					{
+						return child;
+					}
 				}
+				while (child.Next (false));
 			}
-			while (child.Next (false));
 
 			return null;
 		}
@@ -202,28 +212,34 @@ namespace AC
 
 		private static bool IsAxisDefined (string axisName)
 		{
-			SerializedObject inputManager = new SerializedObject (AssetDatabase.LoadAllAssetsAtPath ("ProjectSettings/InputManager.asset")[0]);
-			SerializedProperty allAxes = inputManager.FindProperty ("m_Axes");
-
-			if (allAxes == null || !allAxes.isArray)
+			UnityEngine.Object[] inputAssets = AssetDatabase.LoadAllAssetsAtPath ("ProjectSettings/InputManager.asset");
+			if (inputAssets != null && inputAssets.Length > 0)
 			{
+				SerializedObject inputManager = new SerializedObject (inputAssets[0]);
+				SerializedProperty allAxes = inputManager.FindProperty ("m_Axes");
+
+				if (allAxes == null || !allAxes.isArray)
+				{
+					return false;
+				}
+
+				allAxes.Next (true);
+				allAxes.Next (true);
+
+				while (allAxes.Next (false))
+				{
+					SerializedProperty axis = allAxes.Copy ();
+					if (axis.Next (true) && axis.stringValue == axisName)
+					{
+						return true;
+					}
+				}
+
 				return false;
 			}
 
-			allAxes.Next (true);
-			allAxes.Next (true);
-
-			while (allAxes.Next (false))
-			{
-				SerializedProperty axis = allAxes.Copy ();
-				axis.Next (true);
-				if (axis.stringValue == axisName)
-				{
-					return true;
-				}
-			}
-
-			return false;
+			// Can't access somehow, so ignore to avoid spamming
+			return true;
 		}
 
 
@@ -232,24 +248,17 @@ namespace AC
 		private static bool IsLayerDefined (string layerName, bool addIfUndefined = false)
 		{
 			SerializedObject tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath ("ProjectSettings/TagManager.asset")[0]);
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			SerializedProperty allLayers = tagManager.FindProperty ("layers");
 			if (allLayers == null || !allLayers.isArray)
 			{
 				return false;
 			}
-			#endif
 
 			// Check if layer is present
 			bool foundLayer = false;
 			for (int i = 0; i <= 31; i++)
 			{
-				#if UNITY_5 || UNITY_2017_1_OR_NEWER
 				SerializedProperty sp = allLayers.GetArrayElementAtIndex (i);
-				#else
-				string nm = "User Layer " + i;
-				SerializedProperty sp = tagManager.FindProperty (nm);
-				#endif
 
 				if (sp != null && layerName.Equals (sp.stringValue))
 				{
@@ -272,12 +281,7 @@ namespace AC
 			SerializedProperty slot = null;
 			for (int i = 8; i <= 31; i++)
 			{
-				#if UNITY_5 || UNITY_2017_1_OR_NEWER
 				SerializedProperty sp = allLayers.GetArrayElementAtIndex (i);
-				#else
-				string nm = "User Layer " + i;
-				SerializedProperty sp = tagManager.FindProperty (nm);
-				#endif
 
 				if (sp != null && string.IsNullOrEmpty (sp.stringValue))
 				{
@@ -305,3 +309,5 @@ namespace AC
 	}
 
 }
+
+#endif

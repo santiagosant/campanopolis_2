@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SortingArea.cs"
  * 
@@ -21,6 +21,8 @@ namespace AC
 	public class SortingArea
 	{
 
+		#region Variables
+
 		/** The lower boundary position along the Z axis */
 		public float z;
 		/** The order in layer that SpriteRenderers that use FollowSortingMap will have when positioned within this region */
@@ -32,8 +34,12 @@ namespace AC
 		/** The factor by which characters that use FollowSortingMap will be scaled by when positioned at the bottom boundary of this region */
 		public int scale = 100;
 
-		private string orderAsString;
+		protected string orderAsString;
 
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * A Constructor that creates a new SortingArea based on the last one currently on the SortingMap.
@@ -78,11 +84,17 @@ namespace AC
 			color = GetRandomColor ();
 		}
 
+		#endregion
 
-		private Color GetRandomColor ()
+
+		#region ProtectedFunctions
+
+		protected Color GetRandomColor ()
 		{
 			return new Color (Random.Range (0f, 1f),Random.Range (0f, 1f), Random.Range (0f, 1f));
 		}
+
+		#endregion
 
 	}
 

@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionsManager.cs"
  * 
@@ -30,8 +30,9 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		/** The folder path to any custom Actions */
-		public string customFolderPath = "AdventureCreator/Scripts/Actions";
+		public List<string> customFolderPaths = new List<string>();
+
+		public List<FavouriteActionData> allFavouriteActionData = new List<FavouriteActionData>();
 
 		#endif
 
@@ -45,6 +46,8 @@ namespace AC
 		public ActionListEditorScrollWheel actionListEditorScrollWheel = ActionListEditorScrollWheel.PansWindow;
 		/** If True, then panning is inverted in the ActionList Editor window (useful for Macbooks) */
 		public bool invertPanning = false;
+		/** If True, then the ActionList Editor window will focus on newly-pasted Actions */
+		public bool focusOnPastedActions = true;
 		/** The speed factor for panning/zooming */
 		public float panSpeed = 1f;
 		/** If True, the ActionList Editor will pan automatically when dragging the cursor near the window's edge */
@@ -59,6 +62,8 @@ namespace AC
 		#if UNITY_EDITOR
 
 		private ActionType selectedClass = null;
+
+		[SerializeField] List<DefaultActionCategoryData> defaultActionCategoryDatas = new List<DefaultActionCategoryData>();
 
 		private bool showEditing = true;
 		private bool showCustom = true;
@@ -118,7 +123,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		public void ShowGUI ()
+		public void ShowGUI (Rect position)
 		{
 			ShowEditingGUI ();
 
@@ -140,7 +145,7 @@ namespace AC
 					if (selectedClass != null)
 					{
 						EditorGUILayout.Space ();
-						ShowActionTypeGUI ();
+						ShowActionTypeGUI (position.width);
 					}
 				}
 			}
@@ -167,8 +172,11 @@ namespace AC
 			if (!string.IsNullOrEmpty (defaultClassName) && subclass.fileName != defaultClassName)
 											{
 				menu.AddItem (new GUIContent ("Make default"), false, Callback, "Make default");
-				menu.AddSeparator ("");
 			}
+
+			menu.AddItem (new GUIContent ("Make default in category"), false, Callback, "Make default in category");
+			menu.AddItem (new GUIContent ("Edit script"), false, Callback, "EditSource");
+			menu.AddSeparator (string.Empty);
 
 			menu.AddItem (new GUIContent ("Search local instances"), false, Callback, "Search local instances");
 			menu.AddItem (new GUIContent ("Search all instances"), false, Callback, "Search all instances");
@@ -193,12 +201,37 @@ namespace AC
 						}
 						break;
 
+					case "Make default in category":
+						bool updatedExisting = false;
+						foreach (DefaultActionCategoryData defaultActionCategoryData in defaultActionCategoryDatas)
+						{
+							if (defaultActionCategoryData.Category == subclass.category)
+							{
+								defaultActionCategoryData.DefaultClassName = subclass.fileName;
+								updatedExisting = true;
+								break;
+							}
+						}
+						if (!updatedExisting)
+						{
+							defaultActionCategoryDatas.Add (new DefaultActionCategoryData (subclass.category, subclass.fileName));
+						}
+						break;
+
+					case "EditSource":
+						Action tempAction = Action.CreateNew (subclass.fileName);
+						if (tempAction != null && tempAction is Action)
+						{
+							Action.EditSource (tempAction);
+						}
+						break;
+
 					case "Search local instances":
 						SearchForInstances (true, subclass);
 						break;
 
 					case "Search all instances":
-						if (UnityVersionHandler.SaveSceneIfUserWants ())
+						if (UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo ())
 						{
 							SearchForInstances (false, subclass);
 						}
@@ -235,9 +268,19 @@ namespace AC
 				autoPanNearWindowEdge = CustomGUILayout.Toggle ("Auto-panning in Editor?", autoPanNearWindowEdge, "AC.KickStarter.actionListManager.autoPanNearWindowEdge", "If True, the ActionList Editor will pan automatically when dragging the cursor near the window's edge");
 				panSpeed = CustomGUILayout.FloatField ((actionListEditorScrollWheel == ActionListEditorScrollWheel.PansWindow) ? "Panning speed:" : "Zoom speed:", panSpeed, "AC.KickStarter.actionsManager.panSpeed", "The speed factor for panning/zooming");
 				invertPanning = CustomGUILayout.Toggle ("Invert panning in Editor?", invertPanning, "AC.KickStarter.actionsManager.invertPanning", "If True, then panning is inverted in the ActionList Editor window (useful for Macbooks)");
+				focusOnPastedActions = CustomGUILayout.Toggle ("Focus on pasted Actions?", focusOnPastedActions, "AC.KickStarter.actionListManager.focusOnPastedActions", "If True, then the ActionList Editor window will focus on newly - pasted Actions");
 				allowMultipleActionListWindows = CustomGUILayout.Toggle ("Allow multiple Editors?", allowMultipleActionListWindows, "AC.KickStarter.actionsManager.allowMultipleActionListWindows", "If True, then multiple ActionList Editor windows can be opened at once");
+
+				if (allFavouriteActionData != null && allFavouriteActionData.Count > 0)
+				{
+					if (GUILayout.Button ("Clear favourite Actions"))
+					{
+						Undo.RecordObject (this, "Clear favourite Actions");
+						allFavouriteActionData.Clear ();
+					}
+				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
@@ -247,38 +290,80 @@ namespace AC
 			showCustom = CustomGUILayout.ToggleHeader (showCustom, "Custom Action scripts");
 			if (showCustom)
 			{
-				GUILayout.BeginHorizontal ();
-				GUILayout.Label ("Folder to search:", GUILayout.Width (110f));
-				GUILayout.Label (customFolderPath, EditorStyles.textField, GUILayout.MaxWidth (220f));
-				GUILayout.EndHorizontal ();
-				GUILayout.BeginHorizontal ();
-				if (GUILayout.Button ("Set directory", EditorStyles.miniButtonLeft))
+				if (customFolderPaths.Count == 0)
 				{
-					string path = EditorUtility.OpenFolderPanel ("Set custom Actions directory", "Assets", "");
-					string dataPath = Application.dataPath;
-					if (path.Contains (dataPath))
+					customFolderPaths.Add (string.Empty);
+				}
+
+				for (int i=0; i<customFolderPaths.Count; i++)
+				{
+					customFolderPaths[i] = ShowCustomFolderGUI (i);
+				}
+
+				int lastIndex = customFolderPaths.Count - 1;
+				if (lastIndex >= 0)
+				{
+					int lastButOneIndex = lastIndex - 1;
+
+					if (!string.IsNullOrEmpty (customFolderPaths[lastIndex]))
 					{
-						if (path == dataPath)
-						{
-							customFolderPath = "";
-						}
-						else
-						{
-							customFolderPath = path.Replace (dataPath + "/", "");
-						}
+						customFolderPaths.Add (string.Empty);
+					}
+					else if (lastButOneIndex >= 0 && string.IsNullOrEmpty (customFolderPaths[lastButOneIndex]))
+					{
+						customFolderPaths.RemoveAt (lastIndex);
+					}
+				}
+			}
+			GUILayout.Space (3f);
+			CustomGUILayout.EndVertical ();
+		}
+
+
+		private string ShowCustomFolderGUI (int i)
+		{
+			string _path = customFolderPaths[i];
+			string displayPath = _path;
+			if (!string.IsNullOrEmpty (displayPath) && displayPath.Length > 40)
+			{
+				displayPath = displayPath.Substring (0, 40) + "...";
+			}
+
+			GUILayout.BeginHorizontal ();
+			GUILayout.Label ("Folder #" + i.ToString () + ":", GUILayout.Width (110f));
+			GUILayout.Label (displayPath, EditorStyles.textField);
+
+			if (GUILayout.Button (string.Empty, CustomStyles.FolderIcon))
+			{
+				string path = EditorUtility.OpenFolderPanel ("Set custom Actions directory", "Assets", "");
+				string dataPath = Application.dataPath;
+				if (path.Contains (dataPath))
+				{
+					if (path == dataPath)
+					{
+						_path = string.Empty;
 					}
 					else
 					{
-						ACDebug.LogError ("Cannot set new directory - be sure to select within the Assets directory.");
+						_path = path.Replace (dataPath + "/", "");
 					}
 				}
-				if (GUILayout.Button ("Clear", EditorStyles.miniButtonRight))
+				else if (!string.IsNullOrEmpty (path))
 				{
-					customFolderPath = "";
+					ACDebug.LogWarning ("Cannot set new directory - be sure to select within the Assets directory.");
 				}
-				GUILayout.EndHorizontal ();
 			}
-			EditorGUILayout.EndVertical ();
+
+			if (GUILayout.Button ("-", GUILayout.Width (22f)))
+			{
+				_path = string.Empty;
+			}
+
+			EditorGUILayout.EndHorizontal ();
+
+			if (_path == FolderPath) _path = string.Empty;
+
+			return _path;
 		}
 
 
@@ -314,7 +399,7 @@ namespace AC
 
 				EditorGUILayout.EndHorizontal ();
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			if (defaultClass > AllActions.Count - 1)
 			{
@@ -331,6 +416,12 @@ namespace AC
 			{
 				ActionType[] actionTypes = GetActionTypesInCategory (selectedCategory);
 
+				if (actionTypes.Length == 0)
+				{
+					EditorGUILayout.HelpBox ("No Actions in this category found.", MessageType.Info);
+					selectedClass = null;
+				}
+
 				for (int i=0; i<actionTypes.Length; i++)
 				{
 					if (actionTypes[i] == null) continue;
@@ -346,34 +437,44 @@ namespace AC
 					{
 						label += " (DISABLED)";
 					}
+					else
+					{
+						foreach (DefaultActionCategoryData defaultActionCategoryData in defaultActionCategoryDatas)
+						{
+							if (defaultActionCategoryData.Category == actionTypes[i].category && defaultActionCategoryData.DefaultClassName == actionTypes[i].fileName)
+							{
+								label += " (CATEGORY DEFAULT)";
+							}
+						}
+					}
 
 					if (GUILayout.Toggle (actionTypes[i].IsMatch (selectedClass), label, "Button"))
 					{
 						selectedClass = actionTypes[i];
 					}
 
-					if (GUILayout.Button ("", CustomStyles.IconCog))
+					if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
 					{
 						SideMenu (AllActions.IndexOf (actionTypes[i]));
 					}
 					EditorGUILayout.EndHorizontal ();
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
-		private void ShowActionTypeGUI ()
+		private void ShowActionTypeGUI (float maxWidth)
 		{
-			if (selectedClass == null) return;
-
+			if (selectedClass == null || string.IsNullOrEmpty (selectedClass.fileName)) return;
+			
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showActionType = CustomGUILayout.ToggleHeader (showActionType, selectedClass.GetFullTitle ());
 			if (showActionType)
 			{
-				SpeechLine.ShowField ("Name:", selectedClass.GetFullTitle (), false);
-				SpeechLine.ShowField ("Filename:", selectedClass.fileName + ".cs", false);
-				SpeechLine.ShowField ("Description:", selectedClass.description, true);
+				SpeechLine.ShowField ("Name:", selectedClass.GetFullTitle (), false, maxWidth);
+				SpeechLine.ShowField ("Filename:", selectedClass.fileName + ".cs", false, maxWidth);
+				SpeechLine.ShowField ("Description:", selectedClass.description, true, maxWidth);
 
 				EditorGUILayout.BeginHorizontal ();
 				EditorGUILayout.LabelField ("Node colour:", GUILayout.Width (85f));
@@ -390,9 +491,20 @@ namespace AC
 					EditorGUILayout.LabelField ("Is enabled?", GUILayout.Width (85f));
 					selectedClass.isEnabled = EditorGUILayout.Toggle (selectedClass.isEnabled);
 					EditorGUILayout.EndHorizontal ();
+
+					if (selectedClass.isEnabled)
+					{
+						foreach (DefaultActionCategoryData defaultActionCategoryData in defaultActionCategoryDatas)
+						{
+							if (defaultActionCategoryData.Category == selectedClass.category && defaultActionCategoryData.DefaultClassName == selectedClass.fileName)
+							{
+								EditorGUILayout.HelpBox ("This is marked as the default Action", MessageType.Info);
+							}
+						}
+					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
@@ -492,7 +604,9 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if ((action.category == actionType.category && action.title == actionType.title) ||
+					if (action == null) continue;
+
+					if ((action.Category == actionType.category && action.Title == actionType.title) ||
 					    (action.GetType ().ToString () == actionType.fileName) ||
 					    (action.GetType ().ToString () == "AC." + actionType.fileName))
 					{
@@ -510,16 +624,7 @@ namespace AC
 		{
 			get
 			{
-				return Resource.MainFolderPathRelativeToAssets + "/Scripts/Actions";
-			}
-		}
-
-
-		public bool UsingCustomActionsFolder
-		{
-			get
-			{
-				return (customFolderPath != FolderPath);
+				return Resource.DefaultActionsPath;
 			}
 		}
 
@@ -543,7 +648,7 @@ namespace AC
 			{
 				return AllActions[index].GetFullTitle () + suffix;
 			}
-			return _action.category + ": " + _action.title + suffix;
+			return _action.Category + ": " + _action.Title + suffix;
 		}
 		
 		#endif
@@ -551,13 +656,15 @@ namespace AC
 
 		public string GetActionTypeLabel (Action _action)
 		{
+			if (_action == null) return string.Empty;
+
 			int index = GetActionTypeIndex (_action);
 
 			if (index >= 0 && AllActions != null && index < AllActions.Count)
 			{
 				return AllActions[index].GetFullTitle ();
 			}
-			return _action.category + ": " + _action.title;
+			return _action.Category + ": " + _action.Title;
 		}
 
 
@@ -624,16 +731,45 @@ namespace AC
 		 */
 		public int GetActionTypeIndex (Action _action)
 		{
-			string className = _action.GetType ().ToString ();
-			className = className.Replace ("AC.", "");
-			foreach (ActionType actionType in AllActions)
+			if (_action != null)
 			{
-				if (actionType.fileName == className)
+				string className = _action.GetType ().ToString ();
+				className = className.Replace ("AC.", "");
+				foreach (ActionType actionType in AllActions)
 				{
-					return AllActions.IndexOf (actionType);
-				}
+					if (actionType.fileName == className)
+					{
+						return AllActions.IndexOf (actionType);
+					}
+				}	
+			}
+			else
+			{
+				ACDebug.LogWarning ("Null Action found.  Was an Action class deleted?");
 			}
 			return defaultClass;
+		}
+
+
+		public ActionType GetActionType (Action _action)
+		{
+			if (_action != null)
+			{
+				string className = _action.GetType ().ToString ();
+				className = className.Replace ("AC.", "");
+				foreach (ActionType actionType in AllActions)
+				{
+					if (actionType.fileName == className)
+					{
+						return actionType;
+					}
+				}
+			}
+			else
+			{
+				ACDebug.LogWarning ("Null Action found.  Was an Action class deleted?");
+			}
+			return null;
 		}
 
 
@@ -672,12 +808,9 @@ namespace AC
 
 			foreach (ActionType type in AllActions)
 			{
-				if (type.category == _category)
+				if (type.category == _category &&type.isEnabled)
 				{
-					if (type.isEnabled)
-					{
-						titles.Add (type.title);
-					}
+					titles.Add (type.title);
 				}
 			}
 			
@@ -708,7 +841,7 @@ namespace AC
 		public int GetActionSubCategory (Action _action)
 		{
 			string fileName = _action.GetType ().ToString ().Replace ("AC.", "");
-			ActionCategory _category = _action.category;
+			ActionCategory _category = _action.Category;
 			
 			// Learn category
 			foreach (ActionType type in AllActions)
@@ -777,6 +910,117 @@ namespace AC
 			}
 			return Color.white;
 		}
+
+
+		#if UNITY_EDITOR
+
+		public void SetFavourite (Action action, int ID)
+		{
+			FavouriteActionData existingFavouriteActionData = GetFavouriteActionData (ID);
+			if (existingFavouriteActionData != null)
+			{
+				existingFavouriteActionData.Update (action);
+				return;
+			}
+
+			FavouriteActionData newFavouriteActionData = new FavouriteActionData (action, ID);
+			allFavouriteActionData.Add (newFavouriteActionData);
+		}
+
+
+		public string GetFavouriteActionLabel (int ID)
+		{
+			FavouriteActionData existingFavouriteActionData = GetFavouriteActionData (ID);
+			if (existingFavouriteActionData != null)
+			{
+				return existingFavouriteActionData.Label;
+			}
+			return string.Empty;
+		}
+
+
+		public Action GenerateFavouriteAction (int ID)
+		{
+			FavouriteActionData existingFavouriteActionData = GetFavouriteActionData (ID);
+			if (existingFavouriteActionData != null)
+			{
+				return existingFavouriteActionData.Generate ();
+			}
+			return null;
+		}
+
+
+		public int GetNumFavouriteActions ()
+		{
+			return allFavouriteActionData.Count;
+		}
+
+
+		private FavouriteActionData GetFavouriteActionData (int ID)
+		{
+			foreach (FavouriteActionData favouriteActionData in allFavouriteActionData)
+			{
+				if (favouriteActionData.ID == ID)
+				{
+					return favouriteActionData;
+				}
+			}
+			return null;
+		}
+
+		
+		public int GetDefaultActionInCategory (ActionCategory category)
+		{
+			foreach (DefaultActionCategoryData defaultActionCategoryData in defaultActionCategoryDatas)
+			{
+				if (defaultActionCategoryData.Category == category)
+				{
+					List<ActionType> types = new List<ActionType> ();
+					foreach (ActionType type in AllActions)
+					{
+						if (type.category == category && type.isEnabled)
+						{
+							types.Add (type);
+						}
+					}
+
+					foreach (ActionType type in types)
+					{
+						if (type.fileName == defaultActionCategoryData.DefaultClassName)
+						{
+							if (type.isEnabled)
+							{
+								return types.IndexOf (type);
+							}
+							return 0;
+						}
+					}
+					return 0;
+				}
+			}
+			return 0;
+		}
+
+
+		[System.Serializable]
+		private class DefaultActionCategoryData
+		{
+
+			[SerializeField] private ActionCategory category;
+			[SerializeField] private string defaultClassName;
+
+			public DefaultActionCategoryData (ActionCategory _category, string _defaultClassName)
+			{
+				category = _category;
+				defaultClassName = _defaultClassName;
+			}
+
+			public ActionCategory Category { get { return category; } }
+			public string DefaultClassName { get { return defaultClassName; } set { defaultClassName = value; } }
+
+		}
+
+		#endif
 
 	}
 	

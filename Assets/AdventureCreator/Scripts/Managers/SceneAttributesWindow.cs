@@ -7,9 +7,7 @@ using UnityEditor;
 namespace AC
 {
 	
-	/**
-	 * Provides an EditorWindow to manage available scene attributes.
-	 */
+	/** Provides an EditorWindow to manage available scene attributes. */
 	public class SceneAttributesWindow : EditorWindow
 	{
 
@@ -18,15 +16,17 @@ namespace AC
 		private List<InvVar> sceneAttributes = new List<InvVar>();
 		private int sideItem = 0;
 
+		private bool showAll = true;
+		private bool showSelected = true;
 
-		/**
-		 * <summary>Initialises the window.</summary>
-		 */
+
+		/** Initialises the window. */
 		public static void Init ()
 		{
-			SceneAttributesWindow window = (SceneAttributesWindow) EditorWindow.GetWindow (typeof (SceneAttributesWindow));
-			UnityVersionHandler.SetWindowTitle (window, "Scene attributes");
+			SceneAttributesWindow window = (SceneAttributesWindow) GetWindow (typeof (SceneAttributesWindow));
+			window.titleContent.text = "Scene attributes";
 			window.position = new Rect (300, 200, 350, 360);
+			window.minSize = new Vector2 (300, 160);
 		}
 		
 		
@@ -38,11 +38,12 @@ namespace AC
 				return;
 			}
 
+			EditorGUILayout.LabelField ("Scene attributes", CustomStyles.managerHeader);
+
 			SettingsManager settingsManager = AdvGame.GetReferences ().settingsManager;
 			sceneAttributes = settingsManager.sceneAttributes;
 
 			EditorGUILayout.HelpBox ("Values for attributes defined here can be set in the Scene Manager, and checked using the 'Scene: Check attribute' Action.", MessageType.Info);
-			EditorGUILayout.Space ();
 
 			CreateAttributesGUI ();
 
@@ -51,18 +52,20 @@ namespace AC
 				EditorGUILayout.Space ();
 
 				string apiPrefix = "AC.KickStarter.variablesManager.GetProperty (" + selectedSceneAttribute.id + ")";
+				
 				EditorGUILayout.BeginVertical (CustomStyles.thinBox);
-				EditorGUILayout.LabelField ("Inventory property '" + selectedSceneAttribute.label + "' properties",  CustomStyles.subHeader);
-				EditorGUILayout.Space ();
-
-				selectedSceneAttribute.label = CustomGUILayout.TextField ("Name:", selectedSceneAttribute.label, apiPrefix + ".label");
-				selectedSceneAttribute.type = (VariableType) CustomGUILayout.EnumPopup ("Type:", selectedSceneAttribute.type, apiPrefix + ".type");
-				if (selectedSceneAttribute.type == VariableType.PopUp)
+				showSelected = CustomGUILayout.ToggleHeader (showSelected, "Attribute '" + selectedSceneAttribute.label + "' properties");
+				if (showSelected)
 				{
-					selectedSceneAttribute.popUps = VariablesManager.PopupsGUI (selectedSceneAttribute.popUps);
+					selectedSceneAttribute.label = CustomGUILayout.TextField ("Name:", selectedSceneAttribute.label, apiPrefix + ".label");
+					selectedSceneAttribute.type = (VariableType) CustomGUILayout.EnumPopup ("Type:", selectedSceneAttribute.type, apiPrefix + ".type");
+					if (selectedSceneAttribute.type == VariableType.PopUp)
+					{
+						selectedSceneAttribute.popUps = VariablesManager.PopupsGUI (selectedSceneAttribute.popUps);
+					}
 				}
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			settingsManager.sceneAttributes = sceneAttributes;
@@ -76,49 +79,49 @@ namespace AC
 		private void CreateAttributesGUI ()
 		{
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
-			EditorGUILayout.LabelField ("All scene attributes",  CustomStyles.subHeader);
-			EditorGUILayout.Space ();
-			
-			scrollPos = EditorGUILayout.BeginScrollView (scrollPos, GUILayout.Height (Mathf.Min (sceneAttributes.Count * 21, 165f)+5));
-			foreach (InvVar sceneAttribute in sceneAttributes)
+			showAll = CustomGUILayout.ToggleHeader (showAll, "All attributes");
+			if (showAll)
 			{
-				EditorGUILayout.BeginHorizontal ();
-				
-				string buttonLabel = sceneAttribute.label;
-				if (buttonLabel == "")
+				scrollPos = EditorGUILayout.BeginScrollView (scrollPos);
+				foreach (InvVar sceneAttribute in sceneAttributes)
 				{
-					buttonLabel = "(Untitled)";	
-				}
+					EditorGUILayout.BeginHorizontal ();
 				
-				if (GUILayout.Toggle (selectedSceneAttribute == sceneAttribute, sceneAttribute.id + ": " + buttonLabel, "Button"))
-				{
-					if (selectedSceneAttribute != sceneAttribute)
+					string buttonLabel = sceneAttribute.label;
+					if (buttonLabel == "")
 					{
-						DeactivateAllAttributes ();
-						ActivateAttribute (sceneAttribute);
+						buttonLabel = "(Untitled)";	
 					}
-				}
 				
-				if (GUILayout.Button ("", CustomStyles.IconCog))
-				{
-					SideMenu (sceneAttribute);
-				}
+					if (GUILayout.Toggle (selectedSceneAttribute == sceneAttribute, sceneAttribute.id + ": " + buttonLabel, "Button"))
+					{
+						if (selectedSceneAttribute != sceneAttribute)
+						{
+							DeactivateAllAttributes ();
+							ActivateAttribute (sceneAttribute);
+						}
+					}
 				
-				EditorGUILayout.EndHorizontal ();
-			}
-			EditorGUILayout.EndScrollView ();
+					if (GUILayout.Button ("", CustomStyles.IconCog))
+					{
+						SideMenu (sceneAttribute);
+					}
+				
+					EditorGUILayout.EndHorizontal ();
+				}
+				EditorGUILayout.EndScrollView ();
 			
-			if (GUILayout.Button ("Create new scene attribute"))
-			{
-				Undo.RecordObject (this, "Create scene attribute");
+				if (GUILayout.Button ("Create new scene attribute"))
+				{
+					Undo.RecordObject (this, "Create scene attribute");
 				
-				InvVar newSceneAttribute = new InvVar (GetIDArray ());
-				sceneAttributes.Add (newSceneAttribute);
-				DeactivateAllAttributes ();
-				ActivateAttribute (newSceneAttribute);
+					InvVar newSceneAttribute = new InvVar (GetIDArray ());
+					sceneAttributes.Add (newSceneAttribute);
+					DeactivateAllAttributes ();
+					ActivateAttribute (newSceneAttribute);
+				}
 			}
-
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 

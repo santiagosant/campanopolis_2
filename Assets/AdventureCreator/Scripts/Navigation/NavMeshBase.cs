@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavMeshBase.cs"
  * 
@@ -17,11 +17,11 @@ namespace AC
 	/**
 	 * A base class for NavigationMesh and NavMeshSegment, which control scene objects used by pathfinding algorithms.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_nav_mesh_base.html")]
-	#endif
 	public class NavMeshBase : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** Disables the Renderer when the game begins */
 		public bool disableRenderer = true;
@@ -31,32 +31,12 @@ namespace AC
 		private MeshCollider _meshCollider;
 		private MeshFilter _meshFilter;
 
-		#if UNITY_5 || UNITY_2017_1_OR_NEWER
 		/** If True, then Physics collisions with this GameObject's Collider will be disabled */
 		public bool ignoreCollisions = true;
-		#endif
 
+		#endregion
 
-		protected void BaseAwake ()
-		{
-			_collider = GetComponent <Collider>();
-			_meshRenderer = GetComponent <MeshRenderer>();
-			_meshCollider = GetComponent <MeshCollider>();
-			_meshFilter = GetComponent <MeshFilter>();
-
-			if (disableRenderer)
-			{
-				Hide ();
-			}
-
-			#if !(UNITY_5 || UNITY_2017_1_OR_NEWER)
-			if (_collider != null)
-			{
-				_collider.isTrigger = true;
-			}
-			#endif
-		}
-
+		#region UnityStandards
 
 		private void OnEnable ()
 		{
@@ -75,6 +55,10 @@ namespace AC
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Disables the Renderer component.
@@ -88,7 +72,7 @@ namespace AC
 			}
 			#endif
 
-			if (_meshRenderer != null)
+			if (_meshRenderer)
 			{
 				_meshRenderer.enabled = false;
 			}
@@ -108,11 +92,11 @@ namespace AC
 			}
 			#endif
 
-			if (_meshRenderer != null)
+			if (_meshRenderer)
 			{
 				_meshRenderer.enabled = true;
 
-				if (_meshFilter != null && _meshCollider != null && _meshCollider.sharedMesh)
+				if (_meshFilter && _meshCollider != null && _meshCollider.sharedMesh)
 				{
 					_meshFilter.mesh = _meshCollider.sharedMesh;
 				}
@@ -125,7 +109,6 @@ namespace AC
 		 */
 		public void IgnoreNavMeshCollisions (Collider[] allColliders = null)
 		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			if (ignoreCollisions)
 			{
 				if (allColliders == null)
@@ -133,7 +116,7 @@ namespace AC
 					allColliders = FindObjectsOfType (typeof(Collider)) as Collider[];
 				}
 
-				if (_collider != null && _collider.enabled && _collider.gameObject.activeInHierarchy)
+				if (_collider && _collider.enabled && _collider.gameObject.activeInHierarchy)
 				{
 					foreach (Collider otherCollider in allColliders)
 					{
@@ -144,9 +127,30 @@ namespace AC
 					}
 				}
 			}
-			#endif
 		}
 
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void BaseAwake ()
+		{
+			_collider = GetComponent <Collider>();
+			_meshRenderer = GetComponent <MeshRenderer>();
+			_meshCollider = GetComponent <MeshCollider>();
+			_meshFilter = GetComponent <MeshFilter>();
+
+			if (disableRenderer)
+			{
+				Hide ();
+			}
+		}
+
+		#endregion
+
+
+		#region GetSet
 
 		/** The attached Collider component */
 		public Collider Collider
@@ -156,6 +160,8 @@ namespace AC
 				return _collider;
 			}
 		}
+
+		#endregion
 
 	}
 

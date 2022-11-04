@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuInput.cs"
  * 
@@ -19,14 +19,11 @@ using UnityEditor;
 namespace AC
 {
 
-	/**
-	 * A MenuElement that provides an input box that the player can enter text into.
-	 */
+	/** A MenuElement that provides an input box that the player can enter text into. */
 	public class MenuInput : MenuElement, ITranslatable
 	{
 
-		/** The Unity UI InputField this is linked to (Unity UI Menus only) */
-		public InputField uiInput;
+		
 		/** The text that's displayed on-screen */
 		public string label = "Element";
 		/** The text alignment */
@@ -41,12 +38,21 @@ namespace AC
 		public int characterLimit = 10;
 		/** The name of the MenuButton element that is synced with the 'Return' key when this element is active */
 		public string linkedButton = "";
+		/** If True, and inputType = AC_InputType.NumericOnly, then decimal points can be entered */
+		public bool allowDecimals = false;
 		/** If True, then spaces are recognised */
 		public bool allowSpaces = false;
 		/** The method by which this element is hidden from view when made invisible (DisableObject, DisableInteractability) */
 		public UISelectableHideStyle uiSelectableHideStyle = UISelectableHideStyle.DisableObject;
 		/** If True, then the element will need to be selected before it receives input */
 		public bool requireSelection = false;
+
+		#if TextMeshProIsPresent
+		public TMPro.TMP_InputField uiInput;
+		#else
+		/** The Unity UI InputField this is linked to (Unity UI Menus only) */
+		public InputField uiInput;
+		#endif
 
 		private bool isSelected = false;
 
@@ -65,12 +71,13 @@ namespace AC
 			SetSize (new Vector2 (10f, 5f));
 			inputType = AC_InputType.AlphaNumeric;
 			characterLimit = 10;
-			linkedButton = "";
+			linkedButton = string.Empty;
 			textEffects = TextEffects.None;
 			outlineSize = 2f;
 			allowSpaces = false;
 			uiSelectableHideStyle = UISelectableHideStyle.DisableObject;
 			requireSelection = false;
+			allowDecimals = false;
 
 			base.Declare ();
 		}
@@ -106,29 +113,27 @@ namespace AC
 			allowSpaces = _element.allowSpaces;
 			uiSelectableHideStyle = _element.uiSelectableHideStyle;
 			requireSelection = _element.requireSelection;
+			allowDecimals = _element.allowDecimals;
 
 			base.Copy (_element);
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
+			#if TextMeshProIsPresent
+			uiInput = LinkUIElement <TMPro.TMP_InputField> (canvas);
+			#else
 			uiInput = LinkUIElement <InputField> (canvas);
+			#endif
+
+			CreateHoverSoundHandler (uiInput, _menu, 0);
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of the element</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				return uiInput.GetComponent <RectTransform>();
 			}
@@ -138,7 +143,7 @@ namespace AC
 
 		public override void SetUIInteractableState (bool state)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				uiInput.interactable = state;
 			}
@@ -147,7 +152,7 @@ namespace AC
 
 		public override GameObject GetObjectToSelect (int slotIndex = 0)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				return uiInput.gameObject;
 			}
@@ -162,7 +167,7 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuInput)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			if (source == MenuSource.AdventureCreator)
 			{
 				inputType = (AC_InputType) CustomGUILayout.EnumPopup ("Input type:", inputType, apiPrefix + ".inputType", "What kind of characters can be entered in by the player");
@@ -170,6 +175,10 @@ namespace AC
 				if (inputType == AC_InputType.AlphaNumeric)
 				{
 					allowSpaces = CustomGUILayout.Toggle ("Allow spaces?", allowSpaces, apiPrefix + ".allowSpace", "If True, then spaces are recognised");
+				}
+				else if (inputType == AC_InputType.NumbericOnly)
+				{
+					allowDecimals = CustomGUILayout.Toggle ("Allow decimals?", allowDecimals, apiPrefix + ".allowDecimals", "If True, then decimals are recognised");
 				}
 				characterLimit = CustomGUILayout.IntField ("Character limit:", characterLimit, apiPrefix + ".characterLimit", "The character limit on text that can be entered");
 
@@ -182,10 +191,14 @@ namespace AC
 			}
 			else
 			{
+				#if TextMeshProIsPresent
+				uiInput = LinkedUiGUI <TMPro.TMP_InputField> (uiInput, "Linked InputField:", source);
+				#else
 				uiInput = LinkedUiGUI <InputField> (uiInput, "Linked InputField:", source);
+				#endif
 				uiSelectableHideStyle = (UISelectableHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiSelectableHideStyle, apiPrefix + ".uiSelectableHideStyle", "The method by which this element is hidden from view when made invisible");
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -200,9 +213,27 @@ namespace AC
 				outlineSize = CustomGUILayout.Slider ("Effect size:", outlineSize, 1f, 5f, apiPrefix + ".outlineSize", "The outline thickness");
 			}
 		}
-		
+
 		#endif
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiInput && uiInput.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiInput && uiInput.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
 
 		/**
 		 * <summary>Gets the contents of the text box.</summary>
@@ -210,18 +241,10 @@ namespace AC
 		 */
 		public string GetContents ()
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
-				if (uiInput.textComponent != null)
-				{
-					return uiInput.textComponent.text;
-				}
-				else
-				{
-					ACDebug.LogWarning (uiInput.gameObject.name + " has no Text component");
-				}
+				return uiInput.text;
 			}
-
 			return label;
 		}
 
@@ -234,7 +257,7 @@ namespace AC
 		{
 			label = _label;
 
-			if (uiInput != null && uiInput.textComponent != null)
+			if (uiInput)
 			{
 				uiInput.text = _label;
 			}
@@ -243,20 +266,13 @@ namespace AC
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				UpdateUISelectable (uiInput, uiSelectableHideStyle);
 			}
 		}
 
 
-		/**
-		 * <summary>Draws the element using OnGUI.</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -285,21 +301,21 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Gets the display text of the element.</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element's slot, or the whole element if it only has one slot</returns>
-		 */
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
+		}
+
+
 		public override string GetLabel (int slot, int languageNumber)
 		{
-			return TranslateLabel (label, languageNumber);
+			return TranslateLabel (languageNumber);
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiInput.gameObject);
 			}
@@ -328,12 +344,13 @@ namespace AC
 		 */
 		public void CheckForInput (string keycode, string character, bool shift, string menuName)
 		{
-			if (uiInput != null)
+			if (uiInput)
 			{
 				return;
 			}
 
 			string input = keycode;
+
 
 			if (inputType == AC_InputType.AllowSpecialCharacters)
 			{
@@ -344,7 +361,7 @@ namespace AC
 			}
 
 			bool rightToLeft = KickStarter.runtimeLanguages.LanguageReadsRightToLeft (Options.GetLanguage ());
-
+			
 			isSelected = true;
 			if (input == "Backspace")
 			{
@@ -361,7 +378,7 @@ namespace AC
 				}
 				else if (label.Length == 1)
 				{
-					label = "";
+					label = string.Empty;
 				}
 			}
 			else if (input == "KeypadEnter" || input == "Return" || input == "Enter")
@@ -369,12 +386,19 @@ namespace AC
 				ProcessReturn (input, menuName);
 			}
 			else if ((inputType == AC_InputType.AlphaNumeric && (input.Length == 1 || input.Contains ("Alpha"))) ||
-			         (inputType == AC_InputType.NumbericOnly && input.Contains ("Alpha")) ||
-			         (inputType == AC_InputType.AlphaNumeric && allowSpaces && input == "Space") ||
-			         (inputType == AC_InputType.AllowSpecialCharacters && (input.Length == 1 || input == "Space")))
+					(inputType == AC_InputType.AlphaNumeric && allowSpaces && input == "Space") ||
+					(inputType == AC_InputType.NumbericOnly && input.Contains ("Alpha")) ||
+					(inputType == AC_InputType.NumbericOnly && allowDecimals && input == "Period" && !label.Contains (".")) ||
+					(inputType == AC_InputType.NumbericOnly && allowDecimals && input == "KeypadPeriod" && !label.Contains (".")) ||
+					(inputType == AC_InputType.AllowSpecialCharacters && (input.Length == 1 || input == "Space")))
 			{
+				if (inputType == AC_InputType.AllowSpecialCharacters && keycode != "None") return;
+				
 				input = input.Replace ("Alpha", "");
 				input = input.Replace ("Space", " ");
+
+				input = input.Replace ("KeypadPeriod", ".");
+				input = input.Replace ("Period", ".");
 
 				if (inputType != AC_InputType.AllowSpecialCharacters)
 				{
@@ -404,14 +428,13 @@ namespace AC
 					}
 				}
 			}
+			else if (input != "None")
+			{
+				Debug.LogWarning ("Invalid character: '" + input + "'");
+			}
 		}
 
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
 		public override void RecalculateSize (MenuSource source)
 		{
 			if (source == MenuSource.AdventureCreator)
@@ -423,41 +446,34 @@ namespace AC
 		}
 
 
-		/**
-		 * De-selects the text box (OnGUI-based Menus only).
-		 */
+		/** De-selects the text box (OnGUI-based Menus only). */
 		public void Deselect ()
 		{
 			isSelected = false;
 		}
 
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (!_menu.IsClickable ())
 			{
-				return;
+				return false;
 			}
 
 			KickStarter.playerMenus.SelectInputBox (this);
-			base.ProcessClick (_menu, _slot, _mouseState);
+
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 		
 		protected override void AutoSize ()
 		{
-			GUIContent content = new GUIContent (TranslateLabel (label, Options.GetLanguage ()));
+			GUIContent content = new GUIContent (TranslateLabel (Options.GetLanguage ()) + "|");
 			AutoSize (content);
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -472,6 +488,12 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -515,6 +537,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 
 	}
 

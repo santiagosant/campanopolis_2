@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SaveFile.cs"
  * 
@@ -14,11 +14,11 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * A data container for save game files found in the file system.  Instances of this struct are listed in the foundSaveFiles List in SaveSystem.
-	 */
+	/** A data container for save game files found in the file system.  Instances of this struct are listed in the foundSaveFiles List in SaveSystem. */
 	public class SaveFile
 	{
+
+		#region Variables
 
 		/** A unique identifier for the save file */
 		public int saveID;
@@ -32,25 +32,24 @@ namespace AC
 		public string fileName;
 		/** The complete filename of the associated screenshot, including the filepath (if available) */
 		public string screenshotFilename;
-		/** If True, then the file is considered to be an AutoSave */
-		public bool isAutoSave;
 		/** The timestamp of the file's last-updated time */
 		public int updatedTime;
 
+		#endregion
 
-		/**
-		 * The default Constructor.
-		 */
-		public SaveFile (int _saveID, int _profileID, string _label, string _fileName, bool _isAutoSave, Texture2D _screenShot, string _screenshotFilename, int _updatedTime = 0)
+
+		#region Constructors
+
+		/** The default Constructor. */
+		public SaveFile (int _saveID, int _profileID, string _label, string _fileName, Texture2D _screenShot, string _screenshotFilename, int _updatedTime = 0)
 		{
 			saveID = _saveID;
 			profileID = _profileID;
 			label = _label;
 			fileName = _fileName;
-			isAutoSave = _isAutoSave;
 			screenShot = _screenShot;
 			screenshotFilename = _screenshotFilename;
-
+			
 			if (_updatedTime > 0)
 			{
 				updatedTime = 200000000 - _updatedTime;
@@ -61,6 +60,23 @@ namespace AC
 			}
 		}
 
+
+		/** A Constructor that copies the values of another SaveFile. */
+		public SaveFile (SaveFile _saveFile)
+		{
+			saveID = _saveFile.saveID;
+			profileID = _saveFile.profileID;
+			label = _saveFile.label;
+			screenShot = _saveFile.screenShot;
+			screenshotFilename = _saveFile.screenshotFilename;
+			fileName = _saveFile.fileName;
+			updatedTime = _saveFile.updatedTime;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Sets the save file's label in a safe format. Pipe's and colons are converted so that they can be stored.</summary>
@@ -81,21 +97,21 @@ namespace AC
 			return AdvGame.PrepareStringForSaving (label);
 		}
 
+		#endregion
 
-		/**
-		 * A Constructor that copies the values of another SaveFile.
-		 */
-		public SaveFile (SaveFile _saveFile)
+
+		#region GetSet
+		
+		/** If True, then the file is considered to be an AutoSave */
+		public bool IsAutoSave
 		{
-			saveID = _saveFile.saveID;
-			profileID = _saveFile.profileID;
-			label = _saveFile.label;
-			screenShot = _saveFile.screenShot;
-			screenshotFilename = _saveFile.screenshotFilename;
-			fileName = _saveFile.fileName;
-			isAutoSave = _saveFile.isAutoSave;
-			updatedTime = _saveFile.updatedTime;
+			get
+			{
+				return (saveID == 0);
+			}
 		}
+
+		#endregion
 
 	}
 

@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 
@@ -19,27 +21,32 @@ namespace AC
 			_target.runSounds = ShowClipsGUI (_target.runSounds, "Running sounds (optional)");
 			EditorGUILayout.Space ();
 
-			EditorGUILayout.BeginVertical ("Button");
-			_target.character = (Char) CustomGUILayout.ObjectField <Char> ("Character:", _target.character, true, "", "The Player or NPC that this component is for");
-			if (_target.doGroundedCheck)
+			CustomGUILayout.BeginVertical ();
+			_target.character = (Char) CustomGUILayout.ObjectField <Char> ("Character:", _target.character, true, string.Empty, "The Player or NPC that this component is for");
+			if (_target.character != null || _target.GetComponent <Char>())
 			{
-				_target.doGroundedCheck = CustomGUILayout.ToggleLeft ("Only play when grounded?", _target.doGroundedCheck, "", "If True, sounds will only play when the character is grounded");
+				_target.doGroundedCheck = CustomGUILayout.ToggleLeft ("Only play when grounded?", _target.doGroundedCheck, string.Empty, "If True, sounds will only play when the character is grounded");
+
+				if (_target.footstepPlayMethod == FootstepSounds.FootstepPlayMethod.ViaAnimationEvents)
+				{
+					_target.doMovementCheck = CustomGUILayout.ToggleLeft ("Only play when moving?", _target.doMovementCheck, string.Empty, "If True, sounds will only play when the character is walking or running");
+				}
 			}
 			_target.soundToPlayFrom = (Sound) CustomGUILayout.ObjectField <Sound> ("Sound to play from:", _target.soundToPlayFrom, true, "", "The Sound object to play from");
 
 			_target.footstepPlayMethod = (FootstepSounds.FootstepPlayMethod) CustomGUILayout.EnumPopup ("Play sounds:", _target.footstepPlayMethod, "", "How the sounds are played");
 			if (_target.footstepPlayMethod == FootstepSounds.FootstepPlayMethod.Automatically)
 			{
-				_target.walkSeparationTime = CustomGUILayout.Slider ("Walk separation (s):", _target.walkSeparationTime, 0f, 3f, "", "The separation time between sounds when walking");
-				_target.runSeparationTime = CustomGUILayout.Slider ("Run separation (s):", _target.runSeparationTime, 0f, 3f, "", "The separation time between sounds when running");
+				_target.walkSeparationTime = CustomGUILayout.Slider ("Walk separation (s):", _target.walkSeparationTime, 0f, 3f, string.Empty, "The separation time between sounds when walking");
+				_target.runSeparationTime = CustomGUILayout.Slider ("Run separation (s):", _target.runSeparationTime, 0f, 3f, string.Empty, "The separation time between sounds when running");
 			}
 			else if (_target.footstepPlayMethod == FootstepSounds.FootstepPlayMethod.ViaAnimationEvents)
 			{
 				EditorGUILayout.HelpBox ("A sound will be played whenever this component's PlayFootstep function is run. This component should be placed on the same GameObject as the Animator.", MessageType.Info);
 			}
-			_target.pitchVariance = CustomGUILayout.Slider ("Pitch variance:", _target.pitchVariance, 0f, 0.8f, "", "How much the audio pitch can randomly vary by.");
-			_target.volumeVariance = CustomGUILayout.Slider ("Volume variance:", _target.volumeVariance, 0f, 0.8f, "", "How much the audio volume can randomly vary by.");
-			EditorGUILayout.EndVertical ();
+			_target.pitchVariance = CustomGUILayout.Slider ("Pitch variance:", _target.pitchVariance, 0f, 0.8f, string.Empty, "How much the audio pitch can randomly vary by.");
+			_target.volumeVariance = CustomGUILayout.Slider ("Volume variance:", _target.volumeVariance, 0f, 0.8f, string.Empty, "How much the audio volume can randomly vary by.");
+			CustomGUILayout.EndVertical ();
 
 			if (_target.soundToPlayFrom == null && _target.GetComponent <AudioSource>() == null)
 			{
@@ -52,7 +59,7 @@ namespace AC
 
 		private AudioClip[] ShowClipsGUI (AudioClip[] clips, string headerLabel)
 		{
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField (headerLabel, EditorStyles.boldLabel);
 			List<AudioClip> clipsList = new List<AudioClip>();
 
@@ -91,10 +98,13 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("Sounds will be chosen at random.", MessageType.Info);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			return clipsList.ToArray ();
 		}
 
 	}
+
 }
+
+#endif

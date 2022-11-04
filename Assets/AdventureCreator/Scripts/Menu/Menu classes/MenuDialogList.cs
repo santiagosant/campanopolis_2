@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuDialogList.cs"
  * 
@@ -12,15 +12,14 @@
 
 using UnityEngine;
 #if UNITY_EDITOR
-using UnityEditor;	
+using UnityEditor;
 #endif
+using System.Collections.Generic;
 
 namespace AC
 {
 
-	/**
-	 * A MenuElement that lists the available options in the active Conversation, and runs their interactions when clicked on.
-	 */
+	/** A MenuElement that lists the available options in the active Conversation, and runs their interactions when clicked on. */
 	public class MenuDialogList : MenuElement
 	{
 
@@ -36,9 +35,9 @@ namespace AC
 		public Texture2D testIcon = null;
 		/** The text alignment */
 		public TextAnchor anchor;
-		/** If True, then only one dialogue option will be shown */
+		/** Deprecated */
 		public bool fixedOption;
-		/** The index number of the dialogue option to show, if fixedOption = true */
+		/** The slot index or ID of the dialogue option to show, if elementSlotMapping = FixedSlotIndex or FixedOptionID */
 		public int optionToShow;
 		/** The maximum number of dialogue options that can be shown at once */
 		public int maxSlots = 10;
@@ -48,26 +47,29 @@ namespace AC
 		public Color alreadyChosenFontColour = Color.white;
 		/** The font colour when the option is highlighted but has already been chosen (OnGUI only) */
 		public Color alreadyChosenFontHighlightedColour = Color.white;
-		/** If True, and displayType = ConversationDisplayType.TextOnly, then each option's index number will be prefixed to the label */
+		/** (Deprecated) */
 		public bool showIndexNumbers = false;
+		/** If displayType = ConversationDisplayType.TextOnly, how each option's index number is prefixed to the label */
+		public IndexPrefixDisplay indexPrefixDisplay = IndexPrefixDisplay.None;
+
 		/** The method by which this element (or slots within it) are hidden from view when made invisible (DisableObject, ClearContent) */
 		public UIHideStyle uiHideStyle = UIHideStyle.DisableObject;
 		/** What Image component the Element's Graphics should be linked to (ImageComponent, ButtonTargetGraphic) */
 		public LinkUIGraphic linkUIGraphic = LinkUIGraphic.ImageComponent;
 		/** If True, then the offset value will be reset when the parent menu is turned on for the same Conversation that it last displayed */
 		public bool resetOffsetWhenRestart = true;
+		/** If True, and the element is scrolled by an offset larger than the number of new options to show, then the offset amount will be reduced to only show those new options. */
+		public bool limitMaxScroll = true;
 
+		/** How to map this element to a Conversation's dialogue options */
+		public ElementSlotMapping elementSlotMapping = ElementSlotMapping.List;
+		
 		private Conversation linkedConversation;
 		private Conversation overrideConversation;
 		private int numOptions = 0;
-		private string[] labels = null;
-		private CursorIconBase[] icons;
-		private bool[] chosens = null;
+		private DialogueOptionReference[] optionReferences = new DialogueOptionReference[0];
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiSlots = null;
@@ -75,6 +77,7 @@ namespace AC
 			isVisible = true;
 			isClickable = true;
 			fixedOption = false;
+			elementSlotMapping = ElementSlotMapping.List;
 			displayType = ConversationDisplayType.TextOnly;
 			testIcon = null;
 			optionToShow = 1;
@@ -91,6 +94,8 @@ namespace AC
 			uiHideStyle = UIHideStyle.DisableObject;
 			linkUIGraphic = LinkUIGraphic.ImageComponent;
 			resetOffsetWhenRestart = true;
+			limitMaxScroll = true;
+			indexPrefixDisplay = IndexPrefixDisplay.None;
 
 			base.Declare ();
 		}
@@ -113,7 +118,11 @@ namespace AC
 			}
 			else
 			{
-				uiSlots = _element.uiSlots;
+				uiSlots = new UISlot[_element.uiSlots.Length];
+				for (int i=0; i<uiSlots.Length; i++)
+				{
+					uiSlots[i] = new UISlot (_element.uiSlots[i]);
+				}
 			}
 
 			textEffects = _element.textEffects;
@@ -121,8 +130,8 @@ namespace AC
 			displayType = _element.displayType;
 			testIcon = _element.testIcon;
 			anchor = _element.anchor;
-			labels = _element.labels;
 			fixedOption = _element.fixedOption;
+			elementSlotMapping = _element.elementSlotMapping;
 			optionToShow = _element.optionToShow;
 			maxSlots = _element.maxSlots;
 			markAlreadyChosen = _element.markAlreadyChosen;
@@ -132,36 +141,57 @@ namespace AC
 			uiHideStyle = _element.uiHideStyle;
 			linkUIGraphic = _element.linkUIGraphic;
 			resetOffsetWhenRestart = _element.resetOffsetWhenRestart;
+			limitMaxScroll = _element.limitMaxScroll;
+			indexPrefixDisplay = _element.indexPrefixDisplay;
 
 			base.Copy (_element);
+
+			Upgrade ();
 		}
 
 
-		/**
-		 * Hides all linked Unity UI GameObjects associated with the element.
-		 */
+		private void Upgrade ()
+		{
+			if (fixedOption)
+			{
+				fixedOption = false;
+				elementSlotMapping = ElementSlotMapping.FixedSlotIndex;
+			}
+			if (showIndexNumbers)
+			{
+				showIndexNumbers = false;
+				indexPrefixDisplay = IndexPrefixDisplay.GlobalOrder;
+			}
+		}
+
+
 		public override void HideAllUISlots ()
 		{
 			LimitUISlotVisibility (uiSlots, 0, uiHideStyle);
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObjects.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			int i=0;
 			foreach (UISlot uiSlot in uiSlots)
 			{
 				uiSlot.LinkUIElements (canvas, linkUIGraphic);
-				if (uiSlot != null && uiSlot.uiButton != null)
+
+				if (displayType == ConversationDisplayType.TextOnly)
 				{
-					int j=i;
-					uiSlot.uiButton.onClick.AddListener (() => {
-						ProcessClickUI (_menu, j, KickStarter.playerInput.GetMouseState ());
-					});
+					uiSlot.CanSetOriginalImage = true;
+				}
+
+				if (addEventListeners)
+				{
+					if (uiSlot != null && uiSlot.uiButton)
+					{
+						int j=i;
+						uiSlot.uiButton.onClick.AddListener (() => {
+							ProcessClickUI (_menu, j, KickStarter.playerInput.GetMouseState ());
+						});
+					}
 				}
 				i++;
 			}
@@ -170,7 +200,7 @@ namespace AC
 
 		public override GameObject GetObjectToSelect (int slotIndex = 0)
 		{
-			if (uiSlots != null && uiSlots.Length > slotIndex && uiSlots[slotIndex].uiButton != null)
+			if (uiSlots != null && uiSlots.Length > slotIndex && uiSlots[slotIndex].uiButton)
 			{
 				return uiSlots[slotIndex].uiButton.gameObject;
 			}
@@ -178,11 +208,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of a slot</summary>
-		 * <param name = "_slot">The index number of the slot to get the boundary of</param>
-		 * <returns>The boundary Rect of the slot</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiSlots != null && uiSlots.Length > _slot)
@@ -205,31 +230,58 @@ namespace AC
 		{
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuDialogList)";
 
-			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
-			fixedOption = CustomGUILayout.Toggle ("Fixed option number?", fixedOption, apiPrefix + ".fixedOption", "If True, then only one dialogue option will be shown");
-			if (fixedOption)
-			{
-				numSlots = 1;
-				slotSpacing = 0f;
-				optionToShow = CustomGUILayout.IntSlider ("Option to display:", optionToShow, 1, 10, apiPrefix + ".optionToShow", "The index number of the dialogue option to show");
-			}
-			else
-			{
-				maxSlots = CustomGUILayout.IntField ("Maximum number of slots:", maxSlots, apiPrefix + ".maxSlots", "The maximum number of dialogue options that can be shown at once");
-				resetOffsetWhenRestart = CustomGUILayout.Toggle ("Reset offset when turn on?", resetOffsetWhenRestart, apiPrefix + ".resetOffsetWhenRestart", "If True, then the offset value will be reset when the parent menu is turned on for the same Conversation that it last displayed");
+			Upgrade ();
 
-				if (source == MenuSource.AdventureCreator)
-				{
-					numSlots = CustomGUILayout.IntSlider ("Test slots:", numSlots, 1, maxSlots, apiPrefix + ".numSlots");
-					slotSpacing = CustomGUILayout.Slider ("Slot spacing:", slotSpacing, 0f, 30f, apiPrefix + ".slotSpacing");
-					orientation = (ElementOrientation) CustomGUILayout.EnumPopup ("Slot orientation:", orientation, apiPrefix + ".orientation");
-					if (orientation == ElementOrientation.Grid)
+			MenuSource source = menu.menuSource;
+			CustomGUILayout.BeginVertical ();
+			elementSlotMapping = (ElementSlotMapping) CustomGUILayout.EnumPopup ("Map to:", elementSlotMapping, apiPrefix + ".elementSlotMapping", "How to map this element to a Conversation's dialogue options");
+			switch (elementSlotMapping)
+			{
+				case ElementSlotMapping.List:
+				default:
 					{
-						gridWidth = CustomGUILayout.IntSlider ("Grid size:", gridWidth, 1, 10, apiPrefix + ".gridWidth");
+						maxSlots = CustomGUILayout.IntField ("Maximum # of slots:", maxSlots, apiPrefix + ".maxSlots", "The maximum number of dialogue options that can be shown at once");
+						if (maxSlots < 0) maxSlots = 0;
+						resetOffsetWhenRestart = CustomGUILayout.Toggle ("Reset offset when turn on?", resetOffsetWhenRestart, apiPrefix + ".resetOffsetWhenRestart", "If True, then the offset value will be reset when the parent menu is turned on for the same Conversation that it last displayed");
+						limitMaxScroll = CustomGUILayout.Toggle ("Limit maximum scroll?", limitMaxScroll, apiPrefix + ".limitMaxScroll", "If True, and the element is scrolled by an offset larger than the number of new options to show, then the offset amount will be reduced to only show those new options.");
+
+						if (source == MenuSource.AdventureCreator)
+						{
+							if (maxSlots > 1)
+							{
+								numSlots = CustomGUILayout.IntSlider ("Test slots:", numSlots, 1, maxSlots, apiPrefix + ".numSlots");
+								slotSpacing = CustomGUILayout.Slider ("Slot spacing:", slotSpacing, 0f, 30f, apiPrefix + ".slotSpacing");
+								orientation = (ElementOrientation) CustomGUILayout.EnumPopup ("Slot orientation:", orientation, apiPrefix + ".orientation");
+								if (orientation == ElementOrientation.Grid)
+								{
+									gridWidth = CustomGUILayout.IntSlider ("Grid size:", gridWidth, 1, 10, apiPrefix + ".gridWidth");
+								}
+							}
+							else
+							{
+								numSlots = Mathf.Max (0, maxSlots);
+							}
+						}
 					}
-				}
+					break;
+
+				case ElementSlotMapping.FixedSlotIndex:
+					{
+						numSlots = 1;
+						slotSpacing = 0f;
+						optionToShow = CustomGUILayout.IntSlider ("Slot index to display:", optionToShow, 1, 20, apiPrefix + ".optionToShow", "The slot index of the dialogue option to show");
+					}
+					break;
+
+				case ElementSlotMapping.FixedOptionID:
+					{
+						numSlots = 1;
+						slotSpacing = 0f;
+						optionToShow = CustomGUILayout.IntSlider ("Option ID to display:", optionToShow, 1, 20, apiPrefix + ".optionToShow", "The ID of the dialogue option to show");
+					}
+					break;
 			}
+			
 
 			displayType = (ConversationDisplayType) CustomGUILayout.EnumPopup ("Display type:", displayType, apiPrefix + ".displayType", "How the Conversation's dialogue options are displayed");
 			if (displayType == ConversationDisplayType.IconAndText && source == MenuSource.AdventureCreator)
@@ -240,24 +292,24 @@ namespace AC
 			markAlreadyChosen = CustomGUILayout.Toggle ("Mark options already used?", markAlreadyChosen, apiPrefix + ".markAlreadyChosen", "If True, then options that have already been clicked can be displayed in a different colour");
 			if (markAlreadyChosen)
 			{
-				alreadyChosenFontColour = (Color) CustomGUILayout.ColorField ("'Already chosen' colour:", alreadyChosenFontColour, apiPrefix + ".alreadyChosenFontColour", "The font colour for options already chosen");
-				alreadyChosenFontHighlightedColour = (Color) CustomGUILayout.ColorField ("'Already chosen' highlighted colour:", alreadyChosenFontHighlightedColour, apiPrefix + ".alreadyChosenFontHighlightedColour", "The font colour when the option is highlighted but has already been chosen");
+				alreadyChosenFontColour = CustomGUILayout.ColorField ("'Already chosen' colour:", alreadyChosenFontColour, apiPrefix + ".alreadyChosenFontColour", "The font colour for options already chosen");
+				alreadyChosenFontHighlightedColour = CustomGUILayout.ColorField ("'Already chosen' highlighted colour:", alreadyChosenFontHighlightedColour, apiPrefix + ".alreadyChosenFontHighlightedColour", "The font colour when the option is highlighted but has already been chosen");
 			}
 
 			if (source != MenuSource.AdventureCreator)
 			{
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 				uiHideStyle = (UIHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiHideStyle, apiPrefix + ".uiHideStyle", "The method by which this element (or slots within it) are hidden from view when made invisible");
 				EditorGUILayout.LabelField ("Linked button objects", EditorStyles.boldLabel);
 
-				if (fixedOption)
+				if (elementSlotMapping == ElementSlotMapping.List)
 				{
-					uiSlots = ResizeUISlots (uiSlots, 1);
+					uiSlots = ResizeUISlots (uiSlots, maxSlots);
 				}
 				else
 				{
-					uiSlots = ResizeUISlots (uiSlots, maxSlots);
+					uiSlots = ResizeUISlots (uiSlots, 1);
 				}
 
 				for (int i=0; i<uiSlots.Length; i++)
@@ -270,11 +322,11 @@ namespace AC
 
 			if (displayType == ConversationDisplayType.TextOnly || displayType == ConversationDisplayType.IconAndText)
 			{
-				showIndexNumbers = CustomGUILayout.Toggle ("Prefix with index numbers?", showIndexNumbers, apiPrefix + ".showIndexNumbers", "If True, then each option's index number will be prefixed to the label");
+				indexPrefixDisplay = (IndexPrefixDisplay) CustomGUILayout.EnumPopup ("Index prefix display:", indexPrefixDisplay, apiPrefix + ".indexPrefixDisplay", "Allows an option's index number to be displayed at the front of its label");
 			}
 
 			ChangeCursorGUI (menu);
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -307,13 +359,40 @@ namespace AC
 		
 		#endif
 
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			foreach (UISlot uiSlot in uiSlots)
+			{
+				if (uiSlot.uiButton && uiSlot.uiButton.gameObject == gameObject) return true;
+				if (uiSlot.uiButtonID == id && id != 0) return true;
+			}
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			for (int i = 0; i < uiSlots.Length; i++)
+			{
+				if (uiSlots[i].uiButton && uiSlots[i].uiButton == gameObject)
+				{
+					return 0;
+				}
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
+
 		public override string GetHotspotLabelOverride (int _slot, int _language)
 		{
+			if (uiSlots != null && _slot < uiSlots.Length && !uiSlots[_slot].CanOverrideHotspotLabel) return string.Empty;
+
 			if (displayType == ConversationDisplayType.IconOnly)
 			{
-				if (labels.Length > _slot)
+				if (_slot <= optionReferences.Length && optionReferences[_slot] != null)
 				{
-					return labels[_slot];
+					return optionReferences[_slot].Label;
 				}
 			}
 			return string.Empty;
@@ -322,80 +401,129 @@ namespace AC
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
-			if (fixedOption)
+			if (elementSlotMapping != ElementSlotMapping.List)
 			{
 				_slot = 0;
 			}
 
 			if (Application.isPlaying)
 			{
-				if (uiSlots != null && uiSlots.Length > _slot)
+				if (uiSlots != null && _slot < uiSlots.Length)
 				{
-					LimitUISlotVisibility (uiSlots, numSlots, uiHideStyle);
-
-					if (displayType == ConversationDisplayType.IconOnly || displayType == ConversationDisplayType.IconAndText)
+					int slotsToLimitTo = numSlots;
+					if (elementSlotMapping == ElementSlotMapping.List &&
+						!limitMaxScroll &&
+						numSlots == maxSlots)
 					{
-						uiSlots[_slot].SetImageAsSprite (icons [_slot].GetAnimatedSprite (isActive));
+						int dynamicOffset = numSlots + offset - linkedConversation.GetNumEnabledOptions ();
+						if (dynamicOffset >= 0)
+						{
+							slotsToLimitTo = numSlots - dynamicOffset;
+						}
 					}
-					if (displayType == ConversationDisplayType.TextOnly || displayType == ConversationDisplayType.IconAndText)
+					LimitUISlotVisibility (uiSlots, slotsToLimitTo, uiHideStyle);
+					
+					DialogueOptionReference optionReference = optionReferences[_slot];
+					if (optionReference != null)
 					{
-						uiSlots[_slot].SetText (labels [_slot]);
+						if (displayType == ConversationDisplayType.IconOnly || displayType == ConversationDisplayType.IconAndText)
+						{
+							uiSlots[_slot].SetImageAsSprite (optionReference.Icon.GetAnimatedSprite (isActive));
+						}
+						if (displayType == ConversationDisplayType.TextOnly || displayType == ConversationDisplayType.IconAndText)
+						{
+							uiSlots[_slot].SetText (optionReference.Label);
+						}
+
+						uiSlots[_slot].ShowUIElement (uiHideStyle);
 					}
 				}
 			}
 			else
 			{
-				string fullText = "";
-				if (fixedOption)
-				{
-					fullText = "Dialogue option " + optionToShow.ToString ();
-					fullText = AddIndexNumber (fullText, optionToShow);
-				}
-				else
-				{
-					fullText = "Dialogue option " + _slot.ToString ();
-					fullText = AddIndexNumber (fullText, _slot + 1);
-				}
+				string fullText;
 
-				if (labels == null || labels.Length != numSlots)
+				switch (elementSlotMapping)
 				{
-					labels = new string[numSlots];
+					case ElementSlotMapping.List:
+					default:
+						fullText = "Dialogue option " + _slot.ToString ();
+						fullText = AddIndexNumber (fullText, _slot + 1);
+						break;
+
+					case ElementSlotMapping.FixedSlotIndex:
+					case ElementSlotMapping.FixedOptionID:
+						fullText = "Dialogue option " + optionToShow.ToString ();
+						fullText = AddIndexNumber (fullText, optionToShow);
+						break;
 				}
-				chosens = new bool[numSlots];
-				labels [_slot] = fullText;
+				
+				if (optionReferences == null || optionReferences.Length != numSlots)
+				{
+					optionReferences = new DialogueOptionReference[numSlots];
+				}
+				optionReferences[_slot] = new DialogueOptionReference (fullText, null, false);
 			}
 		}
 
 
 		private string AddIndexNumber (string _label, int _i)
 		{
-			if (showIndexNumbers)
+			switch (indexPrefixDisplay)
 			{
-				return (_i.ToString () + ". " + _label);
-			}
-			return _label;
-		}
-		
+				case IndexPrefixDisplay.GlobalOrder:
+					return _i.ToString () + ". " + _label;
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">The index number of the slot to display</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive If True, then the element will be drawn as though highlighted</param>
-		 */
+				case IndexPrefixDisplay.DisplayOrder:
+					return (_i - offset).ToString () + ". " + _label;
+
+				default:
+					return _label;
+			}
+		}
+
+
+		private DialogueOptionReference[] AddExtraNulls (DialogueOptionReference[] _optionReferences)
+		{
+			if (elementSlotMapping == ElementSlotMapping.List &&
+				!limitMaxScroll &&
+				_optionReferences.Length > 0 &&
+				_optionReferences.Length % maxSlots != 0)
+			{
+				List<DialogueOptionReference> tempList = new List<DialogueOptionReference>();
+				for (int i = 0; i < _optionReferences.Length; i++)
+				{
+					tempList.Add (_optionReferences[i]);
+				}
+
+				while (tempList.Count % maxSlots != 0)
+				{
+					tempList.Add (null);
+				}
+
+				return tempList.ToArray ();
+			}
+			return _optionReferences;
+		}
+
+
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
 
-			if (fixedOption)
+			if (_slot >= optionReferences.Length || optionReferences[_slot] == null)
+			{
+				return;
+			}
+
+			if (elementSlotMapping != ElementSlotMapping.List)
 			{
 				_slot = 0;
 			}
 
 			if (markAlreadyChosen)
 			{
-				if (chosens[_slot])
+				if (optionReferences[_slot].Chosen)
 				{
 					if (isActive)
 					{
@@ -420,111 +548,149 @@ namespace AC
 			_style.alignment = anchor;
 			if (zoom < 1f)
 			{
-				_style.fontSize = (int) ((float) _style.fontSize * zoom);
+				_style.fontSize = (int) (_style.fontSize * zoom);
 			}
 
-			if (displayType == ConversationDisplayType.TextOnly)
+			switch (displayType)
 			{
-				if (textEffects != TextEffects.None)
-				{
-					AdvGame.DrawTextEffect (ZoomRect (GetSlotRectRelative (_slot), zoom), labels [_slot], _style, Color.black, _style.normal.textColor, outlineSize, textEffects);
-				}
-				else
-				{
-					GUI.Label (ZoomRect (GetSlotRectRelative (_slot), zoom), labels [_slot], _style);
-				}
-			}
-			else
-			{
-				if (Application.isPlaying && icons[_slot] != null)
-				{
-					icons[_slot].DrawAsInteraction (ZoomRect (GetSlotRectRelative (_slot), zoom), isActive);
-				}
-				else if (testIcon != null)
-				{
-					GUI.DrawTexture (ZoomRect (GetSlotRectRelative (_slot), zoom), testIcon, ScaleMode.StretchToFill, true, 0f);
-				}
-				
-				GUI.Label (ZoomRect (GetSlotRectRelative (_slot), zoom), "", _style);
+				case ConversationDisplayType.TextOnly:
+					if (textEffects != TextEffects.None)
+					{
+						AdvGame.DrawTextEffect (ZoomRect (GetSlotRectRelative (_slot), zoom), optionReferences[_slot].Label, _style, Color.black, _style.normal.textColor, outlineSize, textEffects);
+					}
+					else
+					{
+						GUI.Label (ZoomRect (GetSlotRectRelative (_slot), zoom), optionReferences[_slot].Label, _style);
+					}
+					break;
+
+				default:
+					if (Application.isPlaying && optionReferences[_slot].Icon != null)
+					{
+						optionReferences[_slot].Icon.DrawAsInteraction (ZoomRect (GetSlotRectRelative (_slot), zoom), isActive);
+					}
+					else if (testIcon != null)
+					{
+						GUI.DrawTexture (ZoomRect (GetSlotRectRelative (_slot), zoom), testIcon, ScaleMode.StretchToFill, true, 0f);
+					}
+
+					GUI.Label (ZoomRect (GetSlotRectRelative (_slot), zoom), string.Empty, _style);
+					break;
 			}
 		}
 		
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
 		public override void RecalculateSize (MenuSource source)
 		{
 			if (Application.isPlaying)
 			{
-				if (linkedConversation != null)
+				if (linkedConversation)
 				{
 					numOptions = linkedConversation.GetCount ();
 					
-					if (fixedOption)
+					switch (elementSlotMapping)
 					{
-						if (numOptions < optionToShow)
-						{
-							numSlots = 0;
-						}
-						else
-						{
-							numSlots = 1;
-							labels = new string[numSlots];
-							labels[0] = linkedConversation.GetOptionName (optionToShow - 1);
-							labels[0] = AddIndexNumber (labels[0], optionToShow);
-							
-							icons = new CursorIconBase[numSlots];
-							icons[0] = new CursorIconBase ();
-							icons[0].Copy (linkedConversation.GetOptionIcon (optionToShow - 1));
-
-							chosens = new bool[numSlots];
-							chosens[0] = linkedConversation.OptionHasBeenChosen (optionToShow - 1);
-						}
-					}
-					else
-					{
-						numSlots = numOptions;
-						if (numSlots > maxSlots)
-						{
-							numSlots = maxSlots;
-						}
-
-						labels = new string[numSlots];
-						icons = new CursorIconBase[numSlots];
-						chosens = new bool[numSlots];
-						for (int i=0; i<numSlots; i++)
-						{
-							labels[i] = linkedConversation.GetOptionName (i + offset);
-							labels[i] = AddIndexNumber (labels[i], i + offset + 1);
-							icons[i] = new CursorIconBase ();
-							icons[i].Copy (linkedConversation.GetOptionIcon (i + offset));
-							chosens[i] = linkedConversation.OptionHasBeenChosen (i + offset);
-						}
-
-						if (markAlreadyChosen && source != MenuSource.AdventureCreator)
-						{
-							for (int i=0; i<chosens.Length; i++)
+						case ElementSlotMapping.List:
+						default:
 							{
-								bool chosen = chosens[i];
-
-								if (uiSlots.Length > i)
+								numSlots = numOptions;
+								if (numSlots > maxSlots)
 								{
-									if (chosen)
+									numSlots = maxSlots;
+								}
+
+								optionReferences = new DialogueOptionReference[numOptions];
+								for (int i = 0; i < numSlots; i++)
+								{
+									if (linkedConversation.SlotIsAvailable (i + offset))
 									{
-										uiSlots[i].SetColour (alreadyChosenFontColour);
+										string label = linkedConversation.GetOptionName (i + offset);
+										label = AddIndexNumber (label, i + offset + 1);
+
+										CursorIconBase icon = new CursorIconBase ();
+										icon.Copy (linkedConversation.GetOptionIcon (i + offset));
+
+										bool chosen = linkedConversation.OptionHasBeenChosen (i + offset);
+										optionReferences[i] = new DialogueOptionReference (label, icon, chosen);
 									}
 									else
 									{
-										uiSlots[i].RestoreColour ();
+										optionReferences[i] = null;
 									}
 								}
-							}
-						}
 
-						LimitOffset (numOptions);
+								if (markAlreadyChosen && source != MenuSource.AdventureCreator)
+								{
+									for (int i = 0; i < optionReferences.Length; i++)
+									{
+										bool chosen = optionReferences[i] != null && optionReferences[i].Chosen;
+
+										if (uiSlots.Length > i)
+										{
+											if (chosen)
+											{
+												uiSlots[i].SetColours (alreadyChosenFontColour, alreadyChosenFontHighlightedColour);
+											}
+											else
+											{
+												uiSlots[i].RestoreColour ();
+											}
+										}
+									}
+								}
+
+								optionReferences = AddExtraNulls (optionReferences);
+								LimitOffset ();
+							}
+							break;
+
+						case ElementSlotMapping.FixedSlotIndex:
+							{
+								if (numOptions < optionToShow)
+								{
+									numSlots = 0;
+									optionReferences = new DialogueOptionReference[0];
+								}
+								else
+								{
+									numSlots = 1;
+									optionReferences = new DialogueOptionReference[1];
+
+									string label = linkedConversation.GetOptionName (optionToShow - 1);
+									label = AddIndexNumber (label, optionToShow);
+
+									CursorIconBase icon = new CursorIconBase ();
+									icon.Copy (linkedConversation.GetOptionIcon (optionToShow - 1));
+
+									bool chosen = linkedConversation.OptionHasBeenChosen (optionToShow - 1);
+									optionReferences[0] = new DialogueOptionReference (label, icon, chosen);
+								}
+							}
+							break;
+							
+						case ElementSlotMapping.FixedOptionID:
+							{
+								if (linkedConversation.OptionWithIDIsActive (optionToShow))
+								{
+									numSlots = 1;
+									optionReferences = new DialogueOptionReference[1];
+
+									string label = linkedConversation.GetOptionNameWithID (optionToShow);
+									label = AddIndexNumber (label, optionToShow);
+
+									CursorIconBase icon = new CursorIconBase ();
+									icon.Copy (linkedConversation.GetOptionIconWithID (optionToShow));
+
+									bool chosen = linkedConversation.OptionWithIDHasBeenChosen (optionToShow);
+									optionReferences[0] = new DialogueOptionReference (label, icon, chosen);
+								}
+								else
+								{
+									numSlots = 0;
+									optionReferences = new DialogueOptionReference[0];
+								}
+							}
+							break;
 					}
 				}
 				else
@@ -532,13 +698,13 @@ namespace AC
 					numSlots = 0;
 				}
 			}
-			else if (fixedOption)
+			else if (elementSlotMapping != ElementSlotMapping.List)
 			{
 				numSlots = 1;
 				offset = 0;
-				labels = new string[numSlots];
-				icons = new CursorIconBase[numSlots];
-				chosens = new bool[numSlots];
+				optionReferences = new DialogueOptionReference[numSlots];
+
+				PreDisplay (0, 0, false);
 			}
 
 			if (Application.isPlaying && uiSlots != null)
@@ -553,27 +719,17 @@ namespace AC
 
 			base.RecalculateSize (source);
 		}
-		
 
-		/**
-		 * <summary>Shifts which slots are on display, if the number of slots the element has exceeds the number of slots it can show at once.</summary>
-		 * <param name = "shiftType">The direction to shift slots in (Left, Right)</param>
-		 * <param name = "amount">The amount to shift slots by</param>
-		 */
+
 		public override void Shift (AC_ShiftInventory shiftType, int amount)
 		{
 			if (isVisible && numSlots >= maxSlots)
 			{
-				Shift (shiftType, maxSlots, numOptions, amount);
+				Shift (shiftType, maxSlots, optionReferences.Length, amount);
 			}
 		}
 		
 
-		/**
-		 * <summary>Checks if the element's slots can be shifted in a particular direction.</summary>
-		 * <param name = "shiftType">The direction to shift slots in (Left, Right)</param>
-		 * <returns>True if the element's slots can be shifted in the particular direction</returns>
-		 */
 		public override bool CanBeShifted (AC_ShiftInventory shiftType)
 		{
 			if (numSlots == 0)
@@ -581,21 +737,17 @@ namespace AC
 				return false;
 			}
 
-			if (shiftType == AC_ShiftInventory.ShiftPrevious)
+			switch (shiftType)
 			{
-				if (offset == 0)
-				{
-					return false;
-				}
+				case AC_ShiftInventory.ShiftPrevious:
+					return offset > 0;
+
+				case AC_ShiftInventory.ShiftNext:
+					return (maxSlots + offset) < numOptions;
+
+				default:
+					return true;
 			}
-			else
-			{
-				if ((maxSlots + offset) >= numOptions)
-				{
-					return false;
-				}
-			}
-			return true;
 		}
 
 
@@ -604,40 +756,52 @@ namespace AC
 			base.OnMenuTurnOn (menu);
 
 			Conversation oldConversation = linkedConversation;
-			linkedConversation = (overrideConversation != null) ? overrideConversation : KickStarter.playerInput.activeConversation;
+			linkedConversation = (overrideConversation) ? overrideConversation : KickStarter.playerInput.activeConversation;
+			if (linkedConversation)
+			{
+				linkedConversation.LinkedDialogList = this;
+			}
 
 			if (oldConversation != linkedConversation || resetOffsetWhenRestart)
 			{
 				offset = 0;
 			}
 
-			if (linkedConversation != null && !fixedOption)
+			if (linkedConversation && elementSlotMapping == ElementSlotMapping.List)
 			{
-				LimitOffset (linkedConversation.GetCount ());
+				LimitOffset ();
 			}
 		}
-		
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">The index number of the slot</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element's slot, or the whole element if it only has one slot</returns>
-		 */
+
+		protected override int MaxSlotsForOffset
+		{
+			get
+			{
+				return optionReferences.Length;
+				/*Conversation linkedConversation = (overrideConversation) ? overrideConversation : KickStarter.playerInput.activeConversation;
+				if (linkedConversation && elementSlotMapping == ElementSlotMapping.List)
+				{
+					return (linkedConversation.GetCount());
+				}
+				return 0;*/
+			}
+		}
+
+
 		public override string GetLabel (int slot, int languageNumber)
 		{
-			if (labels.Length > slot)
+			if (slot < optionReferences.Length && optionReferences[slot] != null)
 			{
-				return labels[slot];
+				return optionReferences[slot].Label;
 			}
-			
-			return "";
+			return string.Empty;
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiSlots != null && slotIndex >= 0 && uiSlots.Length > slotIndex && uiSlots[slotIndex] != null && uiSlots[slotIndex].uiButton != null)
+			if (uiSlots != null && slotIndex >= 0 && uiSlots.Length > slotIndex && uiSlots[slotIndex] != null && uiSlots[slotIndex].uiButton)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiSlots[slotIndex].uiButton.gameObject);
 			}
@@ -645,39 +809,42 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">The index number of ths slot that was clicked</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (KickStarter.stateHandler.gameState != GameState.DialogOptions)
 			{
-				return;
+				return false;
 			}
 
-			if (linkedConversation != null && 
+			if (_mouseState != MouseState.SingleClick && _menu.menuSource == MenuSource.AdventureCreator)
+			{
+				return false;
+			}
+			
+			if (linkedConversation && 
 				(linkedConversation == overrideConversation || (overrideConversation == null && KickStarter.playerInput.activeConversation)))
 			{
-				if (fixedOption)
+				switch (elementSlotMapping)
 				{
-					linkedConversation.RunOption (optionToShow - 1);
-				}
-				else
-				{
-					linkedConversation.RunOption (_slot + offset);
+					case ElementSlotMapping.List:
+						linkedConversation.RunOption (_slot + offset);
+						break;
+
+					case ElementSlotMapping.FixedSlotIndex:
+						linkedConversation.RunOption (optionToShow - 1);
+						break;
+
+					case ElementSlotMapping.FixedOptionID:
+						linkedConversation.RunOptionWithID (optionToShow);
+						break;
 				}
 			}
 
-			base.ProcessClick (_menu, _slot, _mouseState);
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
-		/**
-		 * If set, then this Conversation will be used instead of the global 'active' one.  This must be set either before the Menu is turned on, or within the OnMenuTurnOn custom event.  Note that its Menu's 'Appear type' should not be set to 'During Conversation', and that the Conversation's dialogue options should not be overridden with the 'Dialogue: Start conversation' Action.
-		 */
+		/** If set, then this Conversation will be used instead of the global 'active' one.  This must be set either before the Menu is turned on, or within the OnMenuTurnOn custom event.  Note that its Menu's 'Appear type' should not be set to 'During Conversation', and that the Conversation's dialogue options should not be overridden with the 'Dialogue: Start conversation' Action. */
 		public Conversation OverrideConversation
 		{
 			set
@@ -715,6 +882,24 @@ namespace AC
 			return null;
 		}
 
+
+		private class DialogueOptionReference
+		{
+
+			public string Label { get; private set; }
+			public CursorIconBase Icon { get; private set; }
+			public bool Chosen { get; private set; }
+
+
+			public DialogueOptionReference (string label, CursorIconBase icon, bool chosen)
+			{
+				Label = label;
+				Icon = icon;
+				Chosen = chosen;
+			}
+
+		}
+
 	}
-	
+
 }

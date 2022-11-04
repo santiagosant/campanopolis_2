@@ -7,9 +7,7 @@ using UnityEditor;
 namespace AC
 {
 	
-	/**
-	 * Provides an EditorWindow to manage the import of game text
-	 */
+	/** Provides an Editor Window to manage the import of game text */
 	public class ImportWizardWindow : EditorWindow
 	{
 
@@ -46,11 +44,18 @@ namespace AC
 					importColumns.Add (new ImportColumn (csvData [col, 0]));
 				}
 
-				if (forLanguage > 0 && speechManager.languages != null && speechManager.languages.Count > forLanguage)
+				if (forLanguage > 0 && speechManager.Languages != null && speechManager.Languages.Count > forLanguage)
 				{
 					if (importColumns.Count > 1)
 					{
 						importColumns [importColumns.Count-1].SetToTranslation (forLanguage-1);
+					}
+				}
+				else if (forLanguage == 0)
+				{
+					if (importColumns.Count > 1)
+					{
+						importColumns [importColumns.Count-1].SetToOriginal ();
 					}
 				}
 			}
@@ -61,18 +66,17 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the window.</summary>
-		 */
-		public static void Init (SpeechManager _speechManager, string[,] _csvData, int _forLanguage = 0)
+		/** Initialises the window. */
+		public static void Init (SpeechManager _speechManager, string[,] _csvData, int _forLanguage = -1)
 		{
 			if (_speechManager == null) return;
 
-			ImportWizardWindow window = EditorWindow.GetWindowWithRect <ImportWizardWindow> (new Rect (0, 0, 350, 500), true, "Game text importer", true);
-
-			UnityVersionHandler.SetWindowTitle (window, "Game text importer");
+			ImportWizardWindow window = (ImportWizardWindow) GetWindow (typeof (ImportWizardWindow));
+			
+			window.titleContent.text = "Text import wizard";
 			window.position = new Rect (300, 200, 350, 500);
 			window._Init (_speechManager, _csvData, _forLanguage);
+			window.minSize = new Vector2 (300, 180);
 		}
 		
 		
@@ -101,14 +105,13 @@ namespace AC
 			scroll = GUILayout.BeginScrollView (scroll);
 
 			EditorGUILayout.LabelField ("Detected columns", CustomStyles.subHeader);
-			EditorGUILayout.Space ();
 
 			List<string> translations = new List<string>();
-			if (speechManager.languages != null && speechManager.languages.Count > 1)
+			if (speechManager.Languages != null && speechManager.Languages.Count > 1)
 			{
-				for (int i=1; i<speechManager.languages.Count; i++)
+				for (int i=1; i<speechManager.Languages.Count; i++)
 				{
-					translations.Add (speechManager.languages[i]);
+					translations.Add (speechManager.Languages[i].name);
 				}
 			}
 			string[] translationsArray = translations.ToArray ();
@@ -128,7 +131,6 @@ namespace AC
 				Import ();
 			}
 
-			EditorGUILayout.Space ();
 			EditorGUILayout.EndScrollView ();
 		}
 
@@ -142,7 +144,21 @@ namespace AC
 			if (speechManager == null || importColumns == null || importColumns.Count == 0 || speechManager.lines == null || speechManager.lines.Count == 0) return;
 			int lineID = -1;
 
-			int numUpdated = 0;
+			bool importingOverwrite = false;
+			foreach (ImportColumn importColumn in importColumns)
+			{
+				if (importColumn.UpdatesOriginal ())
+				{
+					importingOverwrite = true;
+				}
+			}
+
+			if (importingOverwrite)
+			{
+				speechManager.GetAllActionListAssets ();
+			}
+
+			HashSet<SpeechLine> updatedLines = new HashSet<SpeechLine> ();
 			for (int row = 1; row < numRows; row ++)
 			{
 				if (csvData [0, row] != null && csvData [0, row].Length > 0)
@@ -151,7 +167,7 @@ namespace AC
 					if (int.TryParse (csvData [0, row], out lineID))
 					{
 						SpeechLine speechLine = speechManager.GetLine (lineID);
-
+						
 						if (speechLine != null)
 						{
 							for (int col = 0; col < numCols; col ++)
@@ -159,9 +175,12 @@ namespace AC
 								if (importColumns.Count > col)
 								{
 									string cellData = csvData [col, row];
-									if (importColumns[col].Process (cellData, speechLine))
+									if (importColumns[col].Process (speechManager, cellData, speechLine))
 									{
-										numUpdated ++;
+										if (!updatedLines.Contains (speechLine))
+										{
+											updatedLines.Add (speechLine);
+										}
 									}
 								}
 							}
@@ -169,14 +188,29 @@ namespace AC
 					}
 					else
 					{
-						ACDebug.LogWarning ("Error importing translation (ID:" + csvData [0, row] + ") - make sure that the CSV file is delimited by a '" + CSVReader.csvDelimiter + "' character.");
+						ACDebug.LogWarning ("Error importing translation (ID:" + csvData [0, row] + ") on row #" + row.ToString () + ".");
 					}
 				}
 			}
-	
+
+			if (importingOverwrite)
+			{
+				speechManager.ClearAllAssets ();
+			}
+
+			speechManager.CacheDisplayLines ();
 			EditorUtility.SetDirty (speechManager);
 
-			ACDebug.Log ((numRows-2).ToString () + " line(s) imported, " + numUpdated.ToString () + " line(s) updated.");
+			int numLinesImported = (numRows - 2);
+			int numLinesUpdated = updatedLines.Count;
+
+			foreach (SpeechLine updatedLine in updatedLines)
+			{
+				ACDebug.Log ("Updated line ID: " + updatedLine.lineID + ", Type: " + updatedLine.textType + ", Text: '" + updatedLine.text + "'");
+			}
+
+			EditorUtility.DisplayDialog ("Import game text", "Process complete.\n\n" + numLinesImported + " line(s) imported, " + numLinesUpdated + " line(s) updated.", "OK");
+
 			this.Close ();
 			#endif
 		}
@@ -186,7 +220,7 @@ namespace AC
 		{
 
 			private string header;
-			private enum ImportColumnType { DoNotImport, ImportAsTranslation, ImportAsDescription };
+			private enum ImportColumnType { DoNotImport, ImportAsTranslation, ImportAsOriginalText, ImportAsDescription, ImportAsCustomFilename };
 			private ImportColumnType importColumnType;
 			private int translationIndex;
 
@@ -206,58 +240,100 @@ namespace AC
 			}
 
 
+			public void SetToOriginal ()
+			{
+				importColumnType = ImportColumnType.ImportAsOriginalText;
+			}
+
+
+			public bool UpdatesOriginal ()
+			{
+				return (importColumnType == ImportColumnType.ImportAsOriginalText);
+			}
+
+
 			public void ShowGUI (int i, string[] translations)
 			{
-				EditorGUILayout.BeginVertical ("Button");
-				GUILayout.Label ("Column # : " + header);
+				CustomGUILayout.BeginVertical ();
+				GUILayout.Label ("Column #" + (i + 1).ToString () +": " + header);
 
 				if (i > 0)
 				{
 					importColumnType = (ImportColumnType) EditorGUILayout.EnumPopup ("Import rule:", importColumnType);
-					if (importColumnType == ImportColumnType.ImportAsTranslation)
+
+					switch (importColumnType)
 					{
-						if (translations == null || translations.Length == 0)
-						{
-							EditorGUILayout.HelpBox ("No translations found!", MessageType.Warning);
-						}
-						else
-						{
-							translationIndex = EditorGUILayout.Popup ("Translation:", translationIndex, translations);
-						}
+						case ImportColumnType.ImportAsTranslation:
+							if (translations == null || translations.Length == 0)
+							{
+								EditorGUILayout.HelpBox ("No translations found!", MessageType.Warning);
+							}
+							else
+							{
+								translationIndex = EditorGUILayout.Popup ("Translation:", translationIndex, translations);
+							}
+							break;
+
+						case ImportColumnType.ImportAsCustomFilename:
+							EditorGUILayout.HelpBox ("Empty fields will clear custom filenames, reverting them to defaults.", MessageType.Info);
+							break;
+
+						case ImportColumnType.ImportAsOriginalText:
+							EditorGUILayout.HelpBox ("Intensive operation - it is strongly recommended to back up your project first.", MessageType.Warning);
+							break;
+
+						default:
+							break;
 					}
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 
-			public bool Process (string cellText, SpeechLine speechLine)
+			public bool Process (SpeechManager speechManager, string cellText, SpeechLine speechLine)
 			{
 				if (cellText == null) return false;
 
 				cellText = AddLineBreaks (cellText);
-				//cellText = cellText.Replace (CSVReader.csvTemp, CSVReader.csvComma);
-
-				if (importColumnType != ImportColumnType.DoNotImport)
+				
+				switch (importColumnType)
 				{
-					if (importColumnType == ImportColumnType.ImportAsDescription)
-					{
+					case ImportColumnType.ImportAsDescription:
 						if (speechLine.description != cellText)
 						{
 							speechLine.description = cellText;
 							return true;
 						}
-					}
-					else if (importColumnType == ImportColumnType.ImportAsTranslation)
-					{
+						break;
+
+					case ImportColumnType.ImportAsTranslation:
 						if (speechLine.translationText != null && speechLine.translationText.Count > translationIndex)
 						{
-							if (speechLine.translationText [translationIndex] != cellText)
+							if (speechLine.translationText[translationIndex] != cellText)
 							{
-								speechLine.translationText [translationIndex] = cellText;
+								speechLine.translationText[translationIndex] = cellText;
 								return true;
 							}
 						}
-					}
+						break;
+
+					case ImportColumnType.ImportAsOriginalText:
+						return speechManager.UpdateOriginalText (speechLine, cellText);
+
+					case ImportColumnType.ImportAsCustomFilename:
+						if (speechLine.textType == AC_TextType.Speech && speechLine.customFilename != cellText)
+						{
+							if (cellText == speechLine.DefaultFilename)
+							{
+								cellText = string.Empty;
+							}
+							speechLine.customFilename = cellText;
+							return true;
+						}
+						break;
+
+					default:
+						break;
 				}
 
 				return false;
@@ -266,9 +342,9 @@ namespace AC
 
 			private string AddLineBreaks (string text)
 			{
-	            text = text.Replace ("[break]", "\n");
-	            return text;
-	        }
+				text = text.Replace ("[break]", "\n");
+				return text;
+			}
 	
 		}
 		

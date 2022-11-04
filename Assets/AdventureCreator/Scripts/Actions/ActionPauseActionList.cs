@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPauseActionList.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -38,26 +39,26 @@ namespace AC
 
 		protected RuntimeActionList[] runtimeActionLists = new RuntimeActionList[0];
 
-		
-		public ActionPauseActionList ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Pause or resume";
-			description = "Pauses and resumes ActionLists.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Pause or resume"; }}
+		public override string Description { get { return "Pauses and resumes ActionLists."; }}
 		
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (listSource == ActionRunActionList.ListSource.InScene)
 			{
 				_runtimeActionList = AssignFile <ActionList> (parameters, parameterID, constantID, actionList);
 			}
+			else
+			{
+				actionListAsset = (ActionListAsset) AssignObject <ActionListAsset> (parameters, parameterID, actionListAsset);
+			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
@@ -66,22 +67,36 @@ namespace AC
 
 				if (pauseResume == PauseResume.Pause)
 				{
-					if (listSource == ActionRunActionList.ListSource.AssetFile && actionListAsset != null && !actionListAsset.actions.Contains (this))
+					if (listSource == ActionRunActionList.ListSource.AssetFile && actionListAsset != null)
 					{
-						runtimeActionLists = KickStarter.actionListAssetManager.Pause (actionListAsset);
-
-						if (willWait && runtimeActionLists.Length > 0)
+						if (actionListAsset.actions.Contains (this))
 						{
-							return defaultPauseTime;
+							LogWarning ("An ActionList Asset cannot Pause itself - it must be performed indirectly.");
+						}
+						else
+						{
+							runtimeActionLists = KickStarter.actionListAssetManager.Pause (actionListAsset);
+
+							if (willWait && runtimeActionLists.Length > 0)
+							{
+								return defaultPauseTime;
+							}
 						}
 					}
-					else if (listSource == ActionRunActionList.ListSource.InScene && _runtimeActionList != null && !_runtimeActionList.actions.Contains (this))
+					else if (listSource == ActionRunActionList.ListSource.InScene && _runtimeActionList != null)
 					{
-						_runtimeActionList.Pause ();
-
-						if (willWait)
+						if (_runtimeActionList.actions.Contains (this))
 						{
-							return defaultPauseTime;
+							LogWarning ("An ActionList cannot Pause itself - it must be performed indirectly.");
+						}
+						else
+						{
+							_runtimeActionList.Pause ();
+
+							if (willWait)
+							{
+								return defaultPauseTime;
+							}
 						}
 					}
 				}
@@ -127,31 +142,45 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			pauseResume = (PauseResume) EditorGUILayout.EnumPopup ("Method:", pauseResume);
 
 			listSource = (ActionRunActionList.ListSource) EditorGUILayout.EnumPopup ("Source:", listSource);
 			if (listSource == ActionRunActionList.ListSource.InScene)
 			{
-				actionList = (ActionList) EditorGUILayout.ObjectField ("ActionList:", actionList, typeof (ActionList), true);
-				
-				constantID = FieldToID <ActionList> (actionList, constantID);
-				actionList = IDToField <ActionList> (actionList, constantID, true);
-
-				if (actionList != null && actionList.actions.Contains (this))
+				parameterID = Action.ChooseParameterGUI ("ActionList:", parameters, parameterID, ParameterType.GameObject);
+				if (parameterID >= 0)
 				{
-					EditorGUILayout.HelpBox ("An ActionList cannot " + pauseResume.ToString () + " itself - it must be performed indirectly.", MessageType.Warning);
+					constantID = 0;
+					actionList = null;
+				}
+				else
+				{
+					actionList = (ActionList) EditorGUILayout.ObjectField ("ActionList:", actionList, typeof (ActionList), true);
+					
+					constantID = FieldToID <ActionList> (actionList, constantID);
+					actionList = IDToField <ActionList> (actionList, constantID, true);
+
+					if (actionList != null && actionList.actions.Contains (this))
+					{
+						EditorGUILayout.HelpBox ("An ActionList cannot " + pauseResume.ToString () + " itself - it must be performed indirectly.", MessageType.Warning);
+					}
 				}
 			}
 			else if (listSource == ActionRunActionList.ListSource.AssetFile)
 			{
-				actionListAsset = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList asset:", actionListAsset, typeof (ActionListAsset), false);
-
-				if (actionListAsset != null && actionListAsset.actions.Contains (this))
+				parameterID = Action.ChooseParameterGUI ("ActionList asset:", parameters, parameterID, ParameterType.UnityObject);
+				if (parameterID < 0)
 				{
-					EditorGUILayout.HelpBox ("An ActionList Asset cannot " + pauseResume.ToString () + " itself - it must be performed indirectly.", MessageType.Warning);
+					actionListAsset = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList asset:", actionListAsset, typeof (ActionListAsset), false);
+
+					if (actionListAsset != null && actionListAsset.actions.Contains (this))
+					{
+						EditorGUILayout.HelpBox ("An ActionList Asset cannot " + pauseResume.ToString () + " itself - it must be performed indirectly.", MessageType.Warning);
+					}
 				}
+
 			}
 			
 			if (pauseResume == PauseResume.Pause)
@@ -166,12 +195,10 @@ namespace AC
 			{
 				rerunPausedActions = EditorGUILayout.ToggleLeft ("Re-run Action(s) at time of pause?", rerunPausedActions);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (listSource == ActionRunActionList.ListSource.InScene)
 			{
@@ -192,7 +219,26 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0 && listSource == ActionRunActionList.ListSource.InScene)
+			{
+				if (actionList && actionList.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset _actionListAsset)
+		{
+			if (listSource == ActionRunActionList.ListSource.AssetFile && _actionListAsset == actionListAsset)
+				return true;
+			return base.ReferencesAsset (_actionListAsset);
+		}
+
 		#endif
 
 
@@ -201,10 +247,10 @@ namespace AC
 		 * <param name = "actionList">The ActionList to pause</param>
 		 * <param name = "waitUntilFinish">If True, any Actions currently running in the ActionList will complete before it is paused</param>
 		 * <returns>The generated Action</returns>
-		 */		
+		 */
 		public static ActionPauseActionList CreateNew_Pause (ActionList actionList, bool waitUntilFinish = false)
 		{
-			ActionPauseActionList newAction = (ActionPauseActionList) CreateInstance <ActionPauseActionList>();
+			ActionPauseActionList newAction = CreateNew<ActionPauseActionList> ();
 			newAction.pauseResume = PauseResume.Pause;
 			newAction.listSource = ActionRunActionList.ListSource.InScene;
 			newAction.actionList = actionList;
@@ -221,7 +267,7 @@ namespace AC
 		 */
 		public static ActionPauseActionList CreateNew_Pause (ActionListAsset actionListAsset, bool waitUntilFinish = false)
 		{
-			ActionPauseActionList newAction = (ActionPauseActionList) CreateInstance <ActionPauseActionList>();
+			ActionPauseActionList newAction = CreateNew<ActionPauseActionList> ();
 			newAction.pauseResume = PauseResume.Pause;
 			newAction.listSource = ActionRunActionList.ListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -238,7 +284,7 @@ namespace AC
 		 */
 		public static ActionPauseActionList CreateNew_Resume (ActionList actionList, bool rerunLastAction = false)
 		{
-			ActionPauseActionList newAction = (ActionPauseActionList) CreateInstance <ActionPauseActionList>();
+			ActionPauseActionList newAction = CreateNew<ActionPauseActionList> ();
 			newAction.pauseResume = PauseResume.Resume;
 			newAction.listSource = ActionRunActionList.ListSource.InScene;
 			newAction.actionList = actionList;
@@ -255,7 +301,7 @@ namespace AC
 		 */
 		public static ActionPauseActionList CreateNew_Resume (ActionListAsset actionListAsset, bool rerunLastAction = false)
 		{
-			ActionPauseActionList newAction = (ActionPauseActionList) CreateInstance <ActionPauseActionList>();
+			ActionPauseActionList newAction = CreateNew<ActionPauseActionList> ();
 			newAction.pauseResume = PauseResume.Resume;
 			newAction.listSource = ActionRunActionList.ListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;

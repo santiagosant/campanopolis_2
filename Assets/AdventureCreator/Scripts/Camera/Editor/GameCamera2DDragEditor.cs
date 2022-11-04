@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -13,7 +15,7 @@ namespace AC
 			GameCamera2DDrag _target = (GameCamera2DDrag) target;
 
 			// X
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.BeginHorizontal ();
 			EditorGUILayout.LabelField (new GUIContent ("X movement", "How movement along the X-axis is affected"), EditorStyles.boldLabel, GUILayout.Width (130f));
 			_target.xLock = (RotationLock) EditorGUILayout.EnumPopup (_target.xLock);
@@ -28,14 +30,26 @@ namespace AC
 
 				if (_target.xLock == RotationLock.Limited)
 				{
-					_target.minX = CustomGUILayout.FloatField ("Minimum X:", _target.minX, "", "The minimum X-axis value");
-					_target.maxX = CustomGUILayout.FloatField ("Maximum X:", _target.maxX, "", "The maximum X-axis value");
+					if (_target.GetComponent<Camera> ().orthographic)
+					{
+						_target.backgroundConstraint = (SpriteRenderer) CustomGUILayout.ObjectField<SpriteRenderer> ("Background constraint:", _target.backgroundConstraint, true, string.Empty, "If set, this sprite's boundary will be used to set the constraint limits");
+						if (_target.backgroundConstraint)
+						{
+							_target.autoScaleToFitBackgroundConstraint = CustomGUILayout.Toggle ("Auto-set Orthographic size to fit?", _target.autoScaleToFitBackgroundConstraint, string.Empty, "If True, then the Camera's Orthographic Size value will be reduced if the background is not large enough to fill the screen.");
+						}
+					}
+
+					if (!_target.GetComponent<Camera> ().orthographic || _target.backgroundConstraint == null)
+					{
+						_target.minX = CustomGUILayout.FloatField ("Minimum X:", _target.minX, "", "The minimum X-axis value");
+						_target.maxX = CustomGUILayout.FloatField ("Maximum X:", _target.maxX, "", "The maximum X-axis value");
+					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			// Y
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.BeginHorizontal ();
 			EditorGUILayout.LabelField (new GUIContent ("Y movement", "How movement along the Y-axis is affected"), EditorStyles.boldLabel, GUILayout.Width (130f));
 			_target.yLock = (RotationLock) EditorGUILayout.EnumPopup (_target.yLock);
@@ -50,11 +64,23 @@ namespace AC
 				
 				if (_target.yLock == RotationLock.Limited)
 				{
-					_target.minY = CustomGUILayout.FloatField ("Minimum Y:", _target.minY, "", "The minimum Y-axis value");
-					_target.maxY = CustomGUILayout.FloatField ("Maximum Y:", _target.maxY, "", "The maximum Y-axis value");
+					if (_target.GetComponent<Camera> ().orthographic)
+					{
+						_target.backgroundConstraint = (SpriteRenderer) CustomGUILayout.ObjectField<SpriteRenderer> ("Background constraint:", _target.backgroundConstraint, true, string.Empty, "If set, this sprite's boundary will be used to set the constraint limits");
+						if (_target.backgroundConstraint)
+						{
+							_target.autoScaleToFitBackgroundConstraint = CustomGUILayout.Toggle ("Auto-set Orthographic size to fit?", _target.autoScaleToFitBackgroundConstraint, string.Empty, "If True, then the Camera's Orthographic Size value will be reduced if the background is not large enough to fill the screen.");
+						}
+					}
+
+					if (!_target.GetComponent<Camera> ().orthographic || _target.backgroundConstraint == null)
+					{
+						_target.minY = CustomGUILayout.FloatField ("Minimum Y:", _target.minY, "", "The minimum Y-axis value");
+						_target.maxY = CustomGUILayout.FloatField ("Maximum Y:", _target.maxY, "", "The maximum Y-axis value");
+					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
@@ -62,3 +88,5 @@ namespace AC
 	}
 
 }
+
+#endif

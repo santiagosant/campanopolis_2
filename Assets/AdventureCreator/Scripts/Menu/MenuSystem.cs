@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuSystem.cs"
  *	This script can be used to add extra functionality to menus.
@@ -15,9 +15,7 @@ using UnityEngine;
 namespace AC
 {
 
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_menu_system.html")]
-	#endif
 	public class MenuSystem : MonoBehaviour
 	{
 

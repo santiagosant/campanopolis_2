@@ -1,13 +1,12 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuElement.cs"
  * 
  *	This is the base class for all menu elements.  It should never
  *	be added itself to a menu, as it is only a container of shared data.
- * 
  */
 
 using UnityEngine;
@@ -88,13 +87,16 @@ namespace AC
 		public int linkedUiID;
 
 		protected int offset = 0;
-		private string idString;
 		private Vector2 dragOffset;
+
+		/** If an AC element and set to scale automatically, how much of the width of the screen it can cover */
+		public float maxAutoWidthFactor = 0.5f;
 
 		#if UNITY_EDITOR
 		private bool doProportionalScaling = false;
 		#endif
 
+		private string cachedLabel;
 		protected Menu parentMenu;
 
 		[SerializeField] protected Rect relativeRect;
@@ -123,6 +125,7 @@ namespace AC
 			changeCursor = false;
 			cursorID = 0;
 			alternativeInputButton = "";
+			maxAutoWidthFactor = 0.5f;
 		}
 
 
@@ -178,8 +181,7 @@ namespace AC
 			changeCursor = _element.changeCursor;
 			cursorID = _element.cursorID;
 			alternativeInputButton = _element.alternativeInputButton;
-
-			idString = ID.ToString ();
+			maxAutoWidthFactor = _element.maxAutoWidthFactor;
 		}
 
 
@@ -196,13 +198,17 @@ namespace AC
 		/**
 		 * <summary>Initialises the linked Unity UI GameObject.</summary>
 		 * <param name = "_menu">The element's parent Menu</param>
+		 * <param name="canvas">The runtime Canvas associated with the Menu</param>
+		 * <param name="addEventListeners">If True, then event listeners should be added to the UI's Interactive component(s)</param>
 		 */
-		public virtual void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public virtual void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{}
 
 
 		protected void CreateUIEvent (UnityEngine.UI.Button uiButton, AC.Menu _menu, UIPointerState uiPointerState = UIPointerState.PointerClick, int _slotIndex = 0, bool liveState = true)
 		{
+			liveState = false; // Causing issues, just use Event System
+
 			if (uiPointerState == UIPointerState.PointerClick)
 			{
 				uiButton.onClick.AddListener (() => {
@@ -231,20 +237,29 @@ namespace AC
 					ProcessClickUI (_menu, _slotIndex, liveState ? KickStarter.playerInput.GetMouseState () : MouseState.SingleClick);
 				} );
 
-				#if UNITY_4_6 || UNITY_4_7 || UNITY_5_0
-				if (eventTrigger.delegates == null)
-				{
-					eventTrigger.delegates = new List<EventTrigger.Entry>();
-				}
-				eventTrigger.delegates.Add (entry);
-				#else
 				eventTrigger.triggers.Add (entry);
-				#endif
 			}
 		}
 
 
-		protected void ProcessClickUI (AC.Menu _menu, int _slot, MouseState _mouseState)
+		protected void CreateHoverSoundHandler (Selectable selectable, AC.Menu _menu, int _slotIndex = 0)
+		{
+			if (selectable == null)
+			{
+				ACDebug.LogWarning ("No linked Selectable found for element " + title + " inside menu " + _menu, _menu.RuntimeCanvas);
+				return;
+			}
+
+			UISlotClick uiSlotClick = selectable.gameObject.GetComponent <UISlotClick>();
+			if (uiSlotClick == null)
+			{
+				uiSlotClick = selectable.gameObject.AddComponent<UISlotClick>();
+				uiSlotClick.Setup (_menu, this, _slotIndex);
+			}
+		}
+
+
+		protected virtual void ProcessClickUI (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			KickStarter.playerInput.ResetClick ();
 			ProcessClick (_menu, _slot, _mouseState);
@@ -256,15 +271,17 @@ namespace AC
 		 * <param name = "_menu">The element's parent Menu</param>
 		 * <param name = "_slot">The index number of the slot that was clicked on</param>
 		 * <param name = "_mouseState">The state of the mouse button</param>
+		 * <returns>True if the click had an effect, and so should be consumed</returns>
 		 */
-		public virtual void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public virtual bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
-			if (clickSound != null && KickStarter.sceneSettings != null)
+			if (clickSound)
 			{
 				KickStarter.sceneSettings.PlayDefaultSound (clickSound, false);
 			}
 
 			KickStarter.eventManager.Call_OnMenuElementClick (_menu, this, _slot, (int) _mouseState);
+			return true;
 		}
 
 
@@ -272,9 +289,12 @@ namespace AC
 		 * <summary>Performs what should happen when the element is clicked on continuously.</summary>
 		 * <param name = "_menu">The element's parent Menu</param>
 		 * <param name = "_mouseState">The state of the mouse button</param>
+		 * <returns>True if the click has an effect</returns>
 		 */
-		public virtual void ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
-		{}
+		public virtual bool ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
+		{
+			return false;
+		}
 
 
 		/**
@@ -330,13 +350,47 @@ namespace AC
 		}
 
 
-		protected string TranslateLabel (string label, int languageNumber)
+		protected virtual string GetLabelToTranslate ()
 		{
-			if (languageNumber == 0)
+			return string.Empty;
+		}
+
+
+		public void UpdateLabel (int languageNumber)
+		{
+			string label = GetLabelToTranslate ();
+			if (!string.IsNullOrEmpty (label))
 			{
-				return label;
+				cachedLabel = KickStarter.runtimeLanguages.GetTranslation (label, lineID, languageNumber, AC_TextType.MenuElement);
 			}
-			return (KickStarter.runtimeLanguages.GetTranslation (label, lineID, languageNumber));
+		}
+
+
+		protected void ClearCache ()
+		{
+			cachedLabel = string.Empty;
+		}
+
+
+		protected string TranslateLabel (int languageNumber)
+		{
+			#if UNITY_EDITOR
+			if (!Application.isPlaying)
+			{
+				return GetLabelToTranslate ();
+			}
+			#endif
+
+			if (languageNumber == Options.GetLanguage ())
+			{
+				if (string.IsNullOrEmpty (cachedLabel))
+				{
+					UpdateLabel (languageNumber);
+				}
+				return cachedLabel;
+			}
+
+			return KickStarter.runtimeLanguages.GetTranslation (GetLabelToTranslate (), lineID, languageNumber, AC_TextType.MenuElement);
 		}
 
 
@@ -348,7 +402,7 @@ namespace AC
 		 */
 		public virtual string GetLabel (int slot, int languageNumber)
 		{
-			return "";
+			return string.Empty;
 		}
 
 
@@ -364,7 +418,7 @@ namespace AC
 
 
 		/** If True, then the element is visible */
-		public bool IsVisible
+		public virtual bool IsVisible
 		{
 			get
 			{
@@ -390,7 +444,7 @@ namespace AC
 			EditorGUILayout.Space ();	
 			title = CustomGUILayout.TextField ("Element name:", title, apiPrefix + ".title", "A text identifier for use in Actions and custom scripts");
 			isVisible = CustomGUILayout.Toggle ("Is visible?", isVisible, apiPrefix + ".IsVisible", "If True, the element is enabled and visible");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			ShowGUI (menu);
 		}
@@ -417,14 +471,14 @@ namespace AC
 					EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 					hoverSound = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Hover sound:", hoverSound, false, apiPrefix + ".hoverSound", "The sound to play when the cursor hovers over the element");
 					clickSound = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Click sound:", clickSound, false, apiPrefix + ".clickSound", "The sound to play when the element is clicked on");
-					EditorGUILayout.EndVertical ();
+					CustomGUILayout.EndVertical ();
 				}
 				return;
 			}
 
 			if (!(this is MenuGraphic))
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				font = (Font) CustomGUILayout.ObjectField <Font> ("Font:", font, false, apiPrefix + ".font", "The text font");
 				fontScaleFactor = CustomGUILayout.Slider ("Text size:", fontScaleFactor, 1f, 4f, apiPrefix + ".fontScaleFactor", "The font size");
 
@@ -435,10 +489,10 @@ namespace AC
 				{
 					fontHighlightColor = CustomGUILayout.ColorField ("Text colour (highlighted):", fontHighlightColor, apiPrefix + ".fontHighlightColor", "The font colour when the element is highlighted");
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			ShowTextureGUI (apiPrefix);
 
@@ -447,7 +501,7 @@ namespace AC
 			backgroundTexture = (Texture2D) CustomGUILayout.ObjectField <Texture2D> (backgroundTexture, false, GUILayout.Width (70f), GUILayout.Height (30f), apiPrefix + ".backgroundTexture");
 			EditorGUILayout.EndHorizontal ();
 
-			if (numSlots > 1 && backgroundTexture != null)
+			if (numSlots > 1 && backgroundTexture)
 			{
 				singleSlotBackgrounds = CustomGUILayout.ToggleLeft ("Background texture is per slot?", singleSlotBackgrounds, apiPrefix + ".singleSlotBackgrounds", "If True, then each slot will have its own background texture - as opposed to a single background texture that spans the whole element");
 			}
@@ -463,7 +517,7 @@ namespace AC
 				clickSound = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Click sound:", clickSound, false, apiPrefix + ".clickSound", "The sound to play when the element is clicked on");
 			}
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			EndGUI (apiPrefix);
 		}
@@ -471,7 +525,7 @@ namespace AC
 		
 		protected void EndGUI (string apiPrefix)
 		{
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			positionType = (AC_PositionType2) CustomGUILayout.EnumPopup ("Position:", positionType, apiPrefix + ".positionType", "How the element is positioned");
 			if (positionType == AC_PositionType2.AbsolutePixels)
 			{
@@ -491,9 +545,9 @@ namespace AC
 				relativePosition.y = EditorGUILayout.Slider (relativePosition.y, 0f, 100f);
 				EditorGUILayout.EndHorizontal ();
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			sizeType = (AC_SizeType) CustomGUILayout.EnumPopup ("Size:", sizeType, apiPrefix + ".sizeType", "How the element is scaled");
 			if (sizeType == AC_SizeType.Manual)
 			{
@@ -542,8 +596,13 @@ namespace AC
 				{
 					EditorGUILayout.HelpBox ("Automatic sizing may not appear correct without a Font assigned above.", MessageType.Warning);
 				}
+
+				if (this is MenuLabel)
+				{
+					maxAutoWidthFactor = CustomGUILayout.Slider ("Max auto-width factor:", maxAutoWidthFactor, 0f, 1f, apiPrefix + ".maxAutoWidthFactor", "How much width, as a proportion of the total screen width, the element can take up when re-sizing itself automatically.");
+				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 		
 		
@@ -614,10 +673,10 @@ namespace AC
 			if (changeCursor)
 			{
 				CursorManager cursorManager = AdvGame.GetReferences ().cursorManager;
-				if (cursorManager != null)
+				if (cursorManager)
 				{
 					int cursorIndex = cursorManager.GetIntFromID (cursorID);
-					cursorIndex = CustomGUILayout.Popup ("Cursor ID:", cursorIndex, cursorManager.GetLabelsArray (), apiPrefix + ".cursorID", "The Cursor to display when the mouse hovers of the element");
+					cursorIndex = CustomGUILayout.Popup ("Cursor:", cursorIndex, cursorManager.GetLabelsArray (), apiPrefix + ".cursorID", "The Cursor to display when the mouse hovers of the element");
 					cursorID = cursorManager.cursorIcons[cursorIndex].id;
 				}
 				else
@@ -629,7 +688,7 @@ namespace AC
 
 
 		/**
-		 * <summary>Checks if the Elements makesreferences from a given global variable to a given local variable</summary>
+		 * <summary>Checks if the Element makes references from a given global variable to a given local variable</summary>
 		 * <param name = "oldGlobalID">The ID number of the old global variable</param>
 		 * <param name = "newLocalID">The ID number of the new local variable</param>
 		 * <returns>True if the Element was affected</returns>
@@ -649,25 +708,95 @@ namespace AC
 		{
 			return 0;
 		}
-		
+
+
+		/**
+		 * <summary>Updates references the MenuElement makes to a global variable</summary>
+		 * <param name = "varID">The global variable's original ID number</param>
+		 * <param name = "varID">The global variable's new ID number</param>
+		 * <returns>The number of references the MenuElement makes to the variable</returns>
+		 */
+		public virtual int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			return 0;
+		}
+
+
+		/**
+		 * <summary>Checks if the Menu makes reference to a particular ActionList asset</summary>
+		 * <param name = "actionListAsset">The ActionList to check for</param>
+		 * <returns>True if the Menu references the ActionList</param>
+		 */
+		public virtual bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			return false;
+		}
+
 		#endif
 
 
 		/**
-		 * Hides all linked Unity UI GameObjects associated with the element.
+		 * <summary>Checks if the Element makes reference to a particular GameObject</summary>
+		 * <param name = "gameObject">The GameObject to check for</param>
+		 * <param name = "id">The GameObject's associated ConstantID value</param>
+		 * <returns>True if the Element references the GameObject</param>
 		 */
+		public virtual bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			return false;
+		}
+
+
+		/**
+		 * <summary>Gets the slot index that reference a particular GameObject</summary>
+		 * <param name = "gameObject">The GameObject to check for</param>
+		 * <returns>The slot index that references the GameObject</param>
+		 */
+		public virtual int GetSlotIndex (GameObject gameObject)
+		{
+			return -1;
+		}
+
+
+		/** Hides all linked Unity UI GameObjects associated with the element. */
 		public virtual void HideAllUISlots ()
 		{}
 
 
-		protected void LimitUISlotVisibility (UISlot[] uiSlots, int _numSlots, UIHideStyle uiHideStyle)
+		protected void LimitUISlotVisibility (UISlot[] uiSlots, int _numSlots, UIHideStyle uiHideStyle, Texture emptyTexture = null)
 		{
 			if (uiSlots == null)
 			{
 				return;
 			}
 
-			if (!isVisible && _numSlots > 0)
+			if (!IsVisible && _numSlots > 0)
+			{
+				return;
+			}
+
+			for (int i=0; i<uiSlots.Length; i++)
+			{
+				if (i < _numSlots)
+				{
+					uiSlots[i].ShowUIElement (uiHideStyle);
+				}
+				else
+				{
+					uiSlots[i].HideUIElement (uiHideStyle);
+				}
+			}
+		}
+
+
+		protected void LimitUISlotVisibility (UISlot[] uiSlots, int _numSlots, UISelectableHideStyle uiHideStyle)
+		{
+			if (uiSlots == null)
+			{
+				return;
+			}
+
+			if (!IsVisible && _numSlots > 0)
 			{
 				return;
 			}
@@ -717,7 +846,7 @@ namespace AC
 		 */
 		public virtual void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
-			if (backgroundTexture != null)
+			if (backgroundTexture)
 			{
 				if (singleSlotBackgrounds)
 				{
@@ -800,11 +929,20 @@ namespace AC
 		}
 
 
-		protected void LimitOffset (int maxValue)
+		protected virtual int MaxSlotsForOffset
 		{
-			if (offset > 0 && (numSlots + offset) > maxValue)
+			get
 			{
-				offset = maxValue - numSlots;
+				return numSlots;
+			}
+		}
+
+
+		protected void LimitOffset ()
+		{
+			if (offset > 0 && (numSlots + offset) > MaxSlotsForOffset)
+			{
+				offset = MaxSlotsForOffset - numSlots;
 			}
 			if (offset < 0)
 			{
@@ -815,26 +953,41 @@ namespace AC
 
 		protected void Shift (AC_ShiftInventory shiftType, int maxSlots, int arraySize, int amount)
 		{
-			if (shiftType == AC_ShiftInventory.ShiftNext)
-			{
-				offset += amount;
+			int newOffset = offset;
 
-				if ((maxSlots + offset) >= arraySize)
-				{
-					offset = arraySize - maxSlots;
-				}
+			switch (shiftType)
+			{ 
+				case AC_ShiftInventory.ShiftPrevious:
+					if (offset > 0)
+					{
+						newOffset -= amount;
+						if (newOffset < 0)
+						{
+							newOffset = 0;
+						}
+					}
+					break;
+
+				case AC_ShiftInventory.ShiftNext:
+					{
+						newOffset += amount;
+						if ((maxSlots + newOffset) >= arraySize)
+						{
+							newOffset = arraySize - maxSlots;
+						}
+					}
+					break;
+
+				default:
+					break;
 			}
-			else if (shiftType == AC_ShiftInventory.ShiftPrevious && offset > 0)
+
+			if (newOffset != offset)
 			{
-				offset -= amount;
-
-				if (offset < 0)
-				{
-					offset = 0;
-				}
-			}
-
-			KickStarter.eventManager.Call_OnMenuElementShift (this, shiftType);
+				offset = newOffset;
+				KickStarter.eventManager.Call_OnMenuElementShift (this, shiftType);
+				if (parentMenu != null) parentMenu.ResetVisibleElements ();
+			}			
 		}
 
 
@@ -894,7 +1047,8 @@ namespace AC
 
 		protected void SetAbsoluteSize (Vector2 _size)
 		{
-			slotSize = new Vector2 (_size.x * 100f / AdvGame.GetMainGameViewSize (true).x, _size.y * 100f / AdvGame.GetMainGameViewSize (true).y);
+			Vector2 playableAreaSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width, ACScreen.height);
+			SetSize (new Vector2 (_size.x * 100f / playableAreaSize.x, _size.y * 100f / playableAreaSize.y));
 		}
 
 
@@ -919,7 +1073,14 @@ namespace AC
 			Vector2 screenFactor = Vector2.one;
 			if (sizeType != AC_SizeType.AbsolutePixels)
 			{
-				screenFactor = new Vector2 (AdvGame.GetMainGameViewSize (true).x / 100f, AdvGame.GetMainGameViewSize (true).y / 100f);
+				if (KickStarter.mainCamera)
+				{
+					screenFactor = new Vector2 (KickStarter.mainCamera.GetPlayableScreenArea (false).size.x / 100f, KickStarter.mainCamera.GetPlayableScreenArea (false).size.y / 100f);
+				}
+				else
+				{
+					screenFactor = new Vector2 (ACScreen.safeArea.size.x / 100f, ACScreen.safeArea.size.y / 100f);
+				}
 			}
 
 			Rect positionRect = relativeRect;
@@ -979,47 +1140,56 @@ namespace AC
 
 			if (sizeType != AC_SizeType.AbsolutePixels)
 			{
-				screenSize = new Vector2 (AdvGame.GetMainGameViewSize (true).x / 100f, AdvGame.GetMainGameViewSize (true).y / 100f);
-			}
-
-			if (orientation == ElementOrientation.Horizontal)
-			{
-				relativeRect.width = slotSize.x * screenSize.x * numSlots;
-				relativeRect.height = slotSize.y * screenSize.y;
-				if (numSlots > 1)
+				if (KickStarter.mainCamera)
 				{
-					relativeRect.width += slotSpacing * screenSize.x * (numSlots - 1);
-				}
-			}
-			else if (orientation == ElementOrientation.Vertical)
-			{
-				relativeRect.width = slotSize.x * screenSize.x;
-				relativeRect.height = slotSize.y * screenSize.y * numSlots;
-				if (numSlots > 1)
-				{
-					relativeRect.height += slotSpacing * screenSize.y * (numSlots - 1);
-				}
-			}
-			else if (orientation == ElementOrientation.Grid)
-			{
-				if (numSlots < gridWidth)
-				{
-					relativeRect.width = (slotSize.x + slotSpacing) * screenSize.x * numSlots;
-					relativeRect.height = slotSize.y * screenSize.y;
+					screenSize = new Vector2 (KickStarter.mainCamera.GetPlayableScreenArea (false).size.x / 100f, KickStarter.mainCamera.GetPlayableScreenArea (false).size.y / 100f);
 				}
 				else
 				{
-					float numRows = Mathf.CeilToInt ((float) numSlots / gridWidth);
+					screenSize = new Vector2 ( ACScreen.width / 100f, ACScreen.height / 100f);
+				}
+			}
 
-					relativeRect.width = slotSize.x * screenSize.x * gridWidth;
-					relativeRect.height = slotSize.y * screenSize.y * numRows;
-
+			switch (orientation)
+			{
+				case ElementOrientation.Horizontal:
+					relativeRect.width = slotSize.x * screenSize.x * numSlots;
+					relativeRect.height = slotSize.y * screenSize.y;
 					if (numSlots > 1)
 					{
-						relativeRect.width += slotSpacing * screenSize.x * (gridWidth - 1);
-						relativeRect.height += slotSpacing * screenSize.y * (numRows - 1);
+						relativeRect.width += slotSpacing * screenSize.x * (numSlots - 1);
 					}
-				}
+					break;
+
+				case ElementOrientation.Vertical:
+					relativeRect.width = slotSize.x * screenSize.x;
+					relativeRect.height = slotSize.y * screenSize.y * numSlots;
+					if (numSlots > 1)
+					{
+						relativeRect.height += slotSpacing * screenSize.y * (numSlots - 1);
+					}
+					break;
+
+				case ElementOrientation.Grid:
+					if (numSlots < gridWidth)
+					{
+						relativeRect.width = (slotSize.x + slotSpacing) * screenSize.x * numSlots;
+						relativeRect.height = slotSize.y * screenSize.y;
+					}
+					else
+					{
+						float numRows = Mathf.CeilToInt ((float) numSlots / gridWidth);
+
+						relativeRect.width = slotSize.x * screenSize.x * gridWidth;
+						relativeRect.height = slotSize.y * screenSize.y * numRows;
+
+						if (numSlots > 1)
+						{
+							relativeRect.width += slotSpacing * screenSize.x * (gridWidth - 1);
+							relativeRect.height += slotSpacing * screenSize.y * (numRows - 1);
+						}
+					}
+					break;
 			}
 		}
 
@@ -1035,7 +1205,8 @@ namespace AC
 				return (int) (fontScaleFactor * 10f);
 			}
 
-			return (int) (AdvGame.GetMainGameViewSize (true).x * fontScaleFactor / 100);
+			float xScale = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size.x : ACScreen.width;
+			return (int) (xScale * fontScaleFactor / 100);
 		}
 
 		
@@ -1055,10 +1226,10 @@ namespace AC
 
 			// Calculate with no word-wrapping
 			Vector2 singleLineSize = normalStyle.CalcSize (content);
-
+			
 			// Calculate with word-wrapping
 			normalStyle.wordWrap = true;
-			float maxWidth = AdvGame.GetMainGameViewSize ().x / 2f;
+			float maxWidth = ACScreen.safeArea.width * maxAutoWidthFactor;
 			float height = normalStyle.CalcHeight (content, maxWidth);
 			Vector2 wrappedSize = new Vector2 (maxWidth, height);
 
@@ -1167,13 +1338,13 @@ namespace AC
 
 		protected T LinkUIElement <T> (Canvas canvas) where T : Behaviour
 		{
-			if (canvas != null)
+			if (canvas)
 			{
 				T field = Serializer.GetGameObjectComponent <T> (linkedUiID, canvas.gameObject);
 
 				if (field == null)
 				{
-					ACDebug.LogWarning ("Cannot find linked UI Element for " + title, canvas);
+					ACDebug.LogWarning ("Cannot find " + typeof (T) + " for menu element " + title + " in Canvas " + canvas.name, canvas);
 				}
 				return field;
 			}
@@ -1183,15 +1354,15 @@ namespace AC
 
 		protected void UpdateUISelectable <T> (T field, UISelectableHideStyle uiSelectableHideStyle) where T : Selectable
 		{
-			if (Application.isPlaying && field != null)
+			if (Application.isPlaying && field)
 			{
 				if (uiSelectableHideStyle == UISelectableHideStyle.DisableObject)
 				{
-					field.gameObject.SetActive (isVisible);
+					field.gameObject.SetActive (IsVisible);
 				}
 				else if (uiSelectableHideStyle == UISelectableHideStyle.DisableInteractability)
 				{
-					field.interactable = isVisible;
+					field.interactable = IsVisible;
 				}
 			}
 		}
@@ -1199,9 +1370,9 @@ namespace AC
 
 		protected void UpdateUIElement <T> (T field) where T : Behaviour
 		{
-			if (Application.isPlaying && field != null && field.gameObject.activeSelf != isVisible)
+			if (Application.isPlaying && field && field.gameObject.activeSelf != IsVisible)
 			{
-				field.gameObject.SetActive (isVisible);
+				field.gameObject.SetActive (IsVisible);
 			}
 		}
 
@@ -1263,7 +1434,7 @@ namespace AC
 		public void SetOffset (int value)
 		{
 			offset = value;
-			LimitOffset (numSlots);
+			LimitOffset ();
 		}
 
 
@@ -1277,15 +1448,15 @@ namespace AC
 		}
 
 
-		/**
-		 * The Menu's id number as a string.
-		 */
-		public string IDString
+		/** Gets the data related to the element's visiblity as a serialized string */
+		public string GetVisibilitySaveData ()
 		{
-			get
-			{
-				return idString;
-			}
+			System.Text.StringBuilder sb = new System.Text.StringBuilder ();
+			sb.Append (ID.ToString ());
+			sb.Append ("=");
+			sb.Append (isVisible.ToString ());
+			sb.Append ("+");
+			return sb.ToString ();
 		}
 
 

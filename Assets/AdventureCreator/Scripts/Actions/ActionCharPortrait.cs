@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharPortrait.cs"
  * 
@@ -27,59 +27,68 @@ namespace AC
 		public int parameterID = -1;
 		public int constantID = 0;
 		public bool isPlayer;
+		public int playerID = -1;
 		public Char _char;
 		protected Char runtimeChar;
 		public Texture newPortraitGraphic;
 
 
-		public ActionCharPortrait ()
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Switch Portrait"; }}
+		public override string Description { get { return "Changes the 'speaking' graphic used by Characters. To display this graphic in a Menu, place a Graphic element of type Dialogue Portrait in a Menu of Appear type: When Speech Plays. If the new graphic is placed in a Resources folder, it will be stored in saved game files."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Switch Portrait";
-			description = "Changes the 'speaking' graphic used by Characters. To display this graphic in a Menu, place a Graphic element of type Dialogue Portrait in a Menu of Appear type: When Speech Plays. If the new graphic is placed in a Resources folder, it will be stored in saved game files.";
-		}
-
-
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
-			runtimeChar = AssignFile <Char> (parameters, parameterID, constantID, _char);
-
 			if (isPlayer)
 			{
-				runtimeChar = KickStarter.player;
+				runtimeChar = AssignPlayer (playerID, parameters, parameterID);
+				playerID = AssignInteger (parameters, parameterID, playerID);
+			}
+			else
+			{
+				runtimeChar = AssignFile<Char> (parameters, parameterID, constantID, _char);
 			}
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			if (runtimeChar)
+			if (newPortraitGraphic == null)
 			{
-				runtimeChar.portraitIcon.texture = newPortraitGraphic;
-				runtimeChar.portraitIcon.ClearSprites ();
-				runtimeChar.portraitIcon.ClearCache ();
+				return 0f;
 			}
-			
+
+			if (runtimeChar != null)
+			{
+				runtimeChar.portraitIcon.ReplaceTexture (newPortraitGraphic);
+			}
+			else if (playerID >= 0 && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && KickStarter.saveSystem.CurrentPlayerID != playerID)
+			{
+				// Special case: Player is not in the scene, so manually update their PlayerData
+				PlayerData playerData = KickStarter.saveSystem.GetPlayerData (playerID);
+				if (playerData != null)
+				{
+					playerData.playerPortraitGraphic = AssetLoader.GetAssetInstanceID (newPortraitGraphic);
+				}
+			}
+
 			return 0f;
 		}
 		
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			// Action-specific Inspector GUI code here
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
 			if (isPlayer)
 			{
-				if (Application.isPlaying)
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
 				{
-					_char = KickStarter.player;
-				}
-				else
-				{
-					_char = AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
 				}
 			}
 			else
@@ -100,17 +109,16 @@ namespace AC
 			}
 			
 			newPortraitGraphic = (Texture) EditorGUILayout.ObjectField ("New Portrait graphic:", newPortraitGraphic, typeof (Texture), true);
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (!isPlayer)
 			{
 				if (saveScriptsToo)
 				{
-					if (_char != null && _char.GetComponent <NPC>())
+					if (_char != null && !_char.IsPlayer)
 					{
 						AddSaveScript <RememberNPC> (_char);
 					}
@@ -134,6 +142,27 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0 && playerID < 0)
+			{
+				if (_char && _char.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -145,7 +174,7 @@ namespace AC
 		 */
 		public static ActionCharPortrait CreateNew (Char characterToUpdate, Texture newPortraitGraphic)
 		{
-			ActionCharPortrait newAction = (ActionCharPortrait) CreateInstance <ActionCharPortrait>();
+			ActionCharPortrait newAction = CreateNew<ActionCharPortrait> ();
 			newAction._char = characterToUpdate;
 			newAction.newPortraitGraphic = newPortraitGraphic;
 			return newAction;

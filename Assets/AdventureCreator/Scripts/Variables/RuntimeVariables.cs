@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RuntimeVariables.cs"
  * 
@@ -19,30 +19,49 @@ namespace AC
 	 * Stores the game's global variables at runtime, as well as the speech log.
 	 * This component should be attached to the PersistentEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_runtime_variables.html")]
-	#endif
 	public class RuntimeVariables : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The List of the game's global variables. */
 		public List<GVar> globalVars = new List<GVar>();
 
-		private List<CustomToken> customTokens = new List<CustomToken>();
-		private List<SpeechLog> speechLines = new List<SpeechLog>();
-		private string[] textEventTokenKeys = new string[0];
+		protected List<CustomToken> customTokens = new List<CustomToken>();
+		protected List<SpeechLog> speechLines = new List<SpeechLog>();
+		protected string[] textEventTokenKeys = new string[0];
+
+		#endregion
 
 
-		/**
-		 * Downloads variables from the Global Manager to the scene.
-		 * This is public because it is also called when the game is restarted.
-		 */
-		public void OnStart ()
+		#region PublicFunctions
+
+		/** Links all variables to their linked counterpart. */
+		public void OnInitPersistentEngine ()
 		{
-			TransferFromManager ();
-			AssignOptionsLinkedVariabes ();
+			AssignOptionsLinkedVariables ();
 			LinkAllValues ();
 		}
+
+
+		/** Downloads variables from the Global Manager to the scene. */
+		public void TransferFromManager ()
+		{
+			if (AdvGame.GetReferences() && AdvGame.GetReferences().variablesManager)
+			{
+				VariablesManager variablesManager = AdvGame.GetReferences ().variablesManager;
+
+				globalVars.Clear();
+				foreach (GVar assetVar in variablesManager.vars)
+				{
+					GVar newVar = new GVar (assetVar);
+					newVar.CreateRuntimeTranslations();
+					globalVars.Add(newVar);
+				}
+			}
+		}
+
 
 
 		/**
@@ -140,31 +159,6 @@ namespace AC
 		}
 
 
-		private string GetCustomTokensAsString ()
-		{
-			if (customTokens != null)
-			{
-				System.Text.StringBuilder customTokenString = new System.Text.StringBuilder ();
-
-				foreach (CustomToken customToken in customTokens)
-				{
-					customTokenString.Append (customToken.ID.ToString ());
-					customTokenString.Append (SaveSystem.colon);
-					customTokenString.Append (customToken.GetSafeReplacementText ());
-					customTokenString.Append (SaveSystem.pipe);
-				}
-				
-				if (customTokens.Count > 0)
-				{
-					customTokenString.Remove (customTokenString.Length-1, 1);
-				}
-				
-				return customTokenString.ToString ();		
-			}
-			return string.Empty;
-		}
-
-
 		/**
 		 * <summary>Re-assigns the CustomToken variables from a saved string.</summary>
 		 * <param name = "savedString">The string that contains the CustomToken variables data</param>
@@ -191,55 +185,16 @@ namespace AC
 		}
 
 
-		private void TransferFromManager ()
-		{
-			if (AdvGame.GetReferences () && AdvGame.GetReferences ().variablesManager)
-			{
-				VariablesManager variablesManager = AdvGame.GetReferences ().variablesManager;
-				
-				globalVars.Clear ();
-				foreach (GVar assetVar in variablesManager.vars)
-				{
-					globalVars.Add (new GVar (assetVar));
-				}
-
-				foreach (GVar _var in globalVars)
-				{
-					_var.CreateRuntimeTranslations ();
-				}
-			}
-		}
-
-
 		/**
 		 * <summary>Transfers the values of all option-linked global variables from the options data into the variables.
 		 */
-		public void AssignOptionsLinkedVariabes ()
+		public void AssignOptionsLinkedVariables ()
 		{
 			if (AdvGame.GetReferences () && AdvGame.GetReferences ().variablesManager)
 			{
-				if (Options.optionsData != null && Options.optionsData.linkedVariables != "")
+				if (Options.optionsData != null && !string.IsNullOrEmpty (Options.optionsData.linkedVariables))
 				{
 					SaveSystem.AssignVariables (Options.optionsData.linkedVariables, true);
-				}
-			}
-		}
-
-
-		private void LinkAllValues ()
-		{
-			foreach (GVar var in globalVars)
-			{
-				if (var.link == VarLink.PlaymakerVariable || var.link == VarLink.CustomScript)
-				{
-					if (var.updateLinkOnStart)
-					{
-						var.Download (VariableLocation.Global);
-					}
-					else
-					{
-						var.Upload (VariableLocation.Global);
-					}
 				}
 			}
 		}
@@ -274,11 +229,7 @@ namespace AC
 					{
 						if (!ignoreOptionLinked || globalVar.link != VarLink.OptionsData)
 						{
-							globalVar.val = presetValue.val;
-							globalVar.floatVal = presetValue.floatVal;
-							globalVar.textVal = presetValue.textVal;
-							globalVar.vector3Val = presetValue.vector3Val;
-
+							globalVar.AssignPreset (presetValue);
 							globalVar.Upload (VariableLocation.Global);
 						}
 					}
@@ -333,6 +284,58 @@ namespace AC
 			return null;
 		}
 
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected string GetCustomTokensAsString ()
+		{
+			if (customTokens != null)
+			{
+				System.Text.StringBuilder customTokenString = new System.Text.StringBuilder ();
+
+				foreach (CustomToken customToken in customTokens)
+				{
+					customTokenString.Append (customToken.ID.ToString ());
+					customTokenString.Append (SaveSystem.colon);
+					customTokenString.Append (customToken.GetSafeReplacementText ());
+					customTokenString.Append (SaveSystem.pipe);
+				}
+				
+				if (customTokens.Count > 0)
+				{
+					customTokenString.Remove (customTokenString.Length-1, 1);
+				}
+				
+				return customTokenString.ToString ();		
+			}
+			return string.Empty;
+		}
+
+
+		protected void LinkAllValues ()
+		{
+			foreach (GVar var in globalVars)
+			{
+				if (var.link == VarLink.PlaymakerVariable || var.link == VarLink.CustomScript)
+				{
+					if (var.updateLinkOnStart)
+					{
+						var.Download (VariableLocation.Global);
+					}
+					else
+					{
+						var.Upload (VariableLocation.Global);
+					}
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region GetSet
 
 		/**
 		 * An array of string keys that can be inserted into text fields in the form [key:value].
@@ -349,6 +352,8 @@ namespace AC
 				textEventTokenKeys = value;
 			}
 		}
+
+		#endregion
 
 	}
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDirector.cs"
  * 
@@ -9,17 +9,12 @@
  * 
  */
 
-#if UNITY_2017_1_OR_NEWER
-#define CAN_USE_TIMELINE
-#endif
-
 using UnityEngine;
 using System.Collections.Generic;
-
-#if CAN_USE_TIMELINE
+#if !ACIgnoreTimeline
 using UnityEngine.Timeline;
-using UnityEngine.Playables;
 #endif
+using UnityEngine.Playables;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -34,10 +29,11 @@ namespace AC
 
 		public bool disableCamera;
 
-		#if CAN_USE_TIMELINE
 		public PlayableDirector director;
 		protected PlayableDirector runtimeDirector;
+		#if !ACIgnoreTimeline
 		public TimelineAsset newTimeline;
+		#endif
 		public int directorConstantID = 0;
 		public int directorParameterID = -1;
 
@@ -46,22 +42,18 @@ namespace AC
 		public bool restart = true;
 		public bool pause = false;
 		public bool updateBindings = false;
-		[SerializeField] private BindingData[] newBindings = new BindingData[0];
-		#endif
+		[SerializeField] protected BindingData[] newBindings = new BindingData[0];
+
+		private double lastFrameDuration;
+
+
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Control Timeline"; }}
+		public override string Description { get { return "Controls a Timeline.  This is only compatible with Unity 2017 or newer."; }}
 
 		
-		public ActionTimeline ()
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "Control Timeline";
-			description = "Controls a Timeline.  This is only compatible with Unity 2017 or newer.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
-			#if CAN_USE_TIMELINE
 			runtimeDirector = AssignFile <PlayableDirector> (parameters, directorParameterID, directorConstantID, director);
 
 			if (newBindings != null)
@@ -70,9 +62,10 @@ namespace AC
 				{
 					if (newBindings[i].isPlayer)
 					{
-						if (KickStarter.player != null)
+						Player player = AssignPlayer (newBindings[i].playerID, parameters, newBindings[i].parameterID);
+						if (player != null)
 						{
-							newBindings[i].gameObject = KickStarter.player.gameObject;
+							newBindings[i].gameObject = player.gameObject;
 						}
 						else
 						{
@@ -85,68 +78,94 @@ namespace AC
 					}
 				}
 			}
-			#endif
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			#if CAN_USE_TIMELINE
+			#if ACIgnoreTimeline
+			return 0f;
+			#endif
+
 			if (!isRunning)
 			{
-				isRunning = true;
-
-				if (runtimeDirector != null)
+				if (runtimeDirector)
 				{
-					if (method == ActionDirectorMethod.Play)
+					switch (method)
 					{
-						isRunning = true;
-
-						if (restart)
-						{
-							PrepareDirector ();
-
-							runtimeDirector.time = 0f;
-							runtimeDirector.Play ();
-						}
-						else
-						{
-							runtimeDirector.Resume ();
-						}
-
-						if (willWait)
-						{
-							if (disableCamera)
+						case ActionDirectorMethod.Play:
 							{
-								KickStarter.mainCamera.Disable ();
+								isRunning = true;
+
+								if (restart)
+								{
+									PrepareDirector ();
+
+									runtimeDirector.time = 0f;
+									runtimeDirector.Play ();
+								}
+								else
+								{
+									runtimeDirector.Resume ();
+								}
+
+								if (willWait)
+								{
+									if (disableCamera)
+									{
+										KickStarter.mainCamera.Disable ();
+									}
+									isRunning = true;
+
+									lastFrameDuration = runtimeDirector.time;
+									return defaultPauseTime;
+								}
 							}
-							return ((float) runtimeDirector.duration - (float) runtimeDirector.time);
-						}
-					}
-					else if (method == ActionDirectorMethod.Stop)
-					{
-						if (disableCamera)
-						{
-							KickStarter.mainCamera.Enable ();
-						}
+							break;
 
-						if (pause)
-						{
-							runtimeDirector.Pause ();
-						}
-						else
-						{
-							PrepareDirectorEnd ();
+						case ActionDirectorMethod.Stop:
+							{
+								if (disableCamera)
+								{
+									KickStarter.mainCamera.Enable ();
+								}
 
-							runtimeDirector.time = runtimeDirector.duration;
-							runtimeDirector.Stop ();
-						}
+								if (pause)
+								{
+									runtimeDirector.Pause ();
+								}
+								else
+								{
+									PrepareDirectorEnd ();
+
+									runtimeDirector.time = runtimeDirector.duration;
+									runtimeDirector.Stop ();
+								}
+							}
+							break;
+
+						default:
+							break;
 					}
 				}
 			}
 			else
 			{
-				if (method == ActionDirectorMethod.Play && disableCamera)
+				if (KickStarter.stateHandler.ApplicationIsPaused ())
+				{
+					return defaultPauseTime;
+				}
+
+				if (runtimeDirector.state != PlayState.Paused || (!KickStarter.stateHandler.ApplicationIsInFocus () && !Application.runInBackground))
+				{
+					if (lastFrameDuration <= runtimeDirector.time && lastFrameDuration < runtimeDirector.duration)
+					{
+						lastFrameDuration = runtimeDirector.time;
+						return defaultPauseTime;
+					}
+				}
+
+				if (disableCamera)
 				{
 					KickStarter.mainCamera.Enable ();
 				}
@@ -154,15 +173,17 @@ namespace AC
 				PrepareDirectorEnd ();
 				isRunning = false;
 			}
-			#endif
-			
+
 			return 0f;
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
-			#if CAN_USE_TIMELINE
+			#if ACIgnoreTimeline
+			return;
+			#endif
+
 			if (runtimeDirector != null)
 			{
 				if (disableCamera)
@@ -170,41 +191,56 @@ namespace AC
 					KickStarter.mainCamera.Enable ();
 				}
 
-				if (method == ActionDirectorMethod.Play)
+				if (!isRunning)
 				{
-					if (runtimeDirector.extrapolationMode == DirectorWrapMode.Loop)
-					{
-						PrepareDirector ();
+					PrepareDirector ();
+				}
 
-						if (restart)
+				switch (method)
+				{
+					case ActionDirectorMethod.Play:
+						if (runtimeDirector.extrapolationMode == DirectorWrapMode.Loop)
 						{
-							runtimeDirector.Play ();
+							if (restart)
+							{
+								runtimeDirector.Play ();
+							}
+							else
+							{
+								runtimeDirector.Resume ();
+							}
+							return;
+						}
+
+						if (!isRunning)
+						{
+							runtimeDirector.time = runtimeDirector.duration;
+							runtimeDirector.Evaluate ();
+							runtimeDirector.Stop ();
+						}
+
+						PrepareDirectorEnd ();
+
+						runtimeDirector.time = runtimeDirector.duration;
+						runtimeDirector.Evaluate ();
+						runtimeDirector.Stop ();
+						break;
+
+					case ActionDirectorMethod.Stop:
+						if (pause)
+						{
+							runtimeDirector.Pause ();
 						}
 						else
 						{
-							runtimeDirector.Resume ();
+							runtimeDirector.Stop ();
 						}
-						return;
-					}
+						break;
 
-					PrepareDirectorEnd ();
-
-					runtimeDirector.Stop ();
-					runtimeDirector.time = runtimeDirector.duration;
-				}
-				else if (method == ActionDirectorMethod.Stop)
-				{
-					if (pause)
-					{
-						runtimeDirector.Pause ();
-					}
-					else
-					{
-						runtimeDirector.Stop ();
-					}
+					default:
+						break;
 				}
 			}
-			#endif
 		}
 
 
@@ -212,19 +248,20 @@ namespace AC
 		{
 			if (isRunning)
 			{
-				isRunning = false;
 				Skip ();
+				isRunning = false;
 			}
 		}
 
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			#if CAN_USE_TIMELINE
-			method = (ActionDirectorMethod) EditorGUILayout.EnumPopup ("Method:", method);
-
+			#if ACIgnoreTimeline
+			EditorGUILayout.HelpBox ("This Action requires Timeline to be installed.", MessageType.Warning);
+			#else			
+			
 			directorParameterID = Action.ChooseParameterGUI ("Director:", parameters, directorParameterID, ParameterType.GameObject);
 			if (directorParameterID >= 0)
 			{
@@ -238,6 +275,8 @@ namespace AC
 				directorConstantID = FieldToID <PlayableDirector> (director, directorConstantID);
 				director = IDToField <PlayableDirector> (director, directorConstantID, false);
 			}
+
+			method = (ActionDirectorMethod) EditorGUILayout.EnumPopup ("Method:", method);
 
 			if (director != null || directorParameterID >= 0)
 			{
@@ -272,6 +311,10 @@ namespace AC
 
 					if (willWait)
 					{
+						/*if (director && director.extrapolationMode == DirectorWrapMode.Loop)
+						{
+							EditorGUILayout.HelpBox ("Cannot wait if the Director's 'Wrap Mode' is set to 'Loop'", MessageType.Warning);
+						}*/
 						disableCamera = EditorGUILayout.Toggle ("Disable AC camera?", disableCamera);
 					}
 				}
@@ -282,18 +325,13 @@ namespace AC
 				}
 			}
 
-			#else
-			EditorGUILayout.HelpBox ("This Action is only compatible with Unity 5.6 or newer.", MessageType.Info);
 			#endif
-
-			AfterRunningOption ();
 		}
 
 
-		#if CAN_USE_TIMELINE
-
-		private int rebindTrackIndex;
-		private void ShowBindingsUI (TimelineAsset timelineAsset, List<ActionParameter> parameters)
+		#if !ACIgnoreTimeline
+		protected int rebindTrackIndex;
+		protected void ShowBindingsUI (TimelineAsset timelineAsset, List<ActionParameter> parameters)
 		{
 			if (timelineAsset == null) return;
 
@@ -336,18 +374,27 @@ namespace AC
 
 			if (newBindings.Length > 1)
 			{
-				EditorGUILayout.HelpBox ("Note: All bindings will be affected - not just the one selected above.", MessageType.Info);
+				EditorGUILayout.HelpBox ("All bindings will be affected - not just the one selected above.", MessageType.Info);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
-		private void ShowBindingUI (int i, List<ActionParameter> parameters)
+		protected void ShowBindingUI (int i, List<ActionParameter> parameters)
 		{
-			if (newBindings == null || newBindings.Length < i) return;
+			if (newBindings == null || newBindings.Length <= i) return;
 			
 			newBindings[i].isPlayer = EditorGUILayout.Toggle ("Bind to Player?", newBindings[i].isPlayer);
-			if (!newBindings[i].isPlayer)
+			if (newBindings[i].isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					newBindings[i].parameterID = ChooseParameterGUI ("Player ID:", parameters, newBindings[i].parameterID, ParameterType.Integer);
+					if (newBindings[i].parameterID < 0)
+						newBindings[i].playerID = ChoosePlayerGUI (newBindings[i].playerID, true);
+				}
+			}
+			else
 			{
 				newBindings[i].parameterID = Action.ChooseParameterGUI ("Bind to:", parameters, newBindings[i].parameterID, ParameterType.GameObject);
 				if (newBindings[i].parameterID >= 0)
@@ -374,13 +421,10 @@ namespace AC
 			}
 			return null;
 		}
-
 		#endif
 
-
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
-			#if CAN_USE_TIMELINE
 			if (saveScriptsToo)
 			{
 				AddSaveScript <RememberTimeline> (director);
@@ -401,29 +445,55 @@ namespace AC
 					}
 				}
 			}
-			#endif
 		}
 
 		
 		public override string SetLabel ()
 		{
-			#if CAN_USE_TIMELINE
 			if (director != null)
 			{
 				return method.ToString () + " " + director.gameObject.name;
 			}
-			#endif
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (directorParameterID < 0)
+			{
+				if (director && director.gameObject == gameObject) return true;
+				if (directorConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (updateBindings)
+			{
+				foreach (BindingData newBinding in newBindings)
+				{
+					if (newBinding.isPlayer)
+					{
+						if (_playerID < 0) return true;
+						if (newBinding.playerID < 0) return true;
+						if (newBinding.playerID == _playerID) return true;
+					}
+				}
+			}
+			return false;
+		}
+
 		#endif
 
 
-		#if CAN_USE_TIMELINE
-
-		private void PrepareDirector ()
+		protected void PrepareDirector ()
 		{
-			if (newTimeline != null)
+			#if !ACIgnoreTimeline
+
+			if (newTimeline)
 			{
 				if (runtimeDirector.playableAsset != null && runtimeDirector.playableAsset is TimelineAsset)
 				{
@@ -446,7 +516,7 @@ namespace AC
 							{
 								runtimeDirector.SetGenericBinding (track, transferBindings[i].gameObject);
 							}
-		                }
+						}
 					}
 				}
 				else
@@ -456,7 +526,7 @@ namespace AC
 			}
 
 			TimelineAsset timelineAsset = runtimeDirector.playableAsset as TimelineAsset;
-			if (timelineAsset != null)
+			if (timelineAsset)
 			{
 				for (int i=0; i<timelineAsset.outputTrackCount; i++)
 				{
@@ -466,9 +536,19 @@ namespace AC
 					{
 						if (trackAsset != null && newBindings[i].gameObject != null)
 						{
-							runtimeDirector.SetGenericBinding (trackAsset, newBindings[i].gameObject);
+							SpeechTrack speechTrackAsset = trackAsset as SpeechTrack;
+							if (speechTrackAsset != null)
+							{
+								speechTrackAsset.isPlayerLine = newBindings[i].isPlayer;
+								speechTrackAsset.playerID = newBindings[i].playerID;
+								speechTrackAsset.speakerObject = newBindings[i].gameObject;
+							}
+							else
+							{
+								runtimeDirector.SetGenericBinding (trackAsset, newBindings[i].gameObject);
+							}
 						}
-	                }
+					}
 
 					GameObject bindingObject = runtimeDirector.GetGenericBinding (trackAsset) as GameObject;
 					if (bindingObject == null)
@@ -480,21 +560,76 @@ namespace AC
 						}
 					}
 
-					if (bindingObject != null)
+					if (bindingObject)
 					{
 						Char bindingObjectChar = bindingObject.GetComponent <Char>();
-						if (bindingObjectChar != null)
+						if (bindingObjectChar)
 						{
 							bindingObjectChar.OnEnterTimeline (runtimeDirector, i);
 						}
 					}
-	            }
+				}
+
+				#if UNITY_EDITOR
+				HashSet<GameObject> referencedChars = new HashSet<GameObject> ();
+				for (int i=0; i<timelineAsset.outputTrackCount; i++)
+				{
+					TrackAsset trackAsset = timelineAsset.GetOutputTrack (i);
+					if (trackAsset != null)
+					{
+						SpeechTrack speechTrackAsset = trackAsset as SpeechTrack;
+						if (speechTrackAsset)
+						{
+							GameObject speakerOb = speechTrackAsset.speakerObject;
+							if (speechTrackAsset.isPlayerLine)
+							{
+								if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && speechTrackAsset.playerID >= 0)
+								{
+									PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (speechTrackAsset.playerID);
+									if (playerPrefab != null)
+									{
+										Player _player = playerPrefab.GetSceneInstance ();
+										if (_player)
+										{
+											speakerOb = _player.gameObject;
+										}
+									}
+								}
+								else if (KickStarter.player)
+								{
+									speakerOb = KickStarter.player.gameObject;
+								}
+							}
+							else if (speakerOb && speechTrackAsset.speakerConstantID != 0)
+							{
+								Char _char = ConstantID.GetComponent<Char> (speechTrackAsset.speakerConstantID);
+								if (_char) speakerOb = _char.gameObject;
+							}
+
+							if (speakerOb)
+							{
+								if (referencedChars.Contains (speakerOb))
+								{
+									LogWarning ("Multiple Speech tracks in the Timeline " + timelineAsset + " reference the same character, " + speakerOb + ".  This is not allowed - a character must only have one Speech Track per Timeline");
+								}
+								else
+								{
+									referencedChars.Add (speakerOb);
+								}
+							}
+						}
+					}
+				}
+				#endif
 			}
+
+			#endif
 		}
 
 
-		private void PrepareDirectorEnd ()
+		protected void PrepareDirectorEnd ()
 		{
+			#if !ACIgnoreTimeline
 			TimelineAsset timelineAsset = runtimeDirector.playableAsset as TimelineAsset;
 			if (timelineAsset != null)
 			{
@@ -522,15 +657,17 @@ namespace AC
 					}
 	            }
 			}
+			#endif
 		}
 
 
 		[System.Serializable]
-		private class BindingData
+		protected class BindingData
 		{
 
 			public GameObject gameObject;
 			public bool isPlayer;
+			public int playerID = -1;
 			public int constantID;
 			public int parameterID = -1;
 
@@ -541,6 +678,7 @@ namespace AC
 				isPlayer = false;
 				constantID = 0;
 				parameterID = -1;
+				playerID = -1;
 			}
 
 
@@ -550,10 +688,13 @@ namespace AC
 				isPlayer = bindingData.isPlayer;
 				constantID = bindingData.constantID;
 				parameterID = bindingData.parameterID;
+				playerID = bindingData.playerID;
 			}
 
 		}
 
+
+		#if !ACIgnoreTimeline
 
 		/**
 		 * <summary>Creates a new instance of the 'Engine: Control Timeline' Action, set to play a new Timeline</summary>
@@ -566,7 +707,7 @@ namespace AC
 		 */
 		public static ActionTimeline CreateNew_Play (PlayableDirector director, TimelineAsset timelineAsset = null, bool playFromBeginning = true, bool disableACCamera = false, bool waitUntilFinish = false)
 		{
-			ActionTimeline newAction = (ActionTimeline) CreateInstance <ActionTimeline>();
+			ActionTimeline newAction = CreateNew<ActionTimeline> ();
 			newAction.method = ActionDirectorMethod.Play;
 			newAction.director = director;
 			newAction.newTimeline = timelineAsset;
@@ -575,6 +716,8 @@ namespace AC
 			newAction.willWait = waitUntilFinish;
 			return newAction;
 		}
+
+		#endif
 
 
 		/**
@@ -586,15 +729,13 @@ namespace AC
 		 */
 		public static ActionTimeline CreateNew_Stop (PlayableDirector director, bool pauseTimeline = true, bool enableACCamera = true)
 		{
-			ActionTimeline newAction = (ActionTimeline) CreateInstance <ActionTimeline>();
+			ActionTimeline newAction = CreateNew<ActionTimeline> ();
 			newAction.method = ActionDirectorMethod.Stop;
 			newAction.director = director;
 			newAction.pause = pauseTimeline;
 			newAction.disableCamera = enableACCamera;
 			return newAction;
 		}
-
-		#endif
 
 	}
 	

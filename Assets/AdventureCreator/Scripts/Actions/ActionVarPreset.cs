@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarPreset.cs"
  * 
@@ -28,25 +28,21 @@ namespace AC
 		public int parameterID = -1;
 		public bool ignoreOptionLinked = false;
 
-		private LocalVariables localVariables;
+		protected LocalVariables localVariables;
 
 		
-		public ActionVarPreset ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Assign preset";
-			description = "Bulk-assigns the values of all Global or Local values to a predefined preset within the Variables Manager.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Assign preset"; }}
+		public override string Description { get { return "Bulk-assigns the values of all Global or Local values to a predefined preset within the Variables Manager."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			presetID = AssignVariableID (parameters, parameterID, presetID);
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -61,7 +57,7 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (location == VariableLocation.Local && !isAssetFile)
 			{
@@ -81,7 +77,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (isAssetFile)
 			{
@@ -117,8 +113,6 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("This Variable source type does not suppport presets.", MessageType.Info);
 			}
-
-			AfterRunningOption ();
 		}
 		
 		
@@ -171,7 +165,7 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (location == VariableLocation.Local && !isAssetFile)
 			{
@@ -213,7 +207,7 @@ namespace AC
 		 */
 		public static ActionVarPreset CreateNew_Global (int presetID)
 		{
-			ActionVarPreset newAction = (ActionVarPreset) CreateInstance <ActionVarPreset>();
+			ActionVarPreset newAction = CreateNew<ActionVarPreset> ();
 			newAction.location = VariableLocation.Global;
 			newAction.presetID = presetID;
 			return newAction;
@@ -227,7 +221,7 @@ namespace AC
 		 */
 		public static ActionVarPreset CreateNew_Local (int presetID)
 		{
-			ActionVarPreset newAction = (ActionVarPreset) CreateInstance <ActionVarPreset>();
+			ActionVarPreset newAction = CreateNew<ActionVarPreset> ();
 			newAction.location = VariableLocation.Local;
 			newAction.presetID = presetID;
 			return newAction;

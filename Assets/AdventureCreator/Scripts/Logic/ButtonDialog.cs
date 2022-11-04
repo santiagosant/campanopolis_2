@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ButtonDialog.cs"
  * 
@@ -15,12 +15,12 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * A data container for a dialogue option within a Conversation.
-	 */
+	/** A data container for a dialogue option within a Conversation. */
 	[System.Serializable]
 	public class ButtonDialog
 	{
+
+		#region Variables
 
 		/** The option's display label */
 		public string label = "(Not set)";
@@ -42,6 +42,8 @@ namespace AC
 		public int ID = 0;
 		/** If True, then the option has been chosen at least once by the player */
 		public bool hasBeenChosen = false;
+		/** If True, then the option will be disabled once chosen by the player */
+		public bool autoTurnOff = false;
 
 		/** If True, then the option will only be visible if a given inventory item is being carried */
 		public bool linkToInventory = false;
@@ -58,6 +60,10 @@ namespace AC
 		/** The name of the function to run, if the Conversation's interactionSource = InteractionSource.CustomScript */
 		public string customScriptFunction = "";
 
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -163,6 +169,10 @@ namespace AC
 			ID = _ID;
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks if the dialogue option can be currently shown.</summary>
@@ -203,6 +213,8 @@ namespace AC
 			}
 			return false;
 		}
+
+		#endregion
 
 	}
 

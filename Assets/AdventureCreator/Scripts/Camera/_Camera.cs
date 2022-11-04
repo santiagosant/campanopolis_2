@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"_Camera.cs"
  * 
@@ -20,13 +20,12 @@ namespace AC
 	 * To integrate a custom camera script to AC, just add this component to the same object as the Camera component, and it will be visible to AC's fields, functions and Actions.
 	 */
 	[AddComponentMenu("Adventure Creator/Camera/Basic camera")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1___camera.html")]
-	#endif
 	public class _Camera : MonoBehaviour
 	{
 
-		private Camera _camera;
+		#region Variables
+
 		/** If True, the camera will move according to the Player prefab */
 		public bool targetIsPlayer = true;
 		/** The Transform that affects the camera's movement */
@@ -36,15 +35,23 @@ namespace AC
 		/** The camera's focal distance */
 		public float focalDistance = 10f;
 
-		private Char targetChar;
+		private Transform _transform;
+		private Transform _cameraTransform;
+
+		protected Char targetChar;
+		protected Camera _camera;
 		protected Vector2 inputMovement;
 
-		[SerializeField] [HideInInspector] private bool is2D = false;
+		[SerializeField] [HideInInspector] protected bool is2D = false;
 
+		#endregion
+
+
+		#region UnityStandards
 
 		protected virtual void Awake ()
 		{
-			if (Camera != null && Camera == GetComponent <Camera>())
+			if (Camera /*&& Camera == GetComponent <Camera>()*/)
 			{
 				if (KickStarter.mainCamera)
 				{
@@ -56,7 +63,7 @@ namespace AC
 		}
 
 
-		private void OnEnable ()
+		protected virtual void OnEnable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
@@ -68,11 +75,15 @@ namespace AC
 		}
 
 
-		private void OnDisable ()
+		protected virtual void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Returns a vector by which to tweak the camera's rotation. The x-axis will control the spin, and the y-axis will control the pitch.</summary>
@@ -92,46 +103,13 @@ namespace AC
 		{
 			target = _target;
 
-			if (target != null)
+			if (target)
 			{
 				targetChar = _target.GetComponent <Char>();
 			}
 			else
 			{
 				targetChar = null;
-			}
-		}
-
-
-		/**
-		 * True if the game plays in 2D, making use of 2D colliders and raycasts
-		 */
-		public bool isFor2D
-		{
-			get
-			{
-				return is2D;
-			}
-			set
-			{
-				is2D = value;
-			}
-		}
-
-
-		protected Vector3 TargetForward
-		{
-			get
-			{
-				if (targetChar != null)
-				{
-					return targetChar.TransformForward;
-				}
-				if (target != null)
-				{
-					return target.forward;
-				}
-				return Vector3.zero;
 			}
 		}
 
@@ -154,72 +132,23 @@ namespace AC
 		{}
 
 
-		/**
-		 * Auto-assigns "target" as the Player prefab Transform if targetIsPlayer = True.
-		 */
+		/** Auto-assigns "target" as the Player prefab Transform if targetIsPlayer = True. */
 		public virtual void ResetTarget ()
 		{
 			if (targetIsPlayer && KickStarter.player)
 			{
-				SwitchTarget (KickStarter.player.transform);
+				SwitchTarget (KickStarter.player.Transform);
 			}
 		}
 
 
-		protected Vector3 PositionRelativeToCamera (Vector3 _position)
-		{
-			return (_position.x * ForwardVector ()) + (_position.z * RightVector ());
-		}
-		
-		
-		protected Vector3 RightVector ()
-		{
-			return (transform.right);
-		}
-		
-		
-		protected Vector3 ForwardVector ()
-		{
-			Vector3 camForward;
-			
-			camForward = transform.forward;
-			camForward.y = 0;
-			
-			return (camForward);
-		}
-		
-
-		/**
-		 * Moves the camera instantly to its destination.
-		 */
+		/** Moves the camera instantly to its destination. */
 		public virtual void MoveCameraInstant ()
 		{ }
 
 
-		protected float ConstrainAxis (float desired, Vector2 range)
-		{
-			if (range.x < range.y)
-			{
-				desired = Mathf.Clamp (desired, range.x, range.y);
-			}
-			
-			else if (range.x > range.y)
-			{
-				desired = Mathf.Clamp (desired, range.y, range.x);
-			}
-			
-			else
-			{
-				desired = range.x;
-			}
-				
-			return desired;
-		}
 
-
-		/**
-		 * Enables the camera for split-screen, using the MainCamera as the "main" part of the split, with all the data.
-		 */
+		/** Enables the camera for split-screen, using the MainCamera as the "main" part of the split, with all the data. */
 		public void SetSplitScreen ()
 		{
 			Camera.enabled = true;
@@ -227,9 +156,7 @@ namespace AC
 		}
 
 
-		/**
-		 * Removes the split-screen effect on this camera.
-		 */
+		/** Removes the split-screen effect on this camera. */
 		public void RemoveSplitScreen ()
 		{
 			if (Camera.enabled)
@@ -256,13 +183,67 @@ namespace AC
 		 */
 		public bool IsActive ()
 		{
-			if (KickStarter.mainCamera != null)
+			if (KickStarter.mainCamera)
 			{
 				return (KickStarter.mainCamera.attachedCamera == this);
 			}
 			return false;
 		}
 
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected Vector3 PositionRelativeToCamera (Vector3 _position)
+		{
+			return (_position.x * ForwardVector ()) + (_position.z * RightVector ());
+		}
+		
+		
+		protected Vector3 RightVector ()
+		{
+			return (Transform.right);
+		}
+		
+		
+		protected Vector3 ForwardVector ()
+		{
+			Vector3 camForward;
+			
+			camForward = Transform.forward;
+			camForward.y = 0;
+			
+			return (camForward);
+		}
+		
+
+		protected float ConstrainAxis (float desired, Vector2 range, bool isAngle = false)
+		{
+			if (range.x > range.y)
+			{
+				range = new Vector2 (range.y, range.x);
+			}
+
+			if (isAngle)
+			{
+				if (desired > range.y + 180f)
+				{
+					desired -= 360f;
+				}
+				else if (desired < range.x - 180f)
+				{
+					desired += 360f;
+				}
+			}
+
+			return Mathf.Clamp (desired, range.x, range.y);
+		}
+
+		#endregion
+
+
+		#region GetSet
 
 		/** The Transform that affects the camera's movement.  If targetIsPlayer = True, this will return the Player's Transform. */
 		public Transform Target
@@ -271,9 +252,9 @@ namespace AC
 			{
 				if (targetIsPlayer)
 				{
-					if (KickStarter.player != null)
+					if (KickStarter.player)
 					{
-						return KickStarter.player.transform;
+						return KickStarter.player.Transform;
 					}
 					return null;
 				}
@@ -287,7 +268,19 @@ namespace AC
 		{
 			get
 			{
-				return Camera.transform;
+				if (_cameraTransform == null) _cameraTransform = Camera.transform;
+				return _cameraTransform;
+			}
+		}
+
+
+		/** A cache of the object's transform component */
+		public Transform Transform
+		{
+			get
+			{
+				if (_transform == null) _transform = transform;
+				return _transform;
 			}
 		}
 
@@ -314,6 +307,55 @@ namespace AC
 		}
 
 
+		/**
+		 * True if the game plays in 2D, making use of 2D colliders and raycasts
+		 */
+		public bool isFor2D
+		{
+			get
+			{
+				return is2D;
+			}
+			set
+			{
+				is2D = value;
+			}
+		}
+
+
+		/** The camera's transparency sort mode.  This will be copied over to the MainCamera when switched to */
+		public virtual TransparencySortMode TransparencySortMode
+		{
+			get
+			{
+				if (Camera.orthographic)
+				{
+					return TransparencySortMode.Orthographic;
+				}
+				return TransparencySortMode.Perspective;
+			}
+		}
+
+
+		protected Vector3 TargetForward
+		{
+			get
+			{
+				if (targetChar)
+				{
+					return targetChar.TransformForward;
+				}
+				if (target)
+				{
+					return target.forward;
+				}
+				return Vector3.zero;
+			}
+		}
+
+		#endregion
+
+
 		#if UNITY_EDITOR
 
 		[ContextMenu ("Make active")]
@@ -321,7 +363,7 @@ namespace AC
 		{
 			if (Application.isPlaying)
 			{
-				if (KickStarter.mainCamera != null)
+				if (KickStarter.mainCamera)
 				{
 					KickStarter.mainCamera.SetGameCamera (this);
 				}

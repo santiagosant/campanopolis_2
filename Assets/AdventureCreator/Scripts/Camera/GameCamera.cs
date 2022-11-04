@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"GameCamera.cs"
  * 
@@ -15,14 +15,12 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * The standard camera used in 3D games.
-	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
+	/** The standard camera used in 3D games. */
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_game_camera.html")]
-	#endif
 	public class GameCamera : CursorInfluenceCamera
 	{
+
+		#region Variables
 
 		/** If True, then the camera's position will be relative to the scene's default PlayerStart, rather then the Player's initial position. This ensures that camera movement is the same regardless of where the Player begins in the scene */
 		public bool actFromDefaultPlayerStart = true;
@@ -125,18 +123,22 @@ namespace AC
 		/** If True, then focalDistance will match the distance to target */
 		public bool focalPointIsTarget = false;
 
-		private Vector3 desiredPosition;
-		private float desiredSpin;
-		private float desiredPitch;
-		private float desiredFOV;
+		protected Vector3 desiredPosition;
+		protected float desiredSpin;
+		protected float desiredPitch;
+		protected float desiredFOV;
 		
-		private Vector3 originalTargetPosition;
-		private Vector3 originalPosition;
-		private float originalSpin;
-		private float originalPitch;
-		private float originalFOV;
-		private bool haveSetOriginalPosition = false;
+		protected Vector3 originalTargetPosition;
+		protected Vector3 originalPosition;
+		protected float originalSpin;
+		protected float originalPitch;
+		protected float originalFOV;
+		protected bool haveSetOriginalPosition = false;
 
+		#endregion
+
+
+		#region UnityStandards
 
 		protected override void Awake ()
 		{
@@ -166,12 +168,12 @@ namespace AC
 
 			if (!lockXRotAxis && limitXRot)
 			{
-				desiredPitch = ConstrainAxis (desiredPitch, constrainXRot);
+				desiredPitch = ConstrainAxis (desiredPitch, constrainXRot, true);
 			}
 			
-			if (!lockYRotAxis && limitY && yRotConstrainType != CameraRotConstrainType.LookAtTarget)
+			if (!lockYRotAxis && limitY)
 			{
-				desiredSpin = ConstrainAxis (desiredSpin, constrainY);
+				desiredSpin = ConstrainAxis (desiredSpin, constrainY, true);
 			}
 			
 			if (!lockFOV && limitFOV)
@@ -206,8 +208,8 @@ namespace AC
 			
 			if (!lockXLocAxis || !lockYLocAxis || !lockZLocAxis)
 			{
-				transform.position = (dampSpeed > 0f)
-										? Vector3.Lerp (transform.position, desiredPosition, Time.deltaTime * dampSpeed)
+				Transform.position = (dampSpeed > 0f)
+										? Vector3.Lerp (Transform.position, desiredPosition, Time.deltaTime * dampSpeed)
 										: desiredPosition;
 			}
 			
@@ -227,10 +229,10 @@ namespace AC
 				}
 			}
 
-			float newPitch = transform.eulerAngles.x;
+			float newPitch = Transform.eulerAngles.x;
 			if (!lockXRotAxis)
 			{
-				float t = transform.eulerAngles.x;
+				float t = Transform.eulerAngles.x;
 				if (t > 180f)
 				{
 					t -= 360f;
@@ -245,11 +247,6 @@ namespace AC
 			{
 				if (yRotConstrainType == CameraRotConstrainType.LookAtTarget)
 				{
-					if (!lockXRotAxis)
-					{
-						ACDebug.LogWarning (gameObject.name + " cannot obey Pitch rotation, since Spin rotation's 'Look At Target' is overriding.", gameObject);
-					}
-
 					if (target)
 					{
 						Vector3 lookAtPos = target.position;
@@ -258,17 +255,27 @@ namespace AC
 						lookAtPos.z += targetZOffset;
 						
 						// Look at and dampen the rotation
-						Vector3 lookDir = lookAtPos - transform.position;
+						Vector3 lookDir = lookAtPos - Transform.position;
 						if (!Mathf.Approximately (directionInfluence, 0f))
 						{
 							lookDir += TargetForward * directionInfluence;
 						}
 
-						Quaternion rotation = Quaternion.LookRotation (lookDir);
+						Quaternion lookRotation = Quaternion.LookRotation (lookDir);
 
-						transform.rotation = (dampSpeed > 0f)
-												? Quaternion.Slerp (transform.rotation, rotation, Time.deltaTime * dampSpeed)
-												: rotation;
+						Quaternion newRotation = (dampSpeed > 0f)
+												 ? Quaternion.Slerp (Transform.rotation, lookRotation, Time.deltaTime * dampSpeed)
+												 : lookRotation;
+						if (limitY)
+						{
+							Vector3 newEuler = newRotation.eulerAngles;
+							newEuler.y = ConstrainAxis (newEuler.y, constrainY, true);
+							Transform.eulerAngles = newEuler;
+						}
+						else
+						{
+							Transform.rotation = newRotation;
+						}
 					}
 					else if (!targetIsPlayer)
 					{
@@ -277,7 +284,7 @@ namespace AC
 				}
 				else
 				{
-					float thisSpin = transform.eulerAngles.y;
+					float thisSpin = Transform.eulerAngles.y;
 					if (desiredSpin > (thisSpin + 180f))
 					{
 						desiredSpin -= 360f;
@@ -291,12 +298,12 @@ namespace AC
 									  ? Mathf.Lerp (thisSpin, desiredSpin, Time.deltaTime * dampSpeed)
 									  : desiredSpin;
 
-					transform.eulerAngles = new Vector3 (newPitch, newSpin, transform.eulerAngles.z);
+					Transform.eulerAngles = new Vector3 (newPitch, newSpin, Transform.eulerAngles.z);
 				}
 			}
 			else
 			{
-				transform.eulerAngles = new Vector3 (newPitch, transform.eulerAngles.y, transform.eulerAngles.z);
+				Transform.eulerAngles = new Vector3 (newPitch, Transform.eulerAngles.y, Transform.eulerAngles.z);
 			}
 
 			SetFocalPoint ();
@@ -309,19 +316,106 @@ namespace AC
 			originalTargetPosition = Vector3.zero;
 			SetTargetOriginalPosition ();
 		}
+
+
+		public override void MoveCameraInstant ()
+		{
+			if (targetIsPlayer && KickStarter.player)
+			{
+				target = KickStarter.player.Transform;
+			}
+
+			SetOriginalPosition ();
+			SetDesired ();
+			
+			if (!lockXLocAxis || !lockYLocAxis || !lockZLocAxis)
+			{
+				Transform.position = desiredPosition;
+			}
+
+			float pitch = Transform.eulerAngles.x;
+			if (!lockXRotAxis)
+			{
+				pitch = desiredPitch;
+			}
+			
+			if (!lockYRotAxis)
+			{
+				if (yRotConstrainType == CameraRotConstrainType.LookAtTarget)
+				{
+					if (target)
+					{
+						Vector3 lookAtPos = target.position;
+						lookAtPos.y += targetHeight;
+						lookAtPos.x += targetXOffset;
+						lookAtPos.z += targetZOffset;
+						
+						Quaternion rotation = Quaternion.LookRotation (lookAtPos - Transform.position);
+
+						if (limitY)
+						{
+							Vector3 newEuler = rotation.eulerAngles;
+							newEuler.y = ConstrainAxis (newEuler.y, constrainY, true);
+							Transform.eulerAngles = newEuler;
+						}
+						else
+						{
+							Transform.rotation = rotation;
+						}
+					}
+				}
+				else
+				{
+					Transform.eulerAngles = new Vector3 (pitch, desiredSpin, Transform.eulerAngles.z);
+				}
+			}
+			else
+			{
+				Transform.eulerAngles = new Vector3 (pitch, Transform.eulerAngles.y, Transform.eulerAngles.z);
+			}
+
+			SetDesiredFOV ();
+			if (!lockFOV)
+			{
+				if (Camera.orthographic)
+				{
+					Camera.orthographicSize = desiredFOV;
+				}
+				else
+				{
+					Camera.fieldOfView = desiredFOV;
+				}
+			}
+
+			SetFocalPoint ();
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
 		
-		
-		private void SetTargetOriginalPosition ()
+		protected void SetTargetOriginalPosition ()
 		{
 			if (originalTargetPosition == Vector3.zero)
 			{
+				if (target == null)
+				{
+					ResetTarget ();
+				}
+
+				if (target == null)
+				{
+					return;
+				}
+
 				if (actFromDefaultPlayerStart)
 				{
-					if (KickStarter.sceneSettings != null && KickStarter.sceneSettings.defaultPlayerStart != null)
+					if (KickStarter.sceneSettings && KickStarter.sceneSettings.defaultPlayerStart)
 					{
 						originalTargetPosition = KickStarter.sceneSettings.defaultPlayerStart.transform.position;
 					}
-					else
+					else if (target)
 					{
 						originalTargetPosition = target.position;
 					}
@@ -334,13 +428,13 @@ namespace AC
 		}
 		
 		
-		private void TrackTarget2D_X ()
+		protected void TrackTarget2D_X ()
 		{
-			if (target.position.x < (transform.position.x - xFreedom))
+			if (target.position.x < (Transform.position.x - xFreedom))
 			{
 				desiredPosition.x = target.position.x + xFreedom;
 			}
-			else if (target.position.x > (transform.position.x + xFreedom))
+			else if (target.position.x > (Transform.position.x + xFreedom))
 			{
 				desiredPosition.x = target.position.x - xFreedom;
 			}
@@ -349,13 +443,13 @@ namespace AC
 		}
 
 
-		private void TrackTarget2D_Y ()
+		protected void TrackTarget2D_Y ()
 		{
-			if (target.position.y < (transform.position.y - yFreedom))
+			if (target.position.y < (Transform.position.y - yFreedom))
 			{
 				desiredPosition.y = target.position.y + yFreedom;
 			}
-			else if (target.position.y > (transform.position.y + yFreedom))
+			else if (target.position.y > (Transform.position.y + yFreedom))
 			{
 				desiredPosition.y = target.position.y - yFreedom;
 			}
@@ -364,13 +458,13 @@ namespace AC
 		}
 		
 		
-		private void TrackTarget2D_Z ()
+		protected void TrackTarget2D_Z ()
 		{
-			if (target.position.z < (transform.position.z - zFreedom))
+			if (target.position.z < (Transform.position.z - zFreedom))
 			{
 				desiredPosition.z = target.position.z + zFreedom;
 			}
-			else if (target.position.z > (transform.position.z + zFreedom))
+			else if (target.position.z > (Transform.position.z + zFreedom))
 			{
 				desiredPosition.z = target.position.z -zFreedom;
 			}
@@ -379,7 +473,7 @@ namespace AC
 		}
 		
 		
-		private float GetDesiredPosition (float originalValue, float gradient, float offset, CameraLocConstrainType constrainType )
+		protected float GetDesiredPosition (float originalValue, float gradient, float offset, CameraLocConstrainType constrainType )
 		{
 			float desiredPosition = originalValue + offset;
 			
@@ -408,7 +502,7 @@ namespace AC
 		}
 
 
-		private bool AllLocked ()
+		protected bool AllLocked ()
 		{
 			if (lockXLocAxis && lockYLocAxis && lockZLocAxis && lockXRotAxis && lockYRotAxis && lockFOV)
 			{
@@ -418,11 +512,11 @@ namespace AC
 		}
 
 
-		private void SetFocalPoint ()
+		protected void SetFocalPoint ()
 		{
-			if (focalPointIsTarget && target != null)
+			if (focalPointIsTarget && target)
 			{
-				focalDistance = Vector3.Dot (transform.forward, target.position - transform.position);
+				focalDistance = Vector3.Dot (Transform.forward, target.position - Transform.position);
 				if (focalDistance < 0f)
 				{
 					focalDistance = 0f;
@@ -431,84 +525,28 @@ namespace AC
 		}
 
 
-		private void SetOriginalPosition ()
+		protected void SetOriginalPosition ()
 		{	
 			if (!haveSetOriginalPosition)
 			{
-				originalPosition = transform.position;
-				originalSpin = transform.eulerAngles.y;
-				originalPitch = transform.eulerAngles.x;
+				originalPosition = Transform.position;
+				originalSpin = Transform.eulerAngles.y;
+				originalPitch = Transform.eulerAngles.x;
 
-				if (Camera != null)
+				if (Camera)
 				{
-					originalFOV = Camera.fieldOfView;
+					originalFOV = Camera.orthographic ? Camera.orthographicSize : Camera.fieldOfView;
 				}
 				haveSetOriginalPosition = true;
 			}
 		}
 
-		
-		public override void MoveCameraInstant ()
-		{
-			if (targetIsPlayer && KickStarter.player)
-			{
-				target = KickStarter.player.transform;
-			}
 
-			SetOriginalPosition ();
-			SetDesired ();
-			
-			if (!lockXLocAxis || !lockYLocAxis || !lockZLocAxis)
-			{
-				transform.position = desiredPosition;
-			}
-
-			float pitch = transform.eulerAngles.x;
-			if (!lockXRotAxis)
-			{
-				pitch = desiredPitch;
-			}
-			
-			if (!lockYRotAxis)
-			{
-				if (yRotConstrainType == CameraRotConstrainType.LookAtTarget)
-				{
-					if (target)
-					{
-						Vector3 lookAtPos = target.position;
-						lookAtPos.y += targetHeight;
-						lookAtPos.x += targetXOffset;
-						lookAtPos.z += targetZOffset;
-						
-						Quaternion rotation = Quaternion.LookRotation (lookAtPos - transform.position);
-						transform.rotation = rotation;
-					}
-				}
-				else
-				{
-					transform.eulerAngles = new Vector3 (pitch, desiredSpin, transform.eulerAngles.z);
-				}
-			}
-			else
-			{
-				transform.eulerAngles = new Vector3 (pitch, transform.eulerAngles.y, transform.eulerAngles.z);
-			}
-
-			SetDesiredFOV ();
-			if (!lockFOV)
-			{
-				Camera.fieldOfView = desiredFOV;
-			}
-
-			SetFocalPoint ();
-		}
-		
-		
-		private void SetDesired ()
+		protected void SetDesired ()
 		{
 			if (lockXLocAxis)
 			{
-				desiredPosition.x = transform.position.x;
+				desiredPosition.x = Transform.position.x;
 			}
 			else
 			{
@@ -532,7 +570,7 @@ namespace AC
 			
 			if (lockYLocAxis)
 			{
-				desiredPosition.y = transform.position.y;
+				desiredPosition.y = Transform.position.y;
 			}
 			else
 			{
@@ -556,7 +594,7 @@ namespace AC
 			
 			if (lockXRotAxis)
 			{
-				desiredPitch = transform.eulerAngles.x;
+				desiredPitch = Transform.eulerAngles.x;
 			}
 			else
 			{
@@ -570,7 +608,7 @@ namespace AC
 				
 				if (limitXRot)
 				{
-					desiredPitch = ConstrainAxis (desiredPitch, constrainXRot);
+					desiredPitch = ConstrainAxis (desiredPitch, constrainXRot, true);
 				}
 
 				desiredPitch = Mathf.Clamp (desiredPitch, -85f, 85f);
@@ -588,20 +626,20 @@ namespace AC
 
 					if (!Mathf.Approximately (directionInfluence, 0f))
 					{
-						desiredSpin += Vector3.Dot (TargetForward, transform.right) * directionInfluence;
+						desiredSpin += Vector3.Dot (TargetForward, Transform.right) * directionInfluence;
 					}
 				}
 				
 				if (limitY)
 				{
-					desiredSpin = ConstrainAxis (desiredSpin, constrainY);
+					desiredSpin = ConstrainAxis (desiredSpin, constrainY, true);
 				}
 				
 			}
 			
 			if (lockZLocAxis)
 			{
-				desiredPosition.z = transform.position.z;
+				desiredPosition.z = Transform.position.z;
 			}
 			else
 			{
@@ -627,18 +665,11 @@ namespace AC
 		}
 
 
-		private void SetDesiredFOV ()
+		protected void SetDesiredFOV ()
 		{
 			if (lockFOV)
 			{
-				if (Camera.orthographic)
-				{
-					desiredFOV = Camera.orthographicSize;
-				}
-				else
-				{
-					desiredFOV = Camera.fieldOfView;
-				}
+				desiredFOV = Camera.orthographic ? Camera.orthographicSize : Camera.fieldOfView;
 			}
 			else
 			{
@@ -653,6 +684,8 @@ namespace AC
 				}
 			}
 		}
+
+		#endregion
 
 
 		#if UNITY_EDITOR

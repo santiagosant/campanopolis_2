@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberAnimator.cs"
  * 
@@ -15,36 +15,42 @@ using System.Text;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+#if AddressableIsPresent
+using System.Collections;
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
 namespace AC
 {
 
-	#if UNITY_5 || UNITY_2017_1_OR_NEWER
-	
-	/**
-	 * This script is attached to Animator components in the scene we wish to save the state of. (Unity 5-only)
-	 */
+	/** This script is attached to Animator components in the scene we wish to save the state of. */
 	[RequireComponent (typeof (Animator))]
 	[AddComponentMenu("Adventure Creator/Save system/Remember Animator")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_animator.html")]
-	#endif
 	public class RememberAnimator : Remember
 	{
+
+		#region Variables
 
 		[SerializeField] private bool saveController = false; 
 		[SerializeField] private bool setDefaultParameterValues = false;
 		[SerializeField] private List<DefaultAnimParameter> defaultAnimParameters = new List<DefaultAnimParameter>();
 
 		private Animator _animator;
-		private bool loadedData = false;
 
-		
-		private void Awake ()
+		#endregion
+
+
+		#region UnityStandards
+
+		protected override void Start ()
 		{
+			base.Start ();
+
 			if (loadedData) return;
 
-			if (GameIsPlaying () && setDefaultParameterValues)
+			if (GameIsPlaying () && setDefaultParameterValues && isActiveAndEnabled)
 			{
 				for (int i=0; i<Animator.parameters.Length; i++)
 				{
@@ -70,22 +76,26 @@ namespace AC
 				}
 			}
 		}
-		
-		
+
+		#endregion
+
+
+		#region PublicFunctions
+
 		public override string SaveData ()
 		{
 			AnimatorData animatorData = new AnimatorData ();
 			animatorData.objectID = constantID;
 			animatorData.savePrevented = savePrevented;
 
-			if (saveController && _animator.runtimeAnimatorController != null)
+			if (saveController && Animator && Animator.runtimeAnimatorController)
 			{
-				animatorData.controllerID = AssetLoader.GetAssetInstanceID (_animator.runtimeAnimatorController);
+				animatorData.controllerID = AssetLoader.GetAssetInstanceID (Animator.runtimeAnimatorController);
 			}
 			
-			animatorData.parameterData = ParameterValuesToString (Animator.parameters);
-			animatorData.layerWeightData = LayerWeightsToString ();
-			animatorData.stateData = StatesToString ();
+			animatorData.parameterData = ParameterValuesToString (Animator.parameters).ToString ();
+			animatorData.layerWeightData = LayerWeightsToString ().ToString ();
+			animatorData.stateData = StatesToString ().ToString ();
 
 			return Serializer.SaveScriptData <AnimatorData> (animatorData);
 		}
@@ -96,15 +106,25 @@ namespace AC
 			AnimatorData data = Serializer.LoadScriptData <AnimatorData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (!string.IsNullOrEmpty (data.controllerID))
+			loadedData = true;
+
+			if (!string.IsNullOrEmpty (data.controllerID) && Animator && saveController)
 			{
-				RuntimeAnimatorController runtimeAnimatorController = AssetLoader.RetrieveAsset (_animator.runtimeAnimatorController, data.controllerID);
-				if (runtimeAnimatorController != null)
+				#if AddressableIsPresent
+
+				if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
+				{
+					StartCoroutine (LoadDataFromAddressable (data));
+					return;
+				}
+				#endif
+
+				RuntimeAnimatorController runtimeAnimatorController = AssetLoader.RetrieveAsset (Animator.runtimeAnimatorController, data.controllerID);
+				if (runtimeAnimatorController)
 				{
 					_animator.runtimeAnimatorController = runtimeAnimatorController;
 				}
@@ -113,97 +133,133 @@ namespace AC
 			StringToParameterValues (Animator.parameters, data.parameterData);
 			StringToLayerWeights (data.layerWeightData);
 			StringToStates (data.stateData);
-
-			loadedData = true;
 		}
+
+		#endregion
+
+
+		#if AddressableIsPresent
+
+		private IEnumerator LoadDataFromAddressable (AnimatorData data)
+		{
+			AsyncOperationHandle<RuntimeAnimatorController> handle = Addressables.LoadAssetAsync<RuntimeAnimatorController> (data.controllerID);
+			yield return handle;
+			if (handle.Status == AsyncOperationStatus.Succeeded)
+			{
+				_animator.runtimeAnimatorController = handle.Result;
+			}
+			Addressables.Release (handle);
+
+			StringToParameterValues (Animator.parameters, data.parameterData);
+			StringToLayerWeights (data.layerWeightData);
+			StringToStates (data.stateData);
+		}
+
+		#endif
 
 
 		#if UNITY_EDITOR
 
 		public void ShowGUI ()
 		{
-			EditorGUILayout.BeginVertical ("Button");
-			setDefaultParameterValues = EditorGUILayout.Toggle ("Set default parameters?", setDefaultParameterValues);
-			if (setDefaultParameterValues && Animator.runtimeAnimatorController)
+			CustomGUILayout.BeginVertical ();
+
+			saveController = EditorGUILayout.ToggleLeft ("Save change in Controller?", saveController);
+
+			setDefaultParameterValues = EditorGUILayout.ToggleLeft ("Set default parameters?", setDefaultParameterValues);
+			if (setDefaultParameterValues)
 			{
-				GUILayout.Box (string.Empty, GUILayout.ExpandWidth(true), GUILayout.Height(1));
-
-				int numParameters = Animator.parameters.Length;
-				if (numParameters < defaultAnimParameters.Count)
+				if (!UnityVersionHandler.IsPrefabEditing (gameObject) && !UnityVersionHandler.ObjectIsInActiveScene (gameObject))
 				{
-					defaultAnimParameters.RemoveRange (numParameters, defaultAnimParameters.Count - numParameters);
+					EditorGUILayout.HelpBox ("To view/edit parameters, the GameObject must be active in the scene.", MessageType.Warning);
 				}
-				else if (numParameters > defaultAnimParameters.Count)
+				else if (Animator.parameters != null)
 				{
-					if (numParameters > defaultAnimParameters.Capacity)
+					GUILayout.Box (string.Empty, GUILayout.ExpandWidth(true), GUILayout.Height(1));
+					
+					int numParameters = Animator.parameters.Length;
+					if (numParameters < defaultAnimParameters.Count)
 					{
-						defaultAnimParameters.Capacity = numParameters;
+						defaultAnimParameters.RemoveRange (numParameters, defaultAnimParameters.Count - numParameters);
 					}
-					for (int i=defaultAnimParameters.Count; i<numParameters; i++)
+					else if (numParameters > defaultAnimParameters.Count)
 					{
-						defaultAnimParameters.Add (new DefaultAnimParameter ());
+						if (numParameters > defaultAnimParameters.Capacity)
+						{
+							defaultAnimParameters.Capacity = numParameters;
+						}
+						for (int i=defaultAnimParameters.Count; i<numParameters; i++)
+						{
+							defaultAnimParameters.Add (new DefaultAnimParameter ());
+						}
 					}
-				}
 
-				for (int i=0; i<Animator.parameters.Length; i++)
-				{
-					AnimatorControllerParameter parameter = Animator.parameters[i];
-					switch (parameter.type)
+					for (int i=0; i<Animator.parameters.Length; i++)
 					{
-						case AnimatorControllerParameterType.Bool:
-							bool boolValue = (defaultAnimParameters[i].intValue == 1);
-							boolValue = EditorGUILayout.Toggle (parameter.name, boolValue);
-							defaultAnimParameters[i] = new DefaultAnimParameter ((boolValue) ? 1 : 0);
-							break;
+						AnimatorControllerParameter parameter = Animator.parameters[i];
+						switch (parameter.type)
+						{
+							case AnimatorControllerParameterType.Bool:
+								bool boolValue = (defaultAnimParameters[i].intValue == 1);
+								boolValue = EditorGUILayout.Toggle (parameter.name, boolValue);
+								defaultAnimParameters[i] = new DefaultAnimParameter ((boolValue) ? 1 : 0);
+								break;
 
-						case AnimatorControllerParameterType.Float:
-							float floatValue = EditorGUILayout.FloatField (parameter.name, defaultAnimParameters[i].floatValue);
-							defaultAnimParameters[i] = new DefaultAnimParameter (floatValue);
-							break;
+							case AnimatorControllerParameterType.Float:
+								float floatValue = EditorGUILayout.FloatField (parameter.name, defaultAnimParameters[i].floatValue);
+								defaultAnimParameters[i] = new DefaultAnimParameter (floatValue);
+								break;
 
-						case AnimatorControllerParameterType.Int:
-							int intValue = EditorGUILayout.IntField (parameter.name, defaultAnimParameters[i].intValue);
-							defaultAnimParameters[i] = new DefaultAnimParameter (intValue);
-							break;
+							case AnimatorControllerParameterType.Int:
+								int intValue = EditorGUILayout.IntField (parameter.name, defaultAnimParameters[i].intValue);
+								defaultAnimParameters[i] = new DefaultAnimParameter (intValue);
+								break;
+						}
 					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+
+			CustomGUILayout.EndVertical ();
 		}
 
 		#endif
 
+
+		#region PrivateFunctions
 		
-		private string ParameterValuesToString (AnimatorControllerParameter[] parameters)
+		private StringBuilder ParameterValuesToString (AnimatorControllerParameter[] parameters)
 		{
 			StringBuilder stateString = new StringBuilder ();
-			
+
 			foreach (AnimatorControllerParameter parameter in parameters)
 			{
 				switch (parameter.type)
 				{
 					case AnimatorControllerParameterType.Bool:
-						string value = (Animator.GetBool (parameter.name)) ? "1" : "0";
-						stateString.Append (value);
+						stateString.Append (Animator.GetBool (parameter.name) ? "1" : "0");
 						break;
 
 					case AnimatorControllerParameterType.Float:
-						stateString.Append (Animator.GetFloat (parameter.name).ToString ());
+						stateString.Append (Animator.GetFloat (parameter.name));
 						break;
 
 					case AnimatorControllerParameterType.Int:
-						stateString.Append (Animator.GetInteger (parameter.name).ToString ());
+						stateString.Append (Animator.GetInteger (parameter.name));
+						break;
+
+					default:
+						stateString.Append ("0");
 						break;
 				}
 				
 				stateString.Append (SaveSystem.pipe);
 			}
 			
-			return stateString.ToString ();
+			return stateString;
 		}
 
 
-		private string LayerWeightsToString ()
+		private StringBuilder LayerWeightsToString ()
 		{
 			StringBuilder stateString = new StringBuilder ();
 
@@ -212,16 +268,15 @@ namespace AC
 				for (int i=1; i<Animator.layerCount; i++)
 				{
 					float weight = Animator.GetLayerWeight (i);
-					stateString.Append (weight.ToString ());
-					stateString.Append (SaveSystem.pipe);
+					stateString.Append (weight).Append (SaveSystem.pipe);
 				}
 			}
 
-			return stateString.ToString ();
+			return stateString;
 		}
 
 
-		private string StatesToString ()
+		private StringBuilder StatesToString ()
 		{
 			StringBuilder stateString = new StringBuilder ();
 
@@ -229,21 +284,21 @@ namespace AC
 			{
 				if (Animator.IsInTransition (i))
 				{
-					stateString = ProcessState (stateString, Animator.GetNextAnimatorStateInfo (i));
+					ProcessState (ref stateString, Animator.GetNextAnimatorStateInfo (i));
 				}
 				else
 				{
-					stateString = ProcessState (stateString, Animator.GetCurrentAnimatorStateInfo (i));
+					ProcessState (ref stateString, Animator.GetCurrentAnimatorStateInfo (i));
 				}
 
 				stateString.Append (SaveSystem.pipe);
 			}
 
-			return stateString.ToString ();
+			return stateString;
 		}
 
 
-		private StringBuilder ProcessState (StringBuilder stateString, AnimatorStateInfo stateInfo)
+		private void ProcessState (ref StringBuilder stateString, AnimatorStateInfo stateInfo)
 		{
 			int nameHash = stateInfo.shortNameHash;
 			float timeAlong = stateInfo.normalizedTime;
@@ -260,8 +315,7 @@ namespace AC
 				}
 			}
 
-			stateString.Append (nameHash + "," + timeAlong);
-			return stateString;
+			stateString.Append (nameHash).Append (",").Append (timeAlong);
 		}
 		
 		
@@ -279,26 +333,28 @@ namespace AC
 				if (i < valuesArray.Length && valuesArray[i].Length > 0)
 				{
 					string parameterName = parameters[i].name;
-					
-					if (parameters[i].type == AnimatorControllerParameterType.Bool)
+
+					switch (parameters[i].type)
 					{
-						Animator.SetBool (parameterName, (valuesArray[i] == "1") ? true : false);
-					}
-					else if (parameters[i].type == AnimatorControllerParameterType.Float)
-					{
-						float value = 0f;
-						if (float.TryParse (valuesArray[i], out value))
-						{
-							Animator.SetFloat (parameterName, value);
-						}
-					}
-					else if (parameters[i].type == AnimatorControllerParameterType.Int)
-					{
-						int value = 0;
-						if (int.TryParse (valuesArray[i], out value))
-						{
-							Animator.SetInteger (parameterName, value);
-						}
+						case AnimatorControllerParameterType.Bool:
+							Animator.SetBool (parameterName, (valuesArray[i] == "1") ? true : false);
+							break;
+
+						case AnimatorControllerParameterType.Float:
+							float floatValue = 0f;
+							if (float.TryParse (valuesArray[i], out floatValue))
+							{
+								Animator.SetFloat (parameterName, floatValue);
+							}
+							break;
+
+						case AnimatorControllerParameterType.Int:
+							int intValue = 0;
+							if (int.TryParse (valuesArray[i], out intValue))
+							{
+								Animator.SetInteger (parameterName, intValue);
+							}
+							break;
 					}
 				}
 			}
@@ -360,12 +416,16 @@ namespace AC
 			}
 		}
 
+		#endregion
+
+
+		#region GetSet
 
 		private Animator Animator
 		{
 			get
 			{
-				if (_animator == null)
+				if (_animator == null || !Application.isPlaying)
 				{
 					_animator = GetComponent <Animator>();
 				}
@@ -373,6 +433,10 @@ namespace AC
 			}
 		}
 
+		#endregion
+
+
+		#region PrivateStructs
 
 		[System.Serializable]
 		private struct DefaultAnimParameter
@@ -397,12 +461,12 @@ namespace AC
 
 		}
 
-	}
-	
+		#endregion
 
-	/**
-	 * A data container used by the RememberAnimator script.
-	 */
+	}
+
+
+	/** A data container used by the RememberAnimator script. */
 	[System.Serializable]
 	public class AnimatorData : RememberData
 	{
@@ -416,19 +480,10 @@ namespace AC
 		/** Data for each layer's animation state. */
 		public string stateData;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public AnimatorData () { }
 
 	}
-
-	#else
-
-	public class RememberAnimator : MonoBehaviour
-	{ }
-
-	#endif
 
 }
 	

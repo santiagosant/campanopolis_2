@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"GameCamera2D.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 * Based on the work by Eric Haines (Eric5h5) at http://wiki.unity3d.com/index.php?title=OffsetVanishingPoint
 	 */
 	[RequireComponent (typeof (Camera))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_game_camera2_d.html")]
-	#endif
 	public class GameCamera2D : CursorInfluenceCamera
 	{
+
+		#region Variables
 
 		/** If True, then horizontal panning is prevented */
 		public bool lockHorizontal = true;
@@ -35,6 +35,11 @@ namespace AC
 		public bool limitHorizontal;
 		/** If True, then vertical panning will be limited to minimum and maximum values */
 		public bool limitVertical;
+
+		/** If set, then the sprite's bounds will be used to set the horizontal and vertical limits, overriding constrainHorizontal and constrainVertical */
+		public SpriteRenderer backgroundConstraint = null;
+		/** If True, and backgroundConstraint is set, then the camera will zoom in to fit the background if it is too zoomed out to fit */
+		public bool autoScaleToFitBackgroundConstraint = false;
 
 		/** The lower and upper horizontal limits, if limitHorizontal = True */
 		public Vector2 constrainHorizontal;
@@ -56,31 +61,80 @@ namespace AC
 		/** The step size when doSnapping is True */
 		public float unitSnap = 0.1f;
 
-		private Vector2 perspectiveOffset = Vector2.zero;
-		private Vector3 originalPosition = Vector3.zero;
-		private Vector2 desiredOffset = Vector2.zero;
-		private bool haveSetOriginalPosition = false;
+		protected Vector2 perspectiveOffset = Vector2.zero;
+		protected Vector3 originalPosition = Vector3.zero;
+		protected Vector2 desiredOffset = Vector2.zero;
+		protected bool haveSetOriginalPosition = false;
+		private float lastOrthographicSize = 0f;
 
-		private LerpUtils.FloatLerp xLerp = new LerpUtils.FloatLerp ();
-		private LerpUtils.FloatLerp yLerp = new LerpUtils.FloatLerp ();
+		protected LerpUtils.FloatLerp xLerp = new LerpUtils.FloatLerp ();
+		protected LerpUtils.FloatLerp yLerp = new LerpUtils.FloatLerp ();
 
+		#endregion
+
+
+		#region UnityStandards
 
 		protected override void Awake ()
 		{
 			SetOriginalPosition ();
 			base.Awake ();
 		}
-		
-		
+
+
+		protected override void OnEnable ()
+		{
+			EventManager.OnTeleport += OnTeleport;
+			EventManager.OnUpdatePlayableScreenArea += OnUpdatePlayableScreenArea;
+			base.OnEnable ();
+		}
+
+
+		protected override void OnDisable ()
+		{
+			EventManager.OnTeleport -= OnTeleport;
+			EventManager.OnUpdatePlayableScreenArea -= OnUpdatePlayableScreenArea;
+			base.OnDisable ();
+		}
+
+
 		protected override void Start ()
 		{
 			base.Start ();
 
 			ResetTarget ();
-			if (target)
+			if (Target)
 			{
 				MoveCameraInstant ();
 			}
+		}
+
+
+		public override void _Update ()
+		{
+			if (Camera && Camera.orthographicSize != lastOrthographicSize)
+			{
+				UpdateBackgroundConstraint ();
+			}
+
+			MoveCamera ();
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Force-sets the current position as its original position. This should not normally need to be called externally. */
+		public void ForceRecordOriginalPosition ()
+		{
+			if (!haveSetOriginalPosition && backgroundConstraint && Camera.orthographic && (limitHorizontal || limitVertical) && Target)
+			{
+				Transform.position = new Vector3 (0f, 0f, Transform.position.z);
+			}
+
+			originalPosition = Transform.position;
+			haveSetOriginalPosition = true;
 		}
 
 
@@ -90,15 +144,228 @@ namespace AC
 		}
 
 
-		public override void _Update ()
+		public override void MoveCameraInstant ()
 		{
-			MoveCamera ();
+			SetOriginalPosition ();
+
+			if (!lockHorizontal || !lockVertical)
+			{
+				if (Target)
+				{
+					SetDesired ();
+			
+					if (!lockHorizontal)
+					{
+						perspectiveOffset.x = xLerp.Update (desiredOffset.x, desiredOffset.x, dampSpeed);
+					}
+				
+					if (!lockVertical)
+					{
+						perspectiveOffset.y = yLerp.Update (desiredOffset.y, desiredOffset.y, dampSpeed);
+					}
+				}
+				else if ((limitHorizontal || limitVertical) && Camera.orthographic)
+				{
+					Vector3 position = originalPosition;
+					if (limitHorizontal && !lockHorizontal)
+					{
+						position.x = Mathf.Clamp (position.x, constrainHorizontal.x, constrainHorizontal.y);
+					}
+					if (limitVertical && !lockVertical)
+					{
+						position.y = Mathf.Clamp (position.y, constrainVertical.x, constrainVertical.y);
+					}
+					transform.position = position;
+				}
+			}
+
+			SetProjection ();
 		}
 
 
-		private void SetDesired ()
+		/** Snaps the camera to its offset values and recalculates the camera's projection matrix. */
+		public void SnapToOffset ()
 		{
-			Vector2 targetOffset = GetOffsetForPosition (target.position);
+			perspectiveOffset = afterOffset;
+			SetProjection ();
+		}
+
+
+		/** Sets the camera's rotation and projection according to the chosen settings in SettingsManager. */
+		public void SetCorrectRotation ()
+		{
+			if (KickStarter.settingsManager)
+			{
+				if (SceneSettings.IsTopDown ())
+				{
+					Transform.rotation = Quaternion.Euler (90f, 0, 0);
+					return;
+				}
+
+				if (SceneSettings.IsUnity2D ())
+				{
+					Camera.orthographic = true;
+				}
+			}
+
+			Transform.rotation = Quaternion.Euler (0, 0, 0);
+		}
+
+
+		/**
+		 * <summary>Checks if the GameObject's rotation matches the intended rotation, according to the chosen settings in SettingsManager.</summary>
+		 * <returns>True if the GameObject's rotation matches the intended rotation<returns>
+		 */
+		public bool IsCorrectRotation ()
+		{
+			if (SceneSettings.IsTopDown ())
+			{
+				if (Transform.rotation == Quaternion.Euler (90f, 0f, 0f))
+				{
+					return true;
+				}
+
+				return false;
+			}
+
+			if (SceneSettings.CameraPerspective != CameraPerspective.TwoD)
+			{
+				return true;
+			}
+
+			if (Transform.rotation == Quaternion.Euler (0f, 0f, 0f))
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+
+		public override Vector2 GetPerspectiveOffset ()
+		{
+			return GetSnapOffset ();
+		}
+
+
+		/**
+		 * <summary>Sets the actual horizontal and vertical panning offsets. Be aware that the camera will still be subject to the movement set by the target, so it will move back to its original position afterwards unless you also change the target.</summary>
+		 * <param name = "_perspectiveOffset">The new offsets</param>
+		 */
+		public void SetPerspectiveOffset (Vector2 _perspectiveOffset)
+		{
+			perspectiveOffset = _perspectiveOffset;
+		}
+
+		#endregion
+
+
+		#region CustomEvents
+
+		protected void OnTeleport (GameObject _gameObject)
+		{
+			if (gameObject == _gameObject)
+			{
+				ForceRecordOriginalPosition ();
+			}
+		}
+
+
+		protected void OnUpdatePlayableScreenArea ()
+		{
+			UpdateBackgroundConstraint ();
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+		
+		protected void UpdateBackgroundConstraint ()
+		{
+			lastOrthographicSize = Camera.orthographicSize;
+			if (backgroundConstraint == null || Camera == null || !Camera.orthographic) return;
+			if (!limitHorizontal && !limitVertical) return;
+			if (lockHorizontal && lockVertical) return;
+
+			Camera.enabled = true;
+
+			Rect originalRect = Camera.pixelRect;
+			if (KickStarter.CameraMain)
+			{
+				Camera.pixelRect = KickStarter.CameraMain.pixelRect;
+			}
+
+			Vector3 bottomLeftWorldPosition = Camera.ViewportToWorldPoint (new Vector3 (0f, 0f, Camera.nearClipPlane));
+			Vector3 topRightWorldPosition = Camera.ViewportToWorldPoint (new Vector3 (1f, 1f, Camera.nearClipPlane));
+			Camera.pixelRect = originalRect;
+			
+			Vector2 bottomLeftOffset = new Vector2 (Transform.position.x - bottomLeftWorldPosition.x, Transform.position.y - bottomLeftWorldPosition.y);
+			Vector2 topRightOffset = new Vector2 (Transform.position.x - topRightWorldPosition.x, Transform.position.y - topRightWorldPosition.y);
+
+			if (limitHorizontal)
+			{
+				Vector2 hLimits = new Vector2 (bottomLeftOffset.x + backgroundConstraint.bounds.min.x, topRightOffset.x + backgroundConstraint.bounds.max.x);
+				constrainHorizontal = hLimits;
+				float scaleFactor = (topRightWorldPosition.x - bottomLeftWorldPosition.x) / backgroundConstraint.bounds.size.x;
+				if (scaleFactor > 1f)
+				{
+					constrainHorizontal.x = constrainHorizontal.y = backgroundConstraint.bounds.center.x;
+					if (autoScaleToFitBackgroundConstraint)
+					{
+						ACDebug.Log ("GameCamera2D '" + gameObject.name + "' is zoomed out to much to fit the Horizontal background constraint - zooming in to compensate.", this);
+						Camera.orthographicSize /= scaleFactor;
+						lastOrthographicSize = Camera.orthographicSize;
+
+						if (KickStarter.CameraMain)
+						{
+							Camera.pixelRect = KickStarter.CameraMain.pixelRect;
+						}
+
+						bottomLeftWorldPosition = Camera.ViewportToWorldPoint (new Vector3 (0f, 0f, Camera.nearClipPlane));
+						topRightWorldPosition = Camera.ViewportToWorldPoint (new Vector3 (1f, 1f, Camera.nearClipPlane));
+						Camera.pixelRect = originalRect;
+
+						bottomLeftOffset = new Vector2 (Transform.position.x - bottomLeftWorldPosition.x, Transform.position.y - bottomLeftWorldPosition.y);
+						topRightOffset = new Vector2 (Transform.position.x - topRightWorldPosition.x, Transform.position.y - topRightWorldPosition.y);
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot properly set Horizontal constraint for GameCamera2D '" + gameObject.name + "' because the assigned background's width is less than the screen's width.", this);
+					}
+				}
+			}
+
+			if (limitVertical)
+			{
+				Vector2 vLimits = new Vector2 (bottomLeftOffset.y + backgroundConstraint.bounds.min.y, topRightOffset.y + backgroundConstraint.bounds.max.y);
+				constrainVertical = vLimits;
+
+				float scaleFactor = (topRightWorldPosition.y - bottomLeftWorldPosition.y) / backgroundConstraint.bounds.size.y;
+				if (scaleFactor > 1f)
+				{
+					constrainVertical.x = constrainVertical.y = backgroundConstraint.bounds.center.y;
+					if (autoScaleToFitBackgroundConstraint)
+					{
+						ACDebug.Log ("GameCamera2D '" + gameObject.name + "' is zoomed out to much to fit the Vertical background constraint - zooming in to compensate.", this);
+						Camera.orthographicSize /= scaleFactor;
+						lastOrthographicSize = Camera.orthographicSize;
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot properly set Vertical constraint for GameCamera2D '" + gameObject.name + "' because the assigned background's height is less than the screen's height.", this);
+					}
+				}
+			}
+		
+			MoveCameraInstant ();
+			Camera.enabled = false;
+		}
+
+
+		protected void SetDesired ()
+		{
+			Vector2 targetOffset = GetOffsetForPosition (Target.position);
 			if (targetOffset.x < (perspectiveOffset.x - freedom.x))
 			{
 				desiredOffset.x = targetOffset.x + freedom.x;
@@ -111,7 +378,7 @@ namespace AC
 			desiredOffset.x += afterOffset.x;
 			if (!Mathf.Approximately (directionInfluence.x, 0f))
 			{
-				desiredOffset.x += Vector3.Dot (TargetForward, transform.right) * directionInfluence.x;
+				desiredOffset.x += Vector3.Dot (TargetForward, Transform.right) * directionInfluence.x;
 			}
 
 			if (limitHorizontal)
@@ -133,11 +400,11 @@ namespace AC
 			{
 				if (SceneSettings.IsTopDown ())
 				{
-					desiredOffset.y += Vector3.Dot (TargetForward, transform.up) * directionInfluence.y;
+					desiredOffset.y += Vector3.Dot (TargetForward, Transform.up) * directionInfluence.y;
 				}
 				else
 				{
-					desiredOffset.y += Vector3.Dot (TargetForward, transform.forward) * directionInfluence.y;
+					desiredOffset.y += Vector3.Dot (TargetForward, Transform.forward) * directionInfluence.y;
 				}
 			}
 
@@ -148,14 +415,9 @@ namespace AC
 		}	
 		
 
-		private void MoveCamera ()
+		protected void MoveCamera ()
 		{
-			if (targetIsPlayer && KickStarter.player)
-			{
-				target = KickStarter.player.transform;
-			}
-			
-			if (target && (!lockHorizontal || !lockVertical))
+			if (Target && (!lockHorizontal || !lockVertical))
 			{
 				SetDesired ();
 
@@ -183,51 +445,24 @@ namespace AC
 		}
 
 
-		private void SetOriginalPosition ()
+		protected void SetOriginalPosition ()
 		{
 			if (!haveSetOriginalPosition)
 			{
-				originalPosition = transform.position;
-				haveSetOriginalPosition = true;
+				ForceRecordOriginalPosition ();
 			}
 		}
 		
-		
-		public override void MoveCameraInstant ()
+
+		protected void SetProjection ()
 		{
-			if (targetIsPlayer && KickStarter.player)
-			{
-				target = KickStarter.player.transform;
-			}
+			if (Target == null) return;
 
-			SetOriginalPosition ();
-
-			if (target && (!lockHorizontal || !lockVertical))
-			{
-				SetDesired ();
-			
-				if (!lockHorizontal)
-				{
-					perspectiveOffset.x = xLerp.Update (desiredOffset.x, desiredOffset.x, dampSpeed);
-				}
-				
-				if (!lockVertical)
-				{
-					//perspectiveOffset.y = desiredOffset.y;
-					perspectiveOffset.y = yLerp.Update (desiredOffset.y, desiredOffset.y, dampSpeed);
-				}
-			}
-			SetProjection ();
-		}
-
-
-		private void SetProjection ()
-		{
 			Vector2 snapOffset = GetSnapOffset ();
 
 			if (Camera.orthographic)
 			{
-				transform.position = originalPosition + (transform.right * snapOffset.x) + (transform.up * snapOffset.y);
+				Transform.position = originalPosition + (Transform.right * snapOffset.x) + (Transform.up * snapOffset.y);
 			}
 			else
 			{
@@ -236,17 +471,7 @@ namespace AC
 		}
 
 
-		/**
-		 * Snaps the camera to its offset values and recalculates the camera's projection matrix.
-		 */
-		public void SnapToOffset ()
-		{
-			perspectiveOffset = afterOffset;
-			SetProjection ();
-		}
-
-
-		private Vector2 GetOffsetForPosition (Vector3 targetPosition)
+		protected Vector2 GetOffsetForPosition (Vector3 targetPosition)
 		{
 			Vector2 targetOffset = new Vector2 ();
 			float forwardOffsetScale = 93 - (299 * Camera.nearClipPlane);
@@ -255,26 +480,26 @@ namespace AC
 			{
 				if (Camera.orthographic)
 				{
-					targetOffset.x = transform.position.x;
-					targetOffset.y = transform.position.z;
+					targetOffset.x = Transform.position.x;
+					targetOffset.y = Transform.position.z;
 				}
 				else
 				{
-					targetOffset.x = - (targetPosition.x - transform.position.x) / (forwardOffsetScale * (targetPosition.y - transform.position.y));
-					targetOffset.y = - (targetPosition.z - transform.position.z) / (forwardOffsetScale * (targetPosition.y - transform.position.y));
+					targetOffset.x = - (targetPosition.x - Transform.position.x) / (forwardOffsetScale * (targetPosition.y - Transform.position.y));
+					targetOffset.y = - (targetPosition.z - Transform.position.z) / (forwardOffsetScale * (targetPosition.y - Transform.position.y));
 				}
 			}
 			else
 			{
 				if (Camera.orthographic)
 				{
-					targetOffset = transform.TransformVector (new Vector3 (targetPosition.x, targetPosition.y, -targetPosition.z));
+					targetOffset = Transform.TransformVector (new Vector3 (targetPosition.x, targetPosition.y, -targetPosition.z));
 				}
 				else
 				{
-					float rightDot = Vector3.Dot (transform.right, targetPosition - transform.position);
-					float forwardDot = Vector3.Dot (transform.forward, targetPosition - transform.position);
-					float upDot = Vector3.Dot (transform.up, targetPosition - transform.position);
+					float rightDot = Vector3.Dot (Transform.right, targetPosition - Transform.position);
+					float forwardDot = Vector3.Dot (Transform.forward, targetPosition - Transform.position);
+					float upDot = Vector3.Dot (Transform.up, targetPosition - Transform.position);
 
 					targetOffset.x = rightDot / (forwardOffsetScale * forwardDot);
 					targetOffset.y = upDot / (forwardOffsetScale * forwardDot);
@@ -285,66 +510,7 @@ namespace AC
 		}
 
 
-		/**
-		 * Sets the camera's rotation and projection according to the chosen settings in SettingsManager.
-		 */
-		public void SetCorrectRotation ()
-		{
-			if (KickStarter.settingsManager)
-			{
-				if (SceneSettings.IsTopDown ())
-				{
-					transform.rotation = Quaternion.Euler (90f, 0, 0);
-					return;
-				}
-
-				if (SceneSettings.IsUnity2D ())
-				{
-					Camera.orthographic = true;
-				}
-			}
-
-			transform.rotation = Quaternion.Euler (0, 0, 0);
-		}
-
-
-		/**
-		 * <summary>Checks if the GameObject's rotation matches the intended rotation, according to the chosen settings in SettingsManager.</summary>
-		 * <returns>True if the GameObject's rotation matches the intended rotation<returns>
-		 */
-		public bool IsCorrectRotation ()
-		{
-			if (SceneSettings.IsTopDown ())
-			{
-				if (transform.rotation == Quaternion.Euler (90f, 0f, 0f))
-				{
-					return true;
-				}
-
-				return false;
-			}
-
-			if (SceneSettings.CameraPerspective != CameraPerspective.TwoD)
-			{
-				return true;
-			}
-
-			if (transform.rotation == Quaternion.Euler (0f, 0f, 0f))
-			{
-				return true;
-			}
-
-			return false;
-		}
-
-
-		public override Vector2 GetPerspectiveOffset ()
-		{
-			return GetSnapOffset ();
-		}
-
-
-		private Vector2 GetSnapOffset ()
+		protected Vector2 GetSnapOffset ()
 		{
 			if (doSnapping)
 			{
@@ -358,15 +524,7 @@ namespace AC
 			return perspectiveOffset;
 		}
 
-
-		/**
-		 * <summary>Sets the actual horizontal and vertical panning offsets. Be aware that the camera will still be subject to the movement set by the target, so it will move back to its original position afterwards unless you also change the target.</summary>
-		 * <param name = "_perspectiveOffset">The new offsets</param>
-		 */
-		public void SetPerspectiveOffset (Vector2 _perspectiveOffset)
-		{
-			perspectiveOffset = _perspectiveOffset;
-		}
+		#endregion
 
 
 		#if UNITY_EDITOR
@@ -378,6 +536,19 @@ namespace AC
 		}
 
 		#endif
+
+
+		#region GetSet
+
+		public override TransparencySortMode TransparencySortMode
+		{
+			get
+			{
+				return TransparencySortMode.Orthographic;
+			}
+		}
+
+		#endregion
 
 	}
 

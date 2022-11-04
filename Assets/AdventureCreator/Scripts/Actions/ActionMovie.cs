@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMovie.cs"
  * 
@@ -9,9 +9,9 @@
  * 
  */
 
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 using UnityEngine;
 using System.Collections;
@@ -32,12 +32,11 @@ namespace AC
 	public class ActionMovie : Action
 	{
 
-		#if ALLOW_VIDEO
 		public MovieClipType movieClipType = MovieClipType.VideoPlayer;
-		#else
-		public MovieClipType movieClipType = MovieClipType.FullScreen;
-		#endif
 		public MovieMaterialMethod movieMaterialMethod = MovieMaterialMethod.PlayMovie;
+		
+		public string skipKey;
+		public bool canSkip;
 
 		#if ALLOW_VIDEO
 		public VideoPlayer videoPlayer;
@@ -46,71 +45,52 @@ namespace AC
 		public int videoPlayerConstantID;
 		public bool prepareOnly = false;
 		public bool pauseWithGame = false;
+		private bool waitedAtLeastOneFrame;
 
 			#if UNITY_WEBGL
 			public string movieURL = "http://";
 			public int movieURLParameterID = -1;
 			#else
 			public VideoClip newClip;
+			public int newClipParameterID = -1;
 			#endif
-			private bool isPaused;
+			protected bool isPaused;
 
 		#endif
 
 		#if (UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
-
 		public string filePath;
-
-		#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-		public Material material;
-		public int materialParameterID = -1;
-
-		public MovieTexture movieClip;
-		public int movieClipParameterID = -1;
-
-		public Sound sound;
-		public int soundID = 0;
-
-		public bool includeAudio;
-		private GUITexture guiTexture;
 		#endif
 
-		public string skipKey;
-		public bool canSkip;
+
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Play movie clip"; }}
+		public override string Description { get { return "Plays movie clips either on a Texture, or full-screen on mobile devices."; }}
 
 
-		
-		public ActionMovie ()
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			this.isDisplayed = true;
-			title = "Play movie clip";
-			category = ActionCategory.Engine;
-			description = "Plays movie clips either on a Texture, or full-screen on mobile devices.";
-		}
+			#if !(UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
+			movieClipType = MovieClipType.VideoPlayer;
+			#endif
 
-
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
 			#if ALLOW_VIDEO
 			runtimeVideoPlayer = AssignFile <VideoPlayer> (parameters, videoPlayerParameterID, videoPlayerConstantID, videoPlayer);
 			isPaused = false;
 
 				#if UNITY_WEBGL
 				movieURL = AssignString (parameters, movieURLParameterID, movieURL);
+				#else
+				newClip = (VideoClip) AssignObject<VideoClip> (parameters, newClipParameterID, newClip);
 				#endif
 
-			#endif
-
-			#if (UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
-			#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-			material = (Material) AssignObject <Material> (parameters, materialParameterID, material);
-			movieClip = (MovieTexture) AssignObject <MovieTexture> (parameters, movieClipParameterID, movieClip);
-			sound = AssignFile (soundID, sound);
+			waitedAtLeastOneFrame = false;
 			#endif
 		}
 		
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (movieClipType == MovieClipType.VideoPlayer)
 			{
@@ -146,22 +126,22 @@ namespace AC
 							}
 							else
 							{
-								KickStarter.playerInput.skipMovieKey = "";
+								KickStarter.playerInput.skipMovieKey = string.Empty;
 								runtimeVideoPlayer.Play ();
-
-								if (runtimeVideoPlayer.isLooping)
-								{
-									LogWarning ("Cannot wait for " + runtimeVideoPlayer.name + " to finish because it is looping!");
-									return 0f;
-								}
-
-								if (canSkip && skipKey != "")
-								{
-									KickStarter.playerInput.skipMovieKey = skipKey;
-								}
 
 								if (willWait)
 								{
+									if (runtimeVideoPlayer.isLooping)
+									{
+										LogWarning ("Cannot wait for " + runtimeVideoPlayer.name + " to finish because it is looping!");
+										return 0f;
+									}
+
+									if (canSkip && !string.IsNullOrEmpty (skipKey))
+									{
+										KickStarter.playerInput.skipMovieKey = skipKey;
+									}
+
 									return defaultPauseTime;
 								}
 							}
@@ -209,7 +189,7 @@ namespace AC
 								}
 							}
 
-							if (canSkip && skipKey != "" && KickStarter.playerInput.skipMovieKey == "")
+							if (canSkip && !string.IsNullOrEmpty (skipKey) && string.IsNullOrEmpty (KickStarter.playerInput.skipMovieKey))
 							{
 								runtimeVideoPlayer.Stop ();
 								isRunning = false;
@@ -218,6 +198,12 @@ namespace AC
 
 							if (!runtimeVideoPlayer.isPrepared || runtimeVideoPlayer.isPlaying)
 							{
+								return defaultPauseTime;
+							}
+
+							if (!waitedAtLeastOneFrame)
+							{
+								waitedAtLeastOneFrame = true;
 								return defaultPauseTime;
 							}
 						}
@@ -232,7 +218,7 @@ namespace AC
 					LogWarning ("Cannot play video - no Video Player found!");
 				}
 				#else
-				LogWarning ("Use of the VideoPlayer for movie playback is only available in Unity 5.6 or later.");
+				LogWarning ("Use of the VideoPlayer for movie playback is not available on this platform.");
 				#endif
 				return 0f;
 			}
@@ -259,123 +245,22 @@ namespace AC
 				return 0f;
 			}
 
-			#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-
-			if (movieClip == null)
-			{
-				LogWarning ("Cannot play movie - no movie clip set!");
-				return 0f;
-			}
-			if (movieClipType == MovieClipType.OnMaterial && material == null)
-			{
-				LogWarning ("Cannot play movie - no material has been assigned. A movie clip can only be played as a material's texture, so a material must be assigned.");
-				return 0f;
-			}
-			if (includeAudio && sound == null)
-			{
-				LogWarning ("Cannot play movie audio - no Sound object has been assigned.");
-			}
-
-			if (!isRunning)
-			{
-				isRunning = true;
-				guiTexture = null;
-
-				KickStarter.playerInput.skipMovieKey = "";
-
-				if (movieClipType == MovieClipType.FullScreen)
-				{
-					CreateFullScreenMovie ();
-				}
-				else if (movieClipType == MovieClipType.OnMaterial)
-				{
-					if (movieMaterialMethod == MovieMaterialMethod.PlayMovie)
-					{
-						material.mainTexture = movieClip;
-					}
-					else if (movieMaterialMethod == MovieMaterialMethod.PauseMovie)
-					{
-						if (material.mainTexture == movieClip)
-						{
-							movieClip.Pause ();
-							isRunning = false;
-							return 0f;
-						}
-					}
-					else if (movieMaterialMethod == MovieMaterialMethod.StopMovie)
-					{
-						if (material.mainTexture == movieClip)
-						{
-							movieClip.Stop ();
-							isRunning = false;
-							return 0f;
-						}
-					}
-				}
-
-				movieClip.Play ();
-
-				if (includeAudio && sound != null)
-				{
-					if (movieClipType == MovieClipType.OnMaterial && movieMaterialMethod != MovieMaterialMethod.PlayMovie)
-					{
-						if (movieMaterialMethod == MovieMaterialMethod.PauseMovie)
-						{
-							sound.GetComponent <AudioSource>().Pause ();
-						}
-						else if (movieMaterialMethod == MovieMaterialMethod.StopMovie)
-						{
-							sound.Stop ();
-						}
-					}
-					else
-					{
-						sound.GetComponent <AudioSource>().clip = movieClip.audioClip;
-						sound.Play (false);
-					}
-				}
-
-				if (movieClipType == MovieClipType.FullScreen || willWait)
-				{
-					if (canSkip && skipKey != "")
-					{
-						KickStarter.playerInput.skipMovieKey = skipKey;
-					}
-					return defaultPauseTime;
-				}
-				return 0f;
-			}
-			else
-			{
-				if (movieClip.isPlaying)
-				{
-					if (!canSkip || KickStarter.playerInput.skipMovieKey != "")
-					{
-						return defaultPauseTime;
-					}
-				}
-
-				OnComplete ();
-				isRunning = false;
-				return 0f;
-			}
-
 			#else
 
-			LogWarning ("On non-mobile platforms, this Action is only available in Unity 5 or Unity Pro.");
+			LogWarning ("On non-mobile platforms, this Action requires use of the Video Player.");
 			return 0f;
 
 			#endif
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			OnComplete ();
 		}
 
 
-		private void OnComplete ()
+		protected void OnComplete ()
 		{
 			if (movieClipType == MovieClipType.VideoPlayer)
 			{
@@ -386,7 +271,7 @@ namespace AC
 					{
 						runtimeVideoPlayer.Prepare ();
 					}
-					else
+					else if (!runtimeVideoPlayer.isLooping)
 					{
 						runtimeVideoPlayer.Stop ();
 					}
@@ -394,25 +279,7 @@ namespace AC
 				#endif
 			}
 			else if (movieClipType == MovieClipType.FullScreen || (movieClipType == MovieClipType.OnMaterial && movieMaterialMethod == MovieMaterialMethod.PlayMovie))
-			{
-				if (isRunning)
-				{
-					#if (UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
-					#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-					if (includeAudio)
-					{
-						sound.Stop ();
-					}
-					movieClip.Stop ();
-					KickStarter.playerInput.skipMovieKey = "";
-
-					if (movieClipType == MovieClipType.FullScreen)
-					{
-						EndFullScreenMovie ();
-					}
-					#endif
-				}
-			}
+			{}
 			else if (movieClipType == MovieClipType.OnMaterial && movieMaterialMethod != MovieMaterialMethod.PlayMovie)
 			{
 				Run ();
@@ -422,9 +289,13 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
+			#if (UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
 			movieClipType = (MovieClipType) EditorGUILayout.EnumPopup ("Play clip:", movieClipType);
+			#else
+			movieClipType = MovieClipType.VideoPlayer;
+			#endif
 
 			if (movieClipType == MovieClipType.VideoPlayer)
 			{
@@ -449,13 +320,17 @@ namespace AC
 				if (movieMaterialMethod == MovieMaterialMethod.PlayMovie)
 				{
 					#if UNITY_WEBGL
-					movieURLParameterID = Action.ChooseParameterGUI ("Movie URL:", parameters, movieURLParameterID, ParameterType.String);
+					movieURLParameterID = Action.ChooseParameterGUI ("Movie URL:", parameters, movieURLParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 					if (movieURLParameterID < 0)
 					{
 						movieURL = EditorGUILayout.TextField ("Movie URL:", movieURL);
 					}
 					#else
-					newClip = (VideoClip) EditorGUILayout.ObjectField ("New Clip (optional):", newClip, typeof (VideoClip), true);
+					newClipParameterID = Action.ChooseParameterGUI ("New clip (optional):", parameters, newClipParameterID, ParameterType.UnityObject);
+					if (newClipParameterID < 0)
+					{
+						newClip = (VideoClip) EditorGUILayout.ObjectField ("New Clip (optional):", newClip, typeof (VideoClip), true);
+					}
 					#endif
             
 					prepareOnly = EditorGUILayout.Toggle ("Prepare only?", prepareOnly);
@@ -482,7 +357,6 @@ namespace AC
 
 				#endif
 
-				AfterRunningOption ();
 				return;
 			}
 
@@ -500,73 +374,11 @@ namespace AC
 				EditorGUILayout.HelpBox ("The clip must be placed in a folder named 'StreamingAssets'.", MessageType.Info);
 			}
 
-			#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-
-			movieClipParameterID = Action.ChooseParameterGUI ("Movie clip:", parameters, movieClipParameterID, ParameterType.UnityObject);
-			if (movieClipParameterID < 0)
-			{
-				movieClip = (MovieTexture) EditorGUILayout.ObjectField ("Movie clip:", movieClip, typeof (MovieTexture), false);
-			}
-
-			if (movieClipType == MovieClipType.OnMaterial)
-			{
-				movieMaterialMethod = (MovieMaterialMethod) EditorGUILayout.EnumPopup ("Method:", movieMaterialMethod);
-
-				string label = "Material to play on:";
-				if (movieMaterialMethod == MovieMaterialMethod.PauseMovie)
-				{
-					label = "Material to pause:";
-				}
-				else if (movieMaterialMethod == MovieMaterialMethod.StopMovie)
-				{
-					label = "Material to stop:";
-				}
-
-				materialParameterID = Action.ChooseParameterGUI (label, parameters, materialParameterID, ParameterType.UnityObject);
-				if (materialParameterID < 0)
-				{
-					material = (Material) EditorGUILayout.ObjectField (label, material, typeof (Material), true);
-				}
-			}
-
-			if (movieClipType == MovieClipType.OnMaterial && movieMaterialMethod != MovieMaterialMethod.PlayMovie)
-			{ }
-			else
-			{
-				includeAudio = EditorGUILayout.Toggle ("Include audio?", includeAudio);
-				if (includeAudio)
-				{
-					sound = (Sound) EditorGUILayout.ObjectField ("'Sound' to play audio:", sound, typeof (Sound), true);
-
-					soundID = FieldToID (sound, soundID);
-					sound = IDToField (sound, soundID, false);
-				}
-
-				if (movieClipType == MovieClipType.OnMaterial && movieMaterialMethod == MovieMaterialMethod.PlayMovie)
-				{
-					willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
-				}
-				if (movieClipType == MovieClipType.FullScreen || willWait)
-				{
-					canSkip = EditorGUILayout.Toggle ("Player can skip?", canSkip);
-					if (canSkip)
-					{
-						skipKey = EditorGUILayout.TextField ("Skip with Input Button:", skipKey);
-					}
-				}
-			}
-
-			#else
-
-			EditorGUILayout.HelpBox ("On standalone, this Action is only available in Unity 5 or Unity Pro.", MessageType.Warning);
-
 			#endif
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			#if ALLOW_VIDEO
 			if (movieClipType == MovieClipType.VideoPlayer && videoPlayer != null)
@@ -602,48 +414,23 @@ namespace AC
 				return filePath;
 			}
 
-			#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-
-			if (movieClip != null)
-			{
-				return movieClip.name;
-			}
-
 			#endif
 			return string.Empty;
 		}
-		
-		#endif
 
 
-		#if (UNITY_IOS || UNITY_ANDROID || UNITY_WP8 || UNITY_TVOS)
-		#elif UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2017_2_OR_NEWER
-
-		private void CreateFullScreenMovie ()
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
 		{
-			GameObject movieOb = new GameObject ("Movie clip");
-			movieOb.transform.position = Vector3.zero;
-			movieOb.transform.position = new Vector2 (0.5f, 0.5f);
-
-			guiTexture = movieOb.AddComponent<GUITexture>();
-			guiTexture.enabled = false;
-			guiTexture.texture = movieClip;
-			guiTexture.enabled = true;
-
-			KickStarter.sceneSettings.SetFullScreenMovie (movieClip);
-		}
-
-
-		private void EndFullScreenMovie ()
-		{
-			KickStarter.sceneSettings.StopFullScreenMovie ();
-			if (guiTexture != null)
+			#if ALLOW_VIDEO
+			if (movieClipType == MovieClipType.VideoPlayer && videoPlayerParameterID < 0)
 			{
-				guiTexture.enabled = false;
-				Destroy (guiTexture.gameObject);
+				if (videoPlayer && videoPlayer.gameObject == _gameObject) return true;
+				if (videoPlayerConstantID == id) return true;
 			}
+			#endif
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
-
+		
 		#endif
 
 
@@ -659,7 +446,7 @@ namespace AC
 		 */
 		public static ActionMovie CreateNew_Play (VideoPlayer videoPlayer, bool waitUntilFinish = true, bool pauseWhenGameDoes = true, string inputButtonToSkip = "")
 		{
-			ActionMovie newAction = (ActionMovie) CreateInstance <ActionMovie>();
+			ActionMovie newAction = CreateNew<ActionMovie> ();
 			newAction.movieClipType = MovieClipType.VideoPlayer;
 			newAction.movieMaterialMethod = MovieMaterialMethod.PlayMovie;
 			newAction.videoPlayer = videoPlayer;
@@ -678,7 +465,7 @@ namespace AC
 		 */
 		public static ActionMovie CreateNew_Prepare (VideoPlayer videoPlayer)
 		{
-			ActionMovie newAction = (ActionMovie) CreateInstance <ActionMovie>();
+			ActionMovie newAction = CreateNew<ActionMovie> ();
 			newAction.movieClipType = MovieClipType.VideoPlayer;
 			newAction.movieMaterialMethod = MovieMaterialMethod.PlayMovie;
 			newAction.videoPlayer = videoPlayer;
@@ -695,7 +482,7 @@ namespace AC
 		 */
 		public static ActionMovie CreateNew_Stop (VideoPlayer videoPlayer, bool pauseOnly = false)
 		{
-			ActionMovie newAction = (ActionMovie) CreateInstance <ActionMovie>();
+			ActionMovie newAction = CreateNew<ActionMovie> ();
 			newAction.movieClipType = MovieClipType.VideoPlayer;
 			newAction.movieMaterialMethod = (pauseOnly) ? MovieMaterialMethod.PauseMovie : MovieMaterialMethod.StopMovie;
 			return newAction;

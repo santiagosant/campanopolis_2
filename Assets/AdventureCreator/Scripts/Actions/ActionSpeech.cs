@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSpeech.cs"
  * 
@@ -14,6 +14,11 @@ using System.Collections.Generic;
 
 #if UNITY_EDITOR
 using UnityEditor;
+#endif
+
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
 #endif
 
 namespace AC
@@ -29,9 +34,11 @@ namespace AC
 		public int messageParameterID = -1;
 		
 		public bool isPlayer;
+		public int playerID = -1;
+		
 		public Char speaker;
 		public string messageText;
-		public int lineID;
+		public int lineID = -1;
 		public int[] multiLineIDs;
 		public bool isBackground = false;
 		public bool noAnimation = false;
@@ -57,67 +64,80 @@ namespace AC
 		protected bool runActionListInBackground;
 		protected List<ActionParameter> ownParameters = new List<ActionParameter>();
 
+		protected AudioClip addressableAudio;
+		protected TextAsset addressableLipSync;
+
 		public static string[] stringSeparators = new string[] {"\n", "\\n"};
 
+		#if AddressableIsPresent
+		protected bool isAwaitingAddressableAudio = false;
+		protected bool isAwaitingAddressableLipsync = false;
+		#endif
 
-		public ActionSpeech ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Dialogue;
-			title = "Play speech";
-			description = "Makes a Character talk, or – if no Character is specified – displays a message. Subtitles only appear if they are enabled from the Options menu. A 'thinking' effect can be produced by opting to not play any animation.";
-			lineID = -1;
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Dialogue; }}
+		public override string Title { get { return "Play speech"; }}
+		public override string Description { get { return "Makes a Character talk, or – if no Character is specified – displays a message.Subtitles only appear if they are enabled from the Options menu.A 'thinking' effect can be produced by opting to not play any animation."; }}
 		
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (parameters != null) ownParameters = parameters;
 
-			runtimeSpeaker = AssignFile <Char> (parameters, parameterID, constantID, speaker);
-
-			// Special case: Use associated NPC
-			if (runtimeSpeaker != null &&
-				runtimeSpeaker is Player &&
-				KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow &&
-				KickStarter.player != null)
-			{
-				// Make sure not the active Player
-				ConstantID speakerID = speaker.GetComponent <ConstantID>();
-				ConstantID playerID = KickStarter.player.GetComponent <ConstantID>();
-				if ((speakerID == null && playerID != null) ||
-					(speakerID != null && playerID == null) ||
-					(speakerID != null && playerID != null && speakerID.constantID != playerID.constantID))
-				{
-					Player speakerPlayer = runtimeSpeaker as Player;
-					foreach (PlayerPrefab playerPrefab in KickStarter.settingsManager.players)
-					{
-						if (playerPrefab != null && playerPrefab.playerOb == speakerPlayer)
-						{
-							if (speakerPlayer.associatedNPCPrefab != null)
-							{
-								ConstantID npcConstantID = speakerPlayer.associatedNPCPrefab.GetComponent <ConstantID>();
-								if (npcConstantID != null)
-								{
-									runtimeSpeaker = AssignFile <Char> (parameters, parameterID, npcConstantID.constantID, runtimeSpeaker);
-								}
-							}
-							break;
-						}
-					}
-				}
-			}
-
 			messageText = AssignString (parameters, messageParameterID, messageText);
-			
+
 			if (isPlayer)
 			{
-				runtimeSpeaker = KickStarter.player;
+				runtimeSpeaker = AssignPlayer (playerID, parameters, parameterID);
+			}
+			else
+			{
+				runtimeSpeaker = AssignFile<Char> (parameters, parameterID, constantID, speaker);
+			}
+
+			if (runtimeSpeaker && !runtimeSpeaker.gameObject.activeInHierarchy && runtimeSpeaker.displayLineID == -1 && runtimeSpeaker.lineID >= 0)
+			{ 
+				runtimeSpeaker.displayLineID = runtimeSpeaker.lineID;
+			}
+
+			#if AddressableIsPresent
+			isAwaitingAddressableAudio = false;
+			isAwaitingAddressableLipsync = false;
+			addressableAudio = null;
+			addressableLipSync = null;
+			#endif
+		}
+
+
+		#if AddressableIsPresent
+
+		private void OnCompleteLoadAudio (AsyncOperationHandle<AudioClip> obj)
+		{
+			isAwaitingAddressableAudio = false;
+			addressableAudio = obj.Result;
+
+			if (!isAwaitingAddressableLipsync)
+			{
+				StartSpeech (addressableAudio, addressableLipSync);
 			}
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		private void OnCompleteLoadLipsync (AsyncOperationHandle<TextAsset> obj)
+		{
+			isAwaitingAddressableLipsync = false;
+			addressableLipSync = obj.Result;
+
+			if (!isAwaitingAddressableAudio)
+			{
+				StartSpeech (addressableAudio, addressableLipSync);
+			}
+		}
+
+		#endif
+
+
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -133,16 +153,53 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			if (KickStarter.speechManager == null)
-			{
-				Log ("No Speech Manager present");
-				return 0f;
-			}
-
 			if (KickStarter.dialog && KickStarter.stateHandler)
 			{
+				if (KickStarter.speechManager.referenceSpeechFiles == ReferenceSpeechFiles.ByAddressable && lineID >= 0)
+				{
+					#if AddressableIsPresent
+					if (!isRunning && !(isAwaitingAddressableAudio || isAwaitingAddressableLipsync))
+					{
+						SpeechLine speechLine = KickStarter.speechManager.GetLine (lineID);
+
+						string overrideName = string.Empty;
+						if (isPlayer && speechLine.SeparatePlayerAudio () && KickStarter.player)
+						{
+							overrideName = KickStarter.player.name;
+						}
+
+						string filename = speechLine.GetFilename (overrideName);
+						
+						Addressables.LoadAssetAsync<AudioClip>(filename).Completed += OnCompleteLoadAudio;
+						isAwaitingAddressableAudio = true;
+
+						if (KickStarter.speechManager.UseFileBasedLipSyncing ())
+						{
+							Addressables.LoadAssetAsync<TextAsset>(filename).Completed += OnCompleteLoadLipsync;
+							isAwaitingAddressableLipsync = true;
+						}
+
+						isRunning = true;
+						return defaultPauseTime;
+					}
+
+					if (isAwaitingAddressableAudio || isAwaitingAddressableLipsync)
+					{
+						return defaultPauseTime;
+					}
+
+					if (isBackground)
+					{
+						isRunning = false;
+						return 0f;
+					}
+					#else
+					LogWarning ("Cannot use addressables system for speech audio because 'AddressableIsPresent' has not been added as a Scripting Define Symbol.  This can be added in Unity's Player settings.");
+					#endif
+				}
+
 				if (!isRunning)
 				{
 					stopAction = false;
@@ -159,7 +216,7 @@ namespace AC
 							string[] textArray = messageText.Split (stringSeparators, System.StringSplitOptions.None);
 							if (textArray != null && textArray.Length > 1)
 							{
-								LogWarning ("Cannot separate multiple speech lines when 'Is Background?' is checked - will only play '" + textArray[0] + "'");
+								LogWarning ("Cannot separate multiple speech lines when 'Play in background?' is checked - will only play '" + textArray[0] + "'");
 							}
 						}
 
@@ -170,14 +227,14 @@ namespace AC
 				}
 				else
 				{
-					if (stopAction || (speech != null && speech.continueFromSpeech))
+					if (stopAction || (speech != null && speech.continueState == Speech.ContinueState.Pending))
 					{
 						if (speech != null)
 						{
-							speech.continueFromSpeech = false;
+							speech.continueState = Speech.ContinueState.Continued;
 						}
 						isRunning = false;
-
+						stopAction = false;
 						return 0;
 					}
 
@@ -217,8 +274,9 @@ namespace AC
 								return defaultPauseTime;
 							}
 						}
-						
-						if (waitTimeOffset <= 0f)
+
+						float totalWaitTimeOffset = waitTimeOffset + KickStarter.speechManager.waitTimeOffset;
+						if (totalWaitTimeOffset <= 0f)
 						{
 							isRunning = false;
 							return 0f;
@@ -226,7 +284,7 @@ namespace AC
 						else
 						{
 							stopAction = true;
-							return waitTimeOffset;
+							return totalWaitTimeOffset;
 						}
 					}
 					else
@@ -240,7 +298,7 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			KickStarter.dialog.KillDialog (true, true);
 
@@ -253,8 +311,6 @@ namespace AC
 				log.speakerName = runtimeSpeaker.name;
 				if (!noAnimation)
 				{
-					runtimeSpeaker.isTalking = false;
-					
 					if (runtimeSpeaker.GetAnimEngine () != null)
 					{
 						runtimeSpeaker.GetAnimEngine ().ActionSpeechSkip (this);
@@ -287,7 +343,7 @@ namespace AC
 		}
 
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (lineID > -1)
 			{
@@ -314,7 +370,16 @@ namespace AC
 			}
 
 			isPlayer = EditorGUILayout.Toggle ("Player line?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				if (Application.isPlaying)
 				{
@@ -345,7 +410,7 @@ namespace AC
 				}
 			}
 			
-			messageParameterID = Action.ChooseParameterGUI ("Line text:", parameters, messageParameterID, ParameterType.String);
+			messageParameterID = Action.ChooseParameterGUI ("Line text:", parameters, messageParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (messageParameterID < 0)
 			{
 				EditorGUILayout.BeginHorizontal ();
@@ -358,7 +423,19 @@ namespace AC
 			Char _speaker = null;
 			if (isPlayer)
 			{
-				if (Application.isPlaying)
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					if (parameterID < 0 && playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						_speaker = (playerPrefab != null) ? playerPrefab.playerOb : null;
+					}
+					else
+					{
+						_speaker = KickStarter.settingsManager.GetDefaultPlayer ();
+					}
+				}
+				else if (Application.isPlaying)
 				{
 					_speaker = KickStarter.player;
 				}
@@ -380,12 +457,16 @@ namespace AC
 					if (_speaker.GetAnimEngine ())
 					{
 						_speaker.GetAnimEngine ().ActionSpeechGUI (this, _speaker);
+
+						#if !AC_ActionListPrefabs
+						if (GUI.changed && this) EditorUtility.SetDirty (this);
+						#endif
 					}
 				}
 			}
 			else if (!isPlayer && parameterID < 0)
 			{
-				EditorGUILayout.HelpBox ("If no Character is set, this line\nwill be considered to be a Narration.", MessageType.Info);
+				EditorGUILayout.HelpBox ("If no Character is set, this line will be considered to be a Narration.", MessageType.Info);
 			}
 			
 			isBackground = EditorGUILayout.Toggle ("Play in background?", isBackground);
@@ -393,18 +474,16 @@ namespace AC
 			{
 				waitTimeOffset = EditorGUILayout.Slider ("Wait time offset (s):", waitTimeOffset, 0f, 4f);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID <Char> (speaker, constantID, parameterID);
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (parameterID == -1)
 			{
@@ -456,23 +535,60 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
-			string tokenText = AdvGame.GetVariableTokenText (location, varID);
+			string tokenText = AdvGame.GetVariableTokenText (location, varID, _variablesConstantID);
 			if (!string.IsNullOrEmpty (tokenText) && !string.IsNullOrEmpty (messageText) && messageText.Contains (tokenText) && messageParameterID < 0)
 			{
 				thisCount ++;
 			}
-			thisCount += base.GetVariableReferences (parameters, location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+
+			string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, _variablesConstantID);
+			if (!string.IsNullOrEmpty (oldTokenText) && !string.IsNullOrEmpty (messageText) && messageText.Contains (oldTokenText) && messageParameterID < 0)
+			{
+				string newTokenText = AdvGame.GetVariableTokenText (location, newVarID, _variablesConstantID);
+				messageText = messageText.Replace (oldTokenText, newTokenText);
+				thisCount++;
+			}
+			thisCount += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (speaker && speaker.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			if (isPlayer && gameObject && gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
 		}
 
 		#endif
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -497,6 +613,33 @@ namespace AC
 		}
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (KickStarter.speechManager.separateLines)
+			{
+				string[] textArray = GetSpeechArray ();
+				if (index < textArray.Length)
+				{
+					textArray[index] = updatedText;
+					
+					messageText = string.Empty;
+					for (int i=0; i<textArray.Length; i++)
+					{
+						messageText += textArray[i];
+						if (i < textArray.Length-1)
+						{
+							messageText += "\n";
+						}
+					}
+				}
+			}
+			else
+			{
+				messageText = updatedText;
+			}
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -559,27 +702,37 @@ namespace AC
 		}
 
 
-		public string GetOwner (int index)
+		public virtual string GetOwner (int index)
 		{
-			string _speaker = "";
 			bool _isPlayer = isPlayer;
-			if (!_isPlayer && speaker != null && speaker is Player)
+			if (!_isPlayer && speaker != null && speaker.IsPlayer)
 			{
 				_isPlayer = true;
 			}
 			
 			if (_isPlayer)
 			{
-				_speaker = "Player";
-
-				if (isPlayer && KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow && KickStarter.settingsManager.player)
+				if (isPlayer && KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
 				{
-					_speaker = KickStarter.settingsManager.player.name;
+					if (parameterID < 0 && playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						if (playerPrefab != null && playerPrefab.playerOb != null)
+						{
+							return playerPrefab.playerOb.name;
+						}
+					}
+				}
+				else if (isPlayer && KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow && KickStarter.settingsManager.player)
+				{
+					return KickStarter.settingsManager.player.name;
 				}
 				else if (!isPlayer && speaker != null)
 				{
-					_speaker = speaker.name;
+					return speaker.name;
 				}
+
+				return "Player";
 			}
 			else
 			{
@@ -593,26 +746,28 @@ namespace AC
 
 				if (speaker)
 				{
-					_speaker = speaker.name;
+					return speaker.name;
 				}
 				else
 				{
-					_speaker = "Narrator";
+					return "Narrator";
 				}
 			}
-
-			return _speaker;
 		}
 
 
-		public bool OwnerIsPlayer (int index)
+		public virtual bool OwnerIsPlayer (int index)
 		{
 			if (isPlayer)
 			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && playerID >= 0 && parameterID < 0)
+				{
+					return false;
+				}
 				return true;
 			}
 
-			if (speaker != null && speaker is Player)
+			if (speaker != null && speaker.IsPlayer)
 			{
 				return true;
 			}
@@ -638,8 +793,10 @@ namespace AC
 
 		#endif
 
+		#endregion
 
-		private string[] GetSpeechArray ()
+
+		protected string[] GetSpeechArray ()
 		{
 			string _text = messageText.Replace ("\\n", "\n");
 			string[] textArray = _text.Split (stringSeparators, System.StringSplitOptions.None);
@@ -647,17 +804,13 @@ namespace AC
 		}
 
 
-		protected void StartSpeech ()
+		protected void StartSpeech (AudioClip audioClip = null, TextAsset textAsset = null)
 		{
 			string _text = messageText;
 			int _lineID = lineID;
 			
 			int languageNumber = Options.GetLanguage ();
-			if (languageNumber > 0)
-			{
-				// Not in original language, so pull translation in from Speech Manager
-				_text = KickStarter.runtimeLanguages.GetTranslation (_text, lineID, languageNumber);
-			}
+			_text = KickStarter.runtimeLanguages.GetTranslation (_text, lineID, languageNumber, AC_TextType.Speech);
 			
 			_text = _text.Replace ("\\n", "\n");
 
@@ -680,10 +833,7 @@ namespace AC
 						}
 					}
 
-					if (languageNumber > 0)
-					{
-						_text = KickStarter.runtimeLanguages.GetTranslation (_text, _lineID, languageNumber);
-					}
+					_text = KickStarter.runtimeLanguages.GetTranslation (_text, _lineID, languageNumber, AC_TextType.Speech);
 				}
 			}
 			
@@ -691,9 +841,9 @@ namespace AC
 			{
 				_text = AdvGame.ConvertTokens (_text, languageNumber, localVariables, ownParameters);
 			
-				speech = KickStarter.dialog.StartDialog (runtimeSpeaker, _text, (isBackground || runActionListInBackground), _lineID, noAnimation);
+				speech = KickStarter.dialog.StartDialog (runtimeSpeaker, _text, (isBackground || runActionListInBackground), _lineID, noAnimation, false, audioClip, textAsset);
 
-				if (runtimeSpeaker && !noAnimation)
+				if (runtimeSpeaker != null && !noAnimation && speech != null)
 				{
 					if (runtimeSpeaker.GetAnimEngine () != null)
 					{
@@ -714,7 +864,7 @@ namespace AC
 		 */
 		public static ActionSpeech CreateNew (Char charToSpeak, string subtitleText, int translationID = -1, bool waitUntilFinish = true)
 		{
-			ActionSpeech newAction = (ActionSpeech) CreateInstance <ActionSpeech>();
+			ActionSpeech newAction = CreateNew<ActionSpeech> ();
 			newAction.speaker = charToSpeak;
 			newAction.messageText = subtitleText;
 			newAction.isBackground = !waitUntilFinish;
@@ -733,7 +883,7 @@ namespace AC
 		 */
 		public static ActionSpeech CreateNew (Char characterToSpeak, string subtitleText, int[] translationIDs, bool waitUntilFinish = true)
 		{
-			ActionSpeech newAction = (ActionSpeech) CreateInstance <ActionSpeech>();
+			ActionSpeech newAction = CreateNew<ActionSpeech> ();
 			newAction.speaker = characterToSpeak;
 			newAction.messageText = subtitleText;
 			newAction.isBackground = !waitUntilFinish;

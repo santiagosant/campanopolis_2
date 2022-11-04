@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Tags.cs"
  * 
@@ -18,8 +18,6 @@ namespace AC
 	public class Tags
 	{
 
-		/** The name of the "PLayer" tag */
-		public const string player = "Player";
 		/** The name of the "MainCamera" tag */
 		public const string mainCamera = "MainCamera";
 		/** The name of the "Untagged" tag */

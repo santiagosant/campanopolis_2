@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -22,16 +24,20 @@ namespace AC
 		{
 			SortingMap _target = (SortingMap) target;
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Properties", EditorStyles.boldLabel);
 
-			_target.mapType = (SortingMapType) CustomGUILayout.EnumPopup ("Affect sprite's:", _target.mapType);
-			_target.affectScale = CustomGUILayout.Toggle ("Affect Character scale?", _target.affectScale, "", "If True, characters that follow this map should have their scale affected");
-			if (_target.affectScale)
+			_target.affectSorting = CustomGUILayout.Toggle ("Affect Character sorting?", _target.affectSorting, "", "If True, characters that follow this map should have their sorting affected");
+			if (_target.affectSorting)
 			{
-				_target.affectSpeed = CustomGUILayout.Toggle ("Affect Character speed?", _target.affectSpeed, "", "If True, characters that follow this map should have their movement speed affected by the scale factor");
+				_target.mapType = (SortingMapType) CustomGUILayout.EnumPopup ("Affect sprite's:", _target.mapType);
+			}
+			_target.affectScale = CustomGUILayout.Toggle ("Affect Character size?", _target.affectScale, "", "If True, characters that follow this map should have their scale affected");
+			_target.affectSpeed = CustomGUILayout.Toggle ("Affect Character speed?", _target.affectSpeed, "", "If True, characters that follow this map should have their movement speed affected by the scale factor");
 
-				_target.sortingMapScaleType = (SortingMapScaleType) CustomGUILayout.EnumPopup ("Character scaling mode:", _target.sortingMapScaleType, "", "How scaling values are defined");
+			if (_target.affectScale || _target.affectSpeed)
+			{
+				_target.sortingMapScaleType = (SortingMapScaleType) CustomGUILayout.EnumPopup ("Scaling mode:", _target.sortingMapScaleType, "", "How scaling values are defined");
 				if (_target.sortingMapScaleType == SortingMapScaleType.Linear || _target.sortingAreas.Count == 0)
 				{
 					_target.originScale = CustomGUILayout.IntField ("Start scale (%):", _target.originScale, "", "The scale (as a percentage) that characters will have at the very top of the map");
@@ -61,33 +67,36 @@ namespace AC
 					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			EditorGUILayout.Space ();
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Sorting areas", EditorStyles.boldLabel);
 			foreach (SortingArea area in _target.sortingAreas)
 			{
 				int i = _target.sortingAreas.IndexOf (area);
 
-				EditorGUILayout.BeginVertical ();
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.BeginHorizontal ();
 
 				area.color = EditorGUILayout.ColorField (area.color);
 
-				EditorGUILayout.LabelField ("Position:", GUILayout.Width (50f));
+				EditorGUILayout.LabelField ("Position:", GUILayout.Width (55f));
 				area.z = EditorGUILayout.FloatField (area.z, GUILayout.Width (80f));
 
-				if (_target.mapType == SortingMapType.OrderInLayer)
+				if (_target.affectSorting)
 				{
-					EditorGUILayout.LabelField ("Order:", labelWidth);
-					area.order = EditorGUILayout.IntField (area.order);
-				}
-				else if (_target.mapType == SortingMapType.SortingLayer)
-				{
-					EditorGUILayout.LabelField ("Layer:", labelWidth);
-					area.layer = EditorGUILayout.TextField (area.layer);
+					if (_target.mapType == SortingMapType.OrderInLayer)
+					{
+						EditorGUILayout.LabelField ("Order:", labelWidth);
+						area.order = EditorGUILayout.IntField (area.order);
+					}
+					else if (_target.mapType == SortingMapType.SortingLayer)
+					{
+						EditorGUILayout.LabelField ("Layer:", labelWidth);
+						area.layer = EditorGUILayout.TextField (area.layer);
+					}
 				}
 
 				if (GUILayout.Button (insertContent, EditorStyles.miniButtonLeft, buttonWidth))
@@ -112,13 +121,13 @@ namespace AC
 
 				EditorGUILayout.EndHorizontal ();
 
-				if (_target.affectScale && _target.sortingMapScaleType == SortingMapScaleType.Linear)
+				if ((_target.affectScale || _target.affectSpeed) && _target.sortingMapScaleType == SortingMapScaleType.Linear)
 				{
 					area.scale = CustomGUILayout.IntField ("End scale (%):", area.scale, "", "The factor by which characters that use FollowSortingMap will be scaled by when positioned at the bottom boundary of this region");
 				}
 
-				EditorGUILayout.EndVertical ();
-				GUILayout.Box (string.Empty, GUILayout.ExpandWidth (true), GUILayout.Height (1));
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.DrawUILine ();
 			}
 
 			if (GUILayout.Button ("Add area"))
@@ -136,7 +145,7 @@ namespace AC
 				}
 			}
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			EditorGUILayout.Space ();
 
@@ -149,7 +158,7 @@ namespace AC
 				if (GUILayout.Button ("Face active camera"))
 				{
 					Undo.RecordObject (_target, "Face active camera");
-					Vector3 forwardVector = KickStarter.CameraMain.transform.forward;
+					Vector3 forwardVector = KickStarter.CameraMainTransform.forward;
 					_target.transform.forward = -forwardVector;
 					EditorUtility.SetDirty (_target);
 				}
@@ -194,3 +203,5 @@ namespace AC
 	}
 
 }
+
+#endif

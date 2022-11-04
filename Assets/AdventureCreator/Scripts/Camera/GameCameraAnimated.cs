@@ -8,11 +8,11 @@ namespace AC
 	 * The animation will either play normally, or alternatively, set match its normalised time with the target's position along a Paths object -
 	 * allowing for fancy camera movement as the Player moves around a scene.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_game_camera_animated.html")]
-	#endif
 	public class GameCameraAnimated : CursorInfluenceCamera
 	{
+
+		#region Variables
 
 		/** The animation to play when this camera is made active */
 		public AnimationClip clip;
@@ -24,10 +24,15 @@ namespace AC
 		public AnimatedCameraType animatedCameraType = AnimatedCameraType.PlayWhenActive;
 		/** The Paths object to sync with animation, animatedCameraType = AnimatedCameraType.SyncWithTargetMovement */
 		public Paths pathToFollow;
+
+		protected Animation _animation;
+		protected float pathLength;
 		
-		private float pathLength;
-		
-		
+		#endregion
+
+
+		#region UnityStandards
+
 		protected override void Start ()
 		{
 			base.Start ();
@@ -57,14 +62,18 @@ namespace AC
 			MoveCamera ();
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks if the AnimationClip "clip" is playing.</summary>
 		 * <returns>True if the AnimationClip "clip" is playing</returns>
 		 */
-		public bool isPlaying ()
+		public bool IsPlaying ()
 		{
-			if (clip && GetComponent <Animation>() && GetComponent <Animation>().IsPlaying (clip.name))
+			if (clip && Animation && Animation.IsPlaying (clip.name))
 			{
 				return true;
 			}
@@ -73,25 +82,13 @@ namespace AC
 		}
 		
 
-		/**
-		 * Plays the AnimationClip "clip" if animatedCameraType = AnimatedCameraType.PlayWhenActive.
-		 */
+		/** Plays the AnimationClip "clip" if animatedCameraType = AnimatedCameraType.PlayWhenActive. */
 		public void PlayClip ()
 		{
-			if (GetComponent <Animation>() == null)
+			if (clip && Animation && animatedCameraType == AnimatedCameraType.PlayWhenActive)
 			{
-				ACDebug.LogError ("Cannot play animation on " + this.name + " - no Animation component is attached.", this);
-				return;
-			}
-			
-			if (clip && animatedCameraType == AnimatedCameraType.PlayWhenActive)
-			{
-				WrapMode wrapMode = WrapMode.Once;
-				if (loopClip)
-				{
-					wrapMode = WrapMode.Loop;
-				}
-				AdvGame.PlayAnimClip (GetComponent <Animation>(), 0, clip, AnimationBlendMode.Blend, wrapMode, 0f, null, false);
+				WrapMode wrapMode = loopClip ? WrapMode.Loop : WrapMode.Once;
+				AdvGame.PlayAnimClip (Animation, 0, clip, AnimationBlendMode.Blend, wrapMode, 0f, null, false);
 			}
 		}
 		
@@ -100,29 +97,33 @@ namespace AC
 		{
 			MoveCamera ();
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions		
 		
-		
-		private void MoveCamera ()
+		protected void MoveCamera ()
 		{
-			if (target && animatedCameraType == AnimatedCameraType.SyncWithTargetMovement && clip && target)
+			if (target && Animation && animatedCameraType == AnimatedCameraType.SyncWithTargetMovement && clip && target)
 			{
-				AdvGame.PlayAnimClipFrame (GetComponent <Animation>(), 0, clip, AnimationBlendMode.Blend, WrapMode.Once, 0f, null, GetProgress ());
+				AdvGame.PlayAnimClipFrame (Animation, 0, clip, AnimationBlendMode.Blend, WrapMode.Once, 0f, null, GetProgress ());
 			}
 		}
 
 
-		private float GetProgress ()
+		protected float GetProgress ()
 		{
 			if (pathToFollow.nodes.Count <= 1)
 			{
 				return 0f;
 			}
 
-			double nearest_dist = 1000f;
+			float nearest_dist = Mathf.Infinity;
 			Vector3 nearestPoint = Vector3.zero;
-			int i =0;
 
-			for (i=1; i <pathToFollow.nodes.Count; i++)
+			int i = 0;
+			for (i = 1; i < pathToFollow.nodes.Count; i++)
 			{
 				Vector3 p1 = pathToFollow.nodes[i-1];
 				Vector3 p2 = pathToFollow.nodes[i];
@@ -130,24 +131,25 @@ namespace AC
 				Vector3 p = GetNearestPointOnSegment (p1, p2);
 				if (p != nearestPoint)
 				{
-					float d = Mathf.Sqrt (Vector3.Distance (target.position, p));
-					if (d < nearest_dist)
+					float sqrDist = (target.position - p).sqrMagnitude;
+					if (sqrDist < nearest_dist)
 					{
-						nearest_dist = d;
+						nearest_dist = sqrDist;
 						nearestPoint = p;
 					}
 					else
 						break;
 				}
+				Debug.DrawLine (transform.position, p);
 			}
 			
-			return (pathToFollow.GetLengthToNode (i-2) + Vector3.Distance (pathToFollow.nodes[i-2], nearestPoint)) / pathLength;
+			return (pathToFollow.GetLengthToNode (i - 2) + Vector3.Distance (pathToFollow.nodes[i - 2], nearestPoint)) / pathLength;
 		}
 
 		
-		private Vector3 GetNearestPointOnSegment (Vector3 p1, Vector3 p2)
+		protected Vector3 GetNearestPointOnSegment (Vector3 p1, Vector3 p2)
 		{
-			float d2 = (p1.x - p2.x)*(p1.x - p2.x) + (p1.z - p2.z)*(p1.z - p2.z);
+			float d2 = (p1.x - p2.x) * (p1.x - p2.x) + (p1.z - p2.z) * (p1.z - p2.z);
 			float t = ((target.position.x - p1.x) * (p2.x - p1.x) + (target.position.z - p1.z) * (p2.z - p1.z)) / d2;
 			
 			if (t < 0)
@@ -159,10 +161,33 @@ namespace AC
 				return p2;
 			}
 			
-			return new Vector3 ((p1.x + t * (p2.x - p1.x)), 0f, (p1.z + t * (p2.z - p1.z)));
+			return new Vector3 (p1.x + t * (p2.x - p1.x), 0f, p1.z + t * (p2.z - p1.z));
 		}
 
+		#endregion
+
+
+		#region GetSet
+
+		private Animation Animation
+		{
+			get
+			{
+				if (_animation == null)
+				{
+					_animation = GetComponent<Animation> ();
+					if (_animation == null)
+					{
+						ACDebug.LogWarning ("Cannot play animation on " + this.name + " - no Animation component is attached.", this);
+					}
+				}
+				return _animation;
+			}
+		}
+
+		#endregion
+
 	}
-	
+
 }
 

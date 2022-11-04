@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SubScene.cs"
  * 
@@ -11,6 +11,8 @@
  */
 
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.Collections.Generic;
 
 namespace AC
 {
@@ -21,142 +23,166 @@ namespace AC
 	 */
 	public class SubScene : MonoBehaviour
 	{
-		#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
 
-		private SceneInfo sceneInfo;
+		#region Variables
 
-		private LocalVariables localVariables;
-		private SceneSettings sceneSettings;
+		protected int sceneIndex;
+		protected string sceneName;
 
-		private KickStarter kickStarter;
-		private MainCamera mainCamera;
+		protected LocalVariables localVariables;
+		protected SceneSettings sceneSettings;
 
-		#endif
+		protected KickStarter kickStarter;
+		protected MainCamera mainCamera;
+
+		[SerializeField] bool selfInitialise = false;
+
+		#endregion
 
 
-		/**
-		 * Gets the SceneInfo for the scene that this component represents.
-		 */
-		public SceneInfo SceneInfo
+		#region UnityStandards
+
+		private void Awake ()
 		{
-			get
+			if (selfInitialise && KickStarter.sceneChanger)
 			{
-				#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-				return sceneInfo;
-				#else
-				return null;
-				#endif
+				sceneIndex = gameObject.scene.buildIndex;
+				sceneName = gameObject.scene.name;
+				KickStarter.sceneChanger.RegisterSubScene (this);
 			}
 		}
 
-
-		/**
-		 * Gets the LocalVariables for the scene that this component represents.
-		 */
-		public LocalVariables LocalVariables
+		private void OnDestroy ()
 		{
-			get
+			if (KickStarter.sceneChanger)
 			{
-				#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-				return localVariables;
-				#else
-				return null;
-				#endif
+				KickStarter.sceneChanger.UnregisterSubScene (this);
 			}
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
-		 * Gets the SceneSettings for the scene that this component represents.
-		 */
-		public SceneSettings SceneSettings
-		{
-			get
-			{
-				#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-				return sceneSettings;
-				#else
-				return null;
-				#endif
-			}
-		}
-
-
-		/**
-		 * <summary>Syncs the component with the correct scene.</summary>
-		 * <param name = "_multiSceneChecker">The MultiSceneChecker component in the scene for which this component is to sync with.</param>
-		 */
+		* <summary>Syncs the component with the correct scene.</summary>
+		* <param name = "_multiSceneChecker">The MultiSceneChecker component in the scene for which this component is to sync with.</param>
+		*/
 		public void Initialise (MultiSceneChecker _multiSceneChecker)
 		{
-			#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-			
-			UnityEngine.SceneManagement.Scene scene = _multiSceneChecker.gameObject.scene;
-			gameObject.name = "SubScene " + scene.buildIndex;
+			Scene scene = _multiSceneChecker.gameObject.scene;
 
 			kickStarter = _multiSceneChecker.GetComponent <KickStarter>();
 
-			sceneInfo = new SceneInfo (scene.name, scene.buildIndex);
+			sceneIndex = scene.buildIndex;
+			sceneName = scene.name;
+			gameObject.name = "SubScene " + sceneIndex;
 
 			localVariables = _multiSceneChecker.GetComponent <LocalVariables>();
 			sceneSettings = _multiSceneChecker.GetComponent <SceneSettings>();
 
 			UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene (gameObject, scene);
 
-			kickStarter = UnityVersionHandler.GetOwnSceneInstance <KickStarter> (gameObject);
-			if (kickStarter != null)
-			{
-				kickStarter.gameObject.SetActive (false);
-			}
+			kickStarter = _multiSceneChecker.GetComponent<KickStarter> ();
+			_multiSceneChecker.gameObject.SetActive (false);
 
 			mainCamera = UnityVersionHandler.GetOwnSceneInstance <MainCamera> (gameObject);
-			if (mainCamera != null)
+			if (mainCamera)
 			{
 				mainCamera.gameObject.SetActive (false);
 			}
 
 			Player ownPlayer = UnityVersionHandler.GetOwnSceneInstance <Player> (gameObject);
-			if (ownPlayer != null)
+			if (ownPlayer)
 			{
 				ownPlayer.gameObject.SetActive (false);
 			}
-
 			if (sceneSettings.OverridesCameraPerspective ())
 			{
 				ACDebug.LogError ("The added scene (" + scene.name + ", " + scene.buildIndex + ") overrides the default camera perspective - this feature should not be used in conjunction with multiple-open scenes.", gameObject);
 			}
 
-			KickStarter.sceneChanger.RegisterSubScene (this);
+			if (KickStarter.sceneChanger == null)
+			{
+				ACDebug.LogWarning ("Cannot register " + scene.name + " as a sub-scene - no SceneChanger component was found. Is the main scene an AC scene?", this);
+				return;
+			}
 
-			#endif
+			KickStarter.sceneChanger.RegisterSubScene (this);
 		}
 
 
-		/**
-		 * Prepares the sub-scene to become the new active scene, due to the active scene being removed.  The gameobject will be destroyed afterwards.
-		 */
+		/** Prepares the sub-scene to become the new active scene, due to the active scene being removed.  The gameobject will be destroyed afterwards. */
 		public void MakeMain ()
 		{
-			#if UNITY_5_3 || UNITY_5_4 || UNITY_5_3_OR_NEWER
-
 			if (mainCamera)
 			{
 				mainCamera.gameObject.SetActive (true);
-				mainCamera.OnAwake (false);
-				mainCamera.OnStart ();
+				if (KickStarter.settingsManager.blackOutWhenInitialising)
+				{
+					mainCamera.ForceOverlayForFrames (4);
+				}
 			}
 			if (kickStarter)
 			{
 				kickStarter.gameObject.SetActive (true);
+				KickStarter.SetGameEngine (kickStarter.gameObject);
+				if (mainCamera)
+				{
+					KickStarter.mainCamera = mainCamera;
+				}
 			}
 
-			KickStarter.SetGameEngine (gameObject);
-			KickStarter.mainCamera = mainCamera;
-
-			UnityEngine.SceneManagement.SceneManager.SetActiveScene (gameObject.scene);
+			KickStarter.sceneChanger.SubScenes.Remove (this);
 			Destroy (gameObject);
-
-			#endif
 		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** Gets the build index of the scene that this component represents. */
+		public int SceneIndex
+		{
+			get
+			{
+				return sceneIndex;
+			}
+		}
+
+
+		/** Gets the name the scene that this component represents. */
+		public string SceneName
+		{
+			get
+			{
+				return sceneName;
+			}
+		}
+
+
+		/** Gets the LocalVariables for the scene that this component represents. */
+		public LocalVariables LocalVariables
+		{
+			get
+			{
+				return localVariables;
+			}
+		}
+
+
+		/** Gets the SceneSettings for the scene that this component represents. */
+		public SceneSettings SceneSettings
+		{
+			get
+			{
+				return sceneSettings;
+			}
+		}
+
+		#endregion
 
 	}
 

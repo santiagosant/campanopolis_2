@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AnimEngine_Legacy.cs"
  * 
@@ -15,6 +15,11 @@ using System.Collections.Generic;
 
 #if UNITY_EDITOR
 using UnityEditor;
+#endif
+
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
 #endif
 
 namespace AC
@@ -31,7 +36,7 @@ namespace AC
 		{
 			#if UNITY_EDITOR
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Standard 3D animations", EditorStyles.boldLabel);
 
 			if (SceneSettings.IsTopDown ())
@@ -54,14 +59,14 @@ namespace AC
 
 			if (AdvGame.GetReferences () && AdvGame.GetReferences ().speechManager)
 			{
-				if (AdvGame.GetReferences () && AdvGame.GetReferences ().speechManager &&
-				    AdvGame.GetReferences ().speechManager.lipSyncMode != LipSyncMode.Off && AdvGame.GetReferences ().speechManager.lipSyncMode != LipSyncMode.FaceFX)
+				if (AdvGame.GetReferences ().speechManager.lipSyncMode != LipSyncMode.Off && AdvGame.GetReferences ().speechManager.lipSyncMode != LipSyncMode.FaceFX)
 				{
 					if (AdvGame.GetReferences ().speechManager.lipSyncOutput == LipSyncOutput.PortraitAndGameObject)
 					{
 						if (character.GetShapeable ())
 						{
 							character.lipSyncGroupID = ActionBlendShape.ShapeableGroupGUI ("Phoneme shape group:", character.GetShapeable ().shapeGroups, character.lipSyncGroupID);
+							character.lipSyncBlendShapeSpeedFactor = CustomGUILayout.Slider ("Shapeable speed factor:", character.lipSyncBlendShapeSpeedFactor, 0f, 1f, "", "The rate at which Blendshapes will be animated when using a Shapeable component, with 1 = normal speed and lower = faster speed");
 						}
 						else
 						{
@@ -85,25 +90,25 @@ namespace AC
 			character.headLookUpAnim = (AnimationClip) CustomGUILayout.ObjectField <AnimationClip> ("Head look up:", character.headLookUpAnim, false, "", "The 'Look up' animation");
 			character.headLookDownAnim = (AnimationClip) CustomGUILayout.ObjectField <AnimationClip> ("Head look down:", character.headLookDownAnim, false, "", "The 'Look down' animation");
 
-			if (character is Player)
+			Player player = character as Player;
+			if (player != null)
 			{
-				Player player = (Player) character;
 				player.jumpAnim = (AnimationClip) CustomGUILayout.ObjectField <AnimationClip> ("Jump:", player.jumpAnim, false, "", "The 'Jump' animation");
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Bone transforms", EditorStyles.boldLabel);
 			
-			character.upperBodyBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Upper body:", character.upperBodyBone, true, "", "The 'Upper body bone' Transform, used to isolate animations");
-			character.neckBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Neck bone:", character.neckBone, true, "", "The 'Neck bone' Transform, used to isolate animations");
-			character.leftArmBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Left arm:", character.leftArmBone, true, "", "The 'Left arm bone' Transform, used to isolate animations");
-			character.rightArmBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Right arm:", character.rightArmBone, true, "", "The 'Right arm bone' Transform, used to isolate animations");
-			character.leftHandBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Left hand:", character.leftHandBone, true, "", "The 'Left hand bone' Transform, used to isolate animations");
-			character.rightHandBone = (Transform) CustomGUILayout.ObjectField <AnimationClip> ("Right hand:", character.rightHandBone, true, "", "The 'Right hand bone' Transform, used to isolate animations");
-			EditorGUILayout.EndVertical ();
+			character.upperBodyBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Upper body:", character.upperBodyBone, true, "", "The 'Upper body bone' Transform, used to isolate animations");
+			character.neckBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Neck bone:", character.neckBone, true, "", "The 'Neck bone' Transform, used to isolate animations");
+			character.leftArmBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Left arm:", character.leftArmBone, true, "", "The 'Left arm bone' Transform, used to isolate animations");
+			character.rightArmBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Right arm:", character.rightArmBone, true, "", "The 'Right arm bone' Transform, used to isolate animations");
+			character.leftHandBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Left hand:", character.leftHandBone, true, "", "The 'Left hand bone' Transform, used to isolate animations");
+			character.rightHandBone = (Transform) CustomGUILayout.ObjectField <Transform> ("Right hand:", character.rightHandBone, true, "", "The 'Right hand bone' Transform, used to isolate animations");
+			CustomGUILayout.EndVertical ();
 
-			if (GUI.changed)
+			if (GUI.changed && character != null)
 			{
 				EditorUtility.SetDirty (character);
 			}
@@ -124,6 +129,7 @@ namespace AC
 					{
 						character.expressionGroupID = ActionBlendShape.ShapeableGroupGUI ("Expression shape group:", character.GetShapeable ().shapeGroups, character.expressionGroupID);
 						EditorGUILayout.HelpBox ("The names of the expressions below must match the shape key labels.", MessageType.Info);
+						character.expressionTransitionTime = CustomGUILayout.FloatField ("Transition time (s)", character.expressionTransitionTime, string.Empty, "The time to transition between expressions via shapekey");
 					}
 					else
 					{
@@ -135,6 +141,97 @@ namespace AC
 		}
 
 
+		public override PlayerData SavePlayerData (PlayerData playerData, Player player)
+		{
+			playerData.playerIdleAnim = AssetLoader.GetAssetInstanceID (player.idleAnim);
+			playerData.playerWalkAnim = AssetLoader.GetAssetInstanceID (player.walkAnim);
+			playerData.playerRunAnim = AssetLoader.GetAssetInstanceID (player.runAnim);
+			playerData.playerTalkAnim = AssetLoader.GetAssetInstanceID (player.talkAnim);
+
+			return playerData;
+		}
+
+
+		public override NPCData SaveNPCData (NPCData npcData, NPC npc)
+		{
+			npcData.idleAnim = AssetLoader.GetAssetInstanceID (npc.idleAnim);
+			npcData.walkAnim = AssetLoader.GetAssetInstanceID (npc.walkAnim);
+			npcData.runAnim = AssetLoader.GetAssetInstanceID (npc.runAnim);
+			npcData.talkAnim = AssetLoader.GetAssetInstanceID (npc.talkAnim);
+
+			return npcData;
+		}
+
+
+		public override void LoadPlayerData (PlayerData playerData, Player player)
+		{
+			#if AddressableIsPresent
+			if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
+			{
+				Addressables.LoadAssetAsync<AnimationClip> (playerData.playerIdleAnim).Completed += OnCompleteLoadIdleAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (playerData.playerWalkAnim).Completed += OnCompleteLoadWalkAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (playerData.playerRunAnim).Completed += OnCompleteLoadRunAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (playerData.playerTalkAnim).Completed += OnCompleteLoadTalkAnim;
+				return;
+			}
+			#endif
+
+			player.idleAnim = AssetLoader.RetrieveAsset (player.idleAnim, playerData.playerIdleAnim);
+			player.walkAnim = AssetLoader.RetrieveAsset (player.walkAnim, playerData.playerWalkAnim);
+			player.talkAnim = AssetLoader.RetrieveAsset (player.talkAnim, playerData.playerTalkAnim);
+			player.runAnim = AssetLoader.RetrieveAsset (player.runAnim, playerData.playerRunAnim);
+		}
+
+
+
+		public override void LoadNPCData (NPCData npcData, NPC npc)
+		{
+			#if AddressableIsPresent
+			if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
+			{
+				Addressables.LoadAssetAsync<AnimationClip> (npcData.idleAnim).Completed += OnCompleteLoadIdleAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (npcData.walkAnim).Completed += OnCompleteLoadWalkAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (npcData.runAnim).Completed += OnCompleteLoadRunAnim;
+				Addressables.LoadAssetAsync<AnimationClip> (npcData.talkAnim).Completed += OnCompleteLoadTalkAnim;
+				return;
+			}
+			#endif
+
+			npc.idleAnim = AssetLoader.RetrieveAsset (npc.idleAnim, npcData.idleAnim);
+			npc.walkAnim = AssetLoader.RetrieveAsset (npc.walkAnim, npcData.walkAnim);
+			npc.runAnim = AssetLoader.RetrieveAsset (npc.runAnim, npcData.talkAnim);
+			npc.talkAnim = AssetLoader.RetrieveAsset (npc.talkAnim, npcData.runAnim);
+		}
+
+
+		#if AddressableIsPresent
+
+		private void OnCompleteLoadIdleAnim (AsyncOperationHandle<AnimationClip> obj)
+		{
+			if (obj.Result != null) character.idleAnim = obj.Result;
+		}
+
+
+		private void OnCompleteLoadWalkAnim (AsyncOperationHandle<AnimationClip> obj)
+		{
+			if (obj.Result != null) character.walkAnim = obj.Result;
+		}
+
+
+		private void OnCompleteLoadRunAnim (AsyncOperationHandle<AnimationClip> obj)
+		{
+			if (obj.Result != null) character.runAnim = obj.Result;
+		}
+
+
+		private void OnCompleteLoadTalkAnim (AsyncOperationHandle<AnimationClip> obj)
+		{
+			if (obj.Result != null) character.talkAnim = obj.Result;
+		}
+
+		#endif
+
+
 		public override void ActionCharAnimGUI (ActionCharAnim action, List<ActionParameter> parameters = null)
 		{
 			#if UNITY_EDITOR
@@ -143,8 +240,12 @@ namespace AC
 
 			if (action.method == ActionCharAnim.AnimMethodChar.PlayCustom || action.method == ActionCharAnim.AnimMethodChar.StopCustom)
 			{
-				action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
-				
+				action.clipParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clipParameterID, ParameterType.UnityObject);
+				if (action.clipParameterID < 0)
+				{
+					action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
+				}
+
 				if (action.method == ActionCharAnim.AnimMethodChar.PlayCustom)
 				{
 					action.layer = (AnimLayer) EditorGUILayout.EnumPopup ("Layer:", action.layer);
@@ -167,7 +268,12 @@ namespace AC
 			
 			else if (action.method == ActionCharAnim.AnimMethodChar.SetStandard)
 			{
-				action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
+				action.clipParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clipParameterID, ParameterType.UnityObject);
+				if (action.clipParameterID < 0)
+				{
+					action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
+				}
+
 				action.standard = (AnimStandard) EditorGUILayout.EnumPopup ("Change:", action.standard);
 
 				if (action.standard == AnimStandard.Walk || action.standard == AnimStandard.Run)
@@ -193,12 +299,22 @@ namespace AC
 				}
 			}
 
-			if (GUI.changed)
-			{
-				EditorUtility.SetDirty (action);
-			}
-
 			#endif
+		}
+
+		public override void ActionCharAnimAssignValues (ActionCharAnim action, List<ActionParameter> parameters)
+		{
+			switch (action.method)
+			{
+				case ActionCharAnim.AnimMethodChar.PlayCustom:
+				case ActionCharAnim.AnimMethodChar.StopCustom:
+				case ActionCharAnim.AnimMethodChar.SetStandard:
+					action.clip = (AnimationClip) action.AssignObject<AnimationClip> (parameters, action.clipParameterID, action.clip);
+					break;
+
+				default:
+					break;
+			}
 		}
 
 
@@ -215,123 +331,113 @@ namespace AC
 			{
 				action.isRunning = true;
 				
-				if (action.method == ActionCharAnim.AnimMethodChar.PlayCustom && action.clip)
+				switch (action.method)
 				{
-					AdvGame.CleanUnusedClips (animation);
-					
-					WrapMode wrap = WrapMode.Once;
-					Transform mixingTransform = null;
-					
-					if (action.layer == AnimLayer.Base)
-					{
-						character.charState = CharState.Custom;
-						action.blendMode = AnimationBlendMode.Blend;
-						action.playMode = (AnimPlayMode) action.playModeBase;
-					}
-					else if (action.layer == AnimLayer.UpperBody)
-					{
-						mixingTransform = character.upperBodyBone;
-					}
-					else if (action.layer == AnimLayer.LeftArm)
-					{
-						mixingTransform = character.leftArmBone;
-					}
-					else if (action.layer == AnimLayer.RightArm)
-					{
-						mixingTransform = character.rightArmBone;
-					}
-					else if (action.layer == AnimLayer.Neck || action.layer == AnimLayer.Head || action.layer == AnimLayer.Face || action.layer == AnimLayer.Mouth)
-					{
-						mixingTransform = character.neckBone;
-					}
-					
-					if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
-					{
-						wrap = WrapMode.ClampForever;
-					}
-					else if (action.playMode == AnimPlayMode.Loop)
-					{
-						wrap = WrapMode.Loop;
-					}
+					case ActionCharAnim.AnimMethodChar.PlayCustom:
+						if (action.clip)
+						{
+							AdvGame.CleanUnusedClips (animation);
 
-					AdvGame.PlayAnimClip (animation, AdvGame.GetAnimLayerInt (action.layer), action.clip, action.blendMode, wrap, action.fadeTime, mixingTransform, false);
-				}
-				
-				else if (action.method == ActionCharAnim.AnimMethodChar.StopCustom && action.clip)
-				{
-					if (action.clip != character.idleAnim && action.clip != character.walkAnim)
-					{
-						animation.Blend (action.clip.name, 0f, action.fadeTime);
-					}
-				}
-				
-				else if (action.method == ActionCharAnim.AnimMethodChar.ResetToIdle)
-				{
-					character.ResetBaseClips ();
-					
-					character.charState = CharState.Idle;
-					AdvGame.CleanUnusedClips (animation);
-				}
-				
-				else if (action.method == ActionCharAnim.AnimMethodChar.SetStandard)
-				{
-					if (action.clip != null)
-					{
-						if (action.standard == AnimStandard.Idle)
-						{
-							character.idleAnim = action.clip;
+							WrapMode wrap = WrapMode.Once;
+							Transform mixingTransform = null;
+
+							if (action.layer == AnimLayer.Base)
+							{
+								character.charState = CharState.Custom;
+								action.blendMode = AnimationBlendMode.Blend;
+								action.playMode = (AnimPlayMode) action.playModeBase;
+							}
+							else if (action.layer == AnimLayer.UpperBody)
+							{
+								mixingTransform = character.upperBodyBone;
+							}
+							else if (action.layer == AnimLayer.LeftArm)
+							{
+								mixingTransform = character.leftArmBone;
+							}
+							else if (action.layer == AnimLayer.RightArm)
+							{
+								mixingTransform = character.rightArmBone;
+							}
+							else if (action.layer == AnimLayer.Neck || action.layer == AnimLayer.Head || action.layer == AnimLayer.Face || action.layer == AnimLayer.Mouth)
+							{
+								mixingTransform = character.neckBone;
+							}
+
+							if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
+							{
+								wrap = WrapMode.ClampForever;
+							}
+							else if (action.playMode == AnimPlayMode.Loop)
+							{
+								wrap = WrapMode.Loop;
+							}
+
+							AdvGame.PlayAnimClip (animation, AdvGame.GetAnimLayerInt (action.layer), action.clip, action.blendMode, wrap, action.fadeTime, mixingTransform, false);
 						}
-						else if (action.standard == AnimStandard.Walk)
+						break;
+
+					case ActionCharAnim.AnimMethodChar.StopCustom:
+						if (action.clip)
 						{
-							character.walkAnim = action.clip;
+							if (action.clip != character.idleAnim && action.clip != character.walkAnim)
+							{
+								animation.Blend (action.clip.name, 0f, action.fadeTime);
+							}
 						}
-						else if (action.standard == AnimStandard.Run)
+						break;
+
+					case ActionCharAnim.AnimMethodChar.ResetToIdle:
+						character.ResetBaseClips ();
+						character.charState = CharState.Idle;
+						AdvGame.CleanUnusedClips (animation);
+						break;
+
+					case ActionCharAnim.AnimMethodChar.SetStandard:
+						if (action.clip != null)
 						{
-							character.runAnim = action.clip;
+							if (action.standard == AnimStandard.Idle)
+							{
+								character.idleAnim = action.clip;
+							}
+							else if (action.standard == AnimStandard.Walk)
+							{
+								character.walkAnim = action.clip;
+							}
+							else if (action.standard == AnimStandard.Run)
+							{
+								character.runAnim = action.clip;
+							}
+							else if (action.standard == AnimStandard.Talk)
+							{
+								character.talkAnim = action.clip;
+							}
 						}
-						else if (action.standard == AnimStandard.Talk)
+
+						if (action.changeSpeed)
 						{
-							character.talkAnim = action.clip;
+							if (action.standard == AnimStandard.Walk)
+							{
+								character.walkSpeedScale = action.newSpeed;
+							}
+							else if (action.standard == AnimStandard.Run)
+							{
+								character.runSpeedScale = action.newSpeed;
+							}
 						}
-					}
-					
-					if (action.changeSpeed)
-					{
-						if (action.standard == AnimStandard.Walk)
+
+						if (action.changeSound)
 						{
-							character.walkSpeedScale = action.newSpeed;
-						}
-						else if (action.standard == AnimStandard.Run)
-						{
-							character.runSpeedScale = action.newSpeed;
-						}
-					}
-					
-					if (action.changeSound)
-					{
-						if (action.standard == AnimStandard.Walk)
-						{
-							if (action.newSound != null)
+							if (action.standard == AnimStandard.Walk)
 							{
 								character.walkSound = action.newSound;
 							}
-							else
-							{
-								character.walkSound = null;
-							}
-						}
-						else if (action.standard == AnimStandard.Run)
-						{
-							if (action.newSound != null)
+							else if (action.standard == AnimStandard.Run)
 							{
 								character.runSound = action.newSound;
 							}
-							else
-							{
-								character.runSound = null;
-							}
 						}
-					}
+						break;
 				}
 				
 				if (action.willWait && action.clip)
@@ -346,7 +452,6 @@ namespace AC
 					}
 				}
 			}	
-			
 			else
 			{
 				if (character.GetAnimation ()[action.clip.name] && character.GetAnimation ()[action.clip.name].normalizedTime < 1f && character.GetAnimation ().IsPlaying (action.clip.name))
@@ -387,137 +492,130 @@ namespace AC
 			
 			Animation animation = character.GetAnimation ();
 
-			if (action.method == ActionCharAnim.AnimMethodChar.PlayCustom && action.clip)
+			switch (action.method)
 			{
-				if (action.layer == AnimLayer.Base)
-				{
-					character.charState = CharState.Custom;
-					action.blendMode = AnimationBlendMode.Blend;
-					action.playMode = (AnimPlayMode) action.playModeBase;
-				}
-
-				if (action.playMode == AnimPlayMode.PlayOnce)
-				{
-					if (action.layer == AnimLayer.Base && action.method == ActionCharAnim.AnimMethodChar.PlayCustom)
+				case ActionCharAnim.AnimMethodChar.PlayCustom:
+					if (action.clip)
 					{
-						character.charState = CharState.Idle;
-						character.ResetBaseClips ();
+						if (action.layer == AnimLayer.Base)
+						{
+							character.charState = CharState.Custom;
+							action.blendMode = AnimationBlendMode.Blend;
+							action.playMode = (AnimPlayMode) action.playModeBase;
+						}
+
+						if (action.playMode == AnimPlayMode.PlayOnce)
+						{
+							if (action.layer == AnimLayer.Base && action.method == ActionCharAnim.AnimMethodChar.PlayCustom)
+							{
+								character.charState = CharState.Idle;
+								character.ResetBaseClips ();
+							}
+						}
+						else
+						{
+							AdvGame.CleanUnusedClips (animation);
+
+							WrapMode wrap = WrapMode.Once;
+							Transform mixingTransform = null;
+
+							if (action.layer == AnimLayer.UpperBody)
+							{
+								mixingTransform = character.upperBodyBone;
+							}
+							else if (action.layer == AnimLayer.LeftArm)
+							{
+								mixingTransform = character.leftArmBone;
+							}
+							else if (action.layer == AnimLayer.RightArm)
+							{
+								mixingTransform = character.rightArmBone;
+							}
+							else if (action.layer == AnimLayer.Neck || action.layer == AnimLayer.Head || action.layer == AnimLayer.Face || action.layer == AnimLayer.Mouth)
+							{
+								mixingTransform = character.neckBone;
+							}
+
+							if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
+							{
+								wrap = WrapMode.ClampForever;
+							}
+							else if (action.playMode == AnimPlayMode.Loop)
+							{
+								wrap = WrapMode.Loop;
+							}
+
+							AdvGame.PlayAnimClipFrame (animation, AdvGame.GetAnimLayerInt (action.layer), action.clip, action.blendMode, wrap, action.fadeTime, mixingTransform, 1f);
+						}
+
+						AdvGame.CleanUnusedClips (animation);
 					}
-				}
-				else
-				{
+					break;
+
+				case ActionCharAnim.AnimMethodChar.StopCustom:
+					if (action.clip)
+					{
+						if (action.clip != character.idleAnim && action.clip != character.walkAnim)
+						{
+							animation.Blend (action.clip.name, 0f, 0f);
+						}
+					}
+					break;
+
+				case ActionCharAnim.AnimMethodChar.ResetToIdle:
+					character.ResetBaseClips ();
+					character.charState = CharState.Idle;
 					AdvGame.CleanUnusedClips (animation);
-					
-					WrapMode wrap = WrapMode.Once;
-					Transform mixingTransform = null;
+					break;
 
-					if (action.layer == AnimLayer.UpperBody)
+				case ActionCharAnim.AnimMethodChar.SetStandard:
+					if (action.clip)
 					{
-						mixingTransform = character.upperBodyBone;
-					}
-					else if (action.layer == AnimLayer.LeftArm)
-					{
-						mixingTransform = character.leftArmBone;
-					}
-					else if (action.layer == AnimLayer.RightArm)
-					{
-						mixingTransform = character.rightArmBone;
-					}
-					else if (action.layer == AnimLayer.Neck || action.layer == AnimLayer.Head || action.layer == AnimLayer.Face || action.layer == AnimLayer.Mouth)
-					{
-						mixingTransform = character.neckBone;
-					}
-					
-					if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
-					{
-						wrap = WrapMode.ClampForever;
-					}
-					else if (action.playMode == AnimPlayMode.Loop)
-					{
-						wrap = WrapMode.Loop;
+						if (action.standard == AnimStandard.Idle)
+						{
+							character.idleAnim = action.clip;
+						}
+						else if (action.standard == AnimStandard.Walk)
+						{
+							character.walkAnim = action.clip;
+						}
+						else if (action.standard == AnimStandard.Run)
+						{
+							character.runAnim = action.clip;
+						}
+						else if (action.standard == AnimStandard.Talk)
+						{
+							character.talkAnim = action.clip;
+						}
 					}
 
-					AdvGame.PlayAnimClipFrame (animation, AdvGame.GetAnimLayerInt (action.layer), action.clip, action.blendMode, wrap, action.fadeTime, mixingTransform, 1f);
-				}
+					if (action.changeSpeed)
+					{
+						if (action.standard == AnimStandard.Walk)
+						{
+							character.walkSpeedScale = action.newSpeed;
+						}
+						else if (action.standard == AnimStandard.Run)
+						{
+							character.runSpeedScale = action.newSpeed;
+						}
+					}
 
-				AdvGame.CleanUnusedClips (animation);
-			}
-			
-			else if (action.method == ActionCharAnim.AnimMethodChar.StopCustom && action.clip)
-			{
-				if (action.clip != character.idleAnim && action.clip != character.walkAnim)
-				{
-					animation.Blend (action.clip.name, 0f, 0f);
-				}
-			}
-			
-			else if (action.method == ActionCharAnim.AnimMethodChar.ResetToIdle)
-			{
-				character.ResetBaseClips ();
-				
-				character.charState = CharState.Idle;
-				AdvGame.CleanUnusedClips (animation);
-			}
-			
-			else if (action.method == ActionCharAnim.AnimMethodChar.SetStandard)
-			{
-				if (action.clip != null)
-				{
-					if (action.standard == AnimStandard.Idle)
+					if (action.changeSound)
 					{
-						character.idleAnim = action.clip;
-					}
-					else if (action.standard == AnimStandard.Walk)
-					{
-						character.walkAnim = action.clip;
-					}
-					else if (action.standard == AnimStandard.Run)
-					{
-						character.runAnim = action.clip;
-					}
-					else if (action.standard == AnimStandard.Talk)
-					{
-						character.talkAnim = action.clip;
-					}
-				}
-				
-				if (action.changeSpeed)
-				{
-					if (action.standard == AnimStandard.Walk)
-					{
-						character.walkSpeedScale = action.newSpeed;
-					}
-					else if (action.standard == AnimStandard.Run)
-					{
-						character.runSpeedScale = action.newSpeed;
-					}
-				}
-				
-				if (action.changeSound)
-				{
-					if (action.standard == AnimStandard.Walk)
-					{
-						if (action.newSound != null)
+						if (action.standard == AnimStandard.Walk)
 						{
 							character.walkSound = action.newSound;
 						}
-						else
-						{
-							character.walkSound = null;
-						}
-					}
-					else if (action.standard == AnimStandard.Run)
-					{
-						if (action.newSound != null)
+						else if (action.standard == AnimStandard.Run)
 						{
 							character.runSound = action.newSound;
 						}
-						else
-						{
-							character.runSound = null;
-						}
 					}
-				}
+					break;
+
+				default:
+					break;
 			}
 		}
 
@@ -536,14 +634,6 @@ namespace AC
 			{
 				action.headClip = (AnimationClip) EditorGUILayout.ObjectField ("Head animation:", action.headClip, typeof (AnimationClip), true);
 				action.mouthClip = (AnimationClip) EditorGUILayout.ObjectField ("Mouth animation:", action.mouthClip, typeof (AnimationClip), true);
-			}
-
-			if (GUI.changed)
-			{
-				try
-				{
-					EditorUtility.SetDirty (action);
-				} catch {}
 			}
 
 			#endif
@@ -610,7 +700,11 @@ namespace AC
 					action._anim = action.IDToField <Animation> (action._anim, action.constantID, false);
 				}
 
-				action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
+				action.clipParameterID = Action.ChooseParameterGUI ("Clip:", parameters, action.clipParameterID, ParameterType.UnityObject);
+				if (action.clipParameterID < 0)
+				{
+					action.clip = (AnimationClip) EditorGUILayout.ObjectField ("Clip:", action.clip, typeof (AnimationClip), true);
+				}
 
 				if (action.method == AnimMethod.PlayCustom)
 				{
@@ -647,11 +741,6 @@ namespace AC
 			
 			action.willWait = EditorGUILayout.Toggle ("Wait until finish?", action.willWait);
 
-			if (GUI.changed)
-			{
-				EditorUtility.SetDirty (action);
-			}
-
 			#endif
 		}
 
@@ -684,8 +773,21 @@ namespace AC
 
 		public override void ActionAnimAssignValues (ActionAnim action, List<ActionParameter> parameters)
 		{
-			action.runtimeAnim = action.AssignFile <Animation> (parameters, action.parameterID, action.constantID, action._anim);
-			action.runtimeShapeObject = action.AssignFile <Shapeable> (parameters, action.parameterID, action.constantID, action.shapeObject);
+			switch (action.method)
+			{
+				case AnimMethod.PlayCustom:
+				case AnimMethod.StopCustom:
+					action.runtimeAnim = action.AssignFile <Animation> (parameters, action.parameterID, action.constantID, action._anim);
+					action.clip = (AnimationClip) action.AssignObject<AnimationClip> (parameters, action.clipParameterID, action.clip);
+					break;
+
+				case AnimMethod.BlendShape:
+					action.runtimeShapeObject = action.AssignFile <Shapeable> (parameters, action.parameterID, action.constantID, action.shapeObject);
+					break;
+
+				default:
+					break;
+			}
 		}
 
 
@@ -695,66 +797,85 @@ namespace AC
 			{
 				action.isRunning = true;
 				
-				if (action.method == AnimMethod.PlayCustom && action.runtimeAnim != null && action.clip != null)
+				switch (action.method)
 				{
-					AdvGame.CleanUnusedClips (action.runtimeAnim);
-					
-					WrapMode wrap = WrapMode.Once;
-					if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
-					{
-						wrap = WrapMode.ClampForever;
-					}
-					else if (action.playMode == AnimPlayMode.Loop)
-					{
-						wrap = WrapMode.Loop;
-					}
-					
-					AdvGame.PlayAnimClip (action.runtimeAnim, 0, action.clip, action.blendMode, wrap, action.fadeTime, null, false);
-				}
-				
-				else if (action.method == AnimMethod.StopCustom && action.runtimeAnim && action.clip)
-				{
-					AdvGame.CleanUnusedClips (action.runtimeAnim);
-					action.runtimeAnim.Blend (action.clip.name, 0f, action.fadeTime);
-				}
-				
-				else if (action.method == AnimMethod.BlendShape && action.shapeKey > -1)
-				{
-					if (action.runtimeShapeObject != null)
-					{
-						action.runtimeShapeObject.Change (action.shapeKey, action.shapeValue, action.fadeTime);
-
-						if (action.willWait)
+					case AnimMethod.PlayCustom:
+						if (action.runtimeAnim != null && action.clip != null)
 						{
-							return (action.fadeTime);
+							AdvGame.CleanUnusedClips (action.runtimeAnim);
+
+							WrapMode wrap = WrapMode.Once;
+							if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
+							{
+								wrap = WrapMode.ClampForever;
+							}
+							else if (action.playMode == AnimPlayMode.Loop)
+							{
+								wrap = WrapMode.Loop;
+							}
+
+							AdvGame.PlayAnimClip (action.runtimeAnim, 0, action.clip, action.blendMode, wrap, action.fadeTime, null, false);
 						}
-					}
+						break;
+
+					case AnimMethod.StopCustom:
+						if (action.runtimeAnim && action.clip)
+						{
+							AdvGame.CleanUnusedClips (action.runtimeAnim);
+							action.runtimeAnim.Blend (action.clip.name, 0f, action.fadeTime);
+						}
+						break;
+
+					case AnimMethod.BlendShape:
+						if (action.shapeKey > -1)
+						{
+							if (action.runtimeShapeObject != null)
+							{
+								action.runtimeShapeObject.Change (action.shapeKey, action.shapeValue, action.fadeTime);
+
+								if (action.willWait)
+								{
+									return (action.fadeTime);
+								}
+							}
+						}
+						break;
 				}
 				
 				if (action.willWait)
 				{
-					return (action.defaultPauseTime);
+					return action.defaultPauseTime;
 				}
 			}
 			else
 			{
+				switch (action.method)
+				{
+					case AnimMethod.PlayCustom:
+						if (action.runtimeAnim && action.clip)
+						{
+							if (!action.runtimeAnim.IsPlaying (action.clip.name))
+							{
+								action.isRunning = false;
+								return 0f;
+							}
+							else
+							{
+								return action.defaultPauseTime;
+							}
+						}
+						break;
 
-				if (action.method == AnimMethod.PlayCustom && action.runtimeAnim && action.clip)
-				{
-					if (!action.runtimeAnim.IsPlaying (action.clip.name))
-					{
-						action.isRunning = false;
-						return 0f;
-					}
-					else
-					{
-						return action.defaultPauseTime;
-					}
-				}
-				else if (action.method == AnimMethod.BlendShape && action.runtimeShapeObject != null)
-				{
-					action.isRunning = false;
-					return 0f;
+					case AnimMethod.BlendShape:
+						if (action.runtimeShapeObject)
+						{
+							action.isRunning = false;
+							return 0f;
+						}
+						break;
+
+					default:
+						break;
 				}
 			}
 
@@ -764,40 +885,52 @@ namespace AC
 
 		public override void ActionAnimSkip (ActionAnim action)
 		{
-			if (action.method == AnimMethod.PlayCustom && action.runtimeAnim && action.clip)
+			switch (action.method)
 			{
-				AdvGame.CleanUnusedClips (action.runtimeAnim);
-				
-				WrapMode wrap = WrapMode.Once;
-				if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
-				{
-					wrap = WrapMode.ClampForever;
-				}
-				else if (action.playMode == AnimPlayMode.Loop)
-				{
-					wrap = WrapMode.Loop;
-				}
-				
-				AdvGame.PlayAnimClipFrame (action.runtimeAnim, 0, action.clip, action.blendMode, wrap, 0f, null, 1f);
-			}
-			
-			else if (action.method == AnimMethod.StopCustom && action.runtimeAnim && action.clip)
-			{
-				AdvGame.CleanUnusedClips (action.runtimeAnim);
-				action.runtimeAnim.Blend (action.clip.name, 0f, 0f);
-			}
-			
-			else if (action.method == AnimMethod.BlendShape && action.shapeKey > -1)
-			{
-				if (action.runtimeShapeObject != null)
-				{
-					action.runtimeShapeObject.Change (action.shapeKey, action.shapeValue, 0f);
-				}
+				case AnimMethod.PlayCustom:
+					if (action.runtimeAnim && action.clip)
+					{
+						AdvGame.CleanUnusedClips (action.runtimeAnim);
+
+						WrapMode wrap = WrapMode.Once;
+						if (action.playMode == AnimPlayMode.PlayOnceAndClamp)
+						{
+							wrap = WrapMode.ClampForever;
+						}
+						else if (action.playMode == AnimPlayMode.Loop)
+						{
+							wrap = WrapMode.Loop;
+						}
+
+						AdvGame.PlayAnimClipFrame (action.runtimeAnim, 0, action.clip, action.blendMode, wrap, 0f, null, 1f);
+					}
+					break;
+
+				case AnimMethod.StopCustom:
+					if (action.runtimeAnim && action.clip)
+					{
+						AdvGame.CleanUnusedClips (action.runtimeAnim);
+						action.runtimeAnim.Blend (action.clip.name, 0f, 0f);
+					}
+					break;
+
+				case AnimMethod.BlendShape:
+					if (action.shapeKey > -1)
+					{
+						if (action.runtimeShapeObject != null)
+						{
+							action.runtimeShapeObject.Change (action.shapeKey, action.shapeValue, 0f);
+						}
+					}
+					break;
+
+				default:
+					break;
 			}
 		}
 
 
-		public override void ActionCharRenderGUI (ActionCharRender action)
+		public override void ActionCharRenderGUI (ActionCharRender action, List<ActionParameter> parameters)
 		{
 			#if UNITY_EDITOR
 			
@@ -805,12 +938,11 @@ namespace AC
 			action.renderLock_scale = (RenderLock) EditorGUILayout.EnumPopup ("Character scale:", action.renderLock_scale);
 			if (action.renderLock_scale == RenderLock.Set)
 			{
-				action.scale = EditorGUILayout.IntField ("New scale (%):", action.scale);
-			}
-
-			if (GUI.changed)
-			{
-				EditorUtility.SetDirty (action);
+				action.scaleParameterID = Action.ChooseParameterGUI ("New scale (%):", parameters, action.scaleParameterID, ParameterType.Integer);
+				if (action.scaleParameterID < 0)
+				{
+					action.scale = EditorGUILayout.IntField ("New scale (%):", action.scale);
+				}
 			}
 
 			#endif
@@ -870,7 +1002,7 @@ namespace AC
 		{
 			if (character.IsPlayer)
 			{
-				Player player = (Player) character;
+				Player player = character as Player;
 
 				if (player.jumpAnim)
 				{
@@ -978,7 +1110,7 @@ namespace AC
 		}
 
 
-		private void PlayStandardAnim (AnimationClip clip, bool doLoop, bool reverse)
+		protected void PlayStandardAnim (AnimationClip clip, bool doLoop, bool reverse)
 		{
 			if (character == null)
 			{
@@ -1060,11 +1192,11 @@ namespace AC
 			{
 				if (character.CurrentExpression != null)
 				{
-					character.GetShapeable ().SetActiveKey (character.expressionGroupID, character.CurrentExpression.label, 100f, 0.2f, MoveMethod.Smooth, null);
+					character.GetShapeable ().SetActiveKey (character.expressionGroupID, character.CurrentExpression.label, 100f, character.expressionTransitionTime, MoveMethod.Smooth, null);
 				}
 				else
 				{
-					character.GetShapeable ().DisableAllKeys (character.expressionGroupID, 0.2f, MoveMethod.Smooth, null);
+					character.GetShapeable ().DisableAllKeys (character.expressionGroupID, character.expressionTransitionTime, MoveMethod.Smooth, null);
 				}
 			}
 		}

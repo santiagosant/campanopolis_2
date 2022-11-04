@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"FaceFXIntegration.cs"
  * 
@@ -47,7 +47,7 @@ namespace AC
 		}
 		
 
-		/*
+		/**
 		 * <summary>Plays a FaceFX animation on a character, based on an AudioClip.</summary>
 		 * <param name = "speaker">The speaking character</param>
 		 * <param name = "name">The unique identifier of the line in the format Joe13, where 'Joe' is the name of the character, and '13' is the ID number of ths speech line</param>

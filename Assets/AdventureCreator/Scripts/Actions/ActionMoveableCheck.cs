@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMoveableCheck.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -28,22 +29,18 @@ namespace AC
 		protected DragBase runtimeDragObject;
 
 
-		public ActionMoveableCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Moveable;
-			title = "Check held by player";
-			description = "Queries whether or not a Draggable of PickUp object is currently being manipulated.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Moveable; }}
+		public override string Title { get { return "Check held by player"; }}
+		public override string Description { get { return "Queries whether or not a Draggable of PickUp object is currently being manipulated."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeDragObject = AssignFile <DragBase> (parameters, parameterID, constantID, dragObject);
 		}
 		
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (runtimeDragObject != null)
 			{
@@ -55,7 +52,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Object to check:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -73,13 +70,13 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID <DragBase> (dragObject, constantID, parameterID);
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (dragObject != null)
 			{
@@ -87,7 +84,18 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (dragObject && dragObject.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
 		#endif
 
 
@@ -98,7 +106,7 @@ namespace AC
 		 */
 		public static ActionMoveableCheck CreateNew (DragBase dragObject)
 		{
-			ActionMoveableCheck newAction = (ActionMoveableCheck) CreateInstance <ActionMoveableCheck>();
+			ActionMoveableCheck newAction = CreateNew<ActionMoveableCheck> ();
 			newAction.dragObject = dragObject;
 			return newAction;
 		}

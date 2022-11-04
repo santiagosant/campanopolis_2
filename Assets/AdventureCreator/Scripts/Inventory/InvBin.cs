@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"InvBin.cs"
  * 
@@ -20,11 +20,17 @@ namespace AC
 	public class InvBin
 	{
 
+		#region Variables
+
 		/** The category's editor name */
 		public string label;
 		/** A unique identifier */
 		public int id;
 
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -44,6 +50,8 @@ namespace AC
 
 			label = "Category " + (id + 1).ToString ();
 		}
+
+		#endregion
 
 
 		#if UNITY_EDITOR

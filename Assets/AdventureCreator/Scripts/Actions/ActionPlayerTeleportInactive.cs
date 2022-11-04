@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPlayerTeleportInactive.cs"
  * 
@@ -25,37 +25,54 @@ namespace AC
 		public int playerID;
 		public int playerIDParameterID = -1;
 
-		public Transform newTransform;
+		public PlayerStart newTransform;
 		public int newTransformConstantID = 0;
 		public int newTransformParameterID = -1;
-		private Transform runtimeNewTransform;
+		protected PlayerStart runtimePlayerStart;
 
-		public _Camera associatedCamera;
-		public int associatedCameraConstantID = 0;
-		public int associatedCameraParameterID = -1;
-		private _Camera runtimeAssociatedCamera;
+		public bool moveToCurrentScene = true;
 
-		
-		public ActionPlayerTeleportInactive ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Player;
-			title = "Teleport inactive";
-			description = "Moves the recorded position of an inactive Player to the current scene.";
-		}
+		public TeleportPlayerStartMethod teleportPlayerStartMethod = TeleportPlayerStartMethod.SceneDefault;
+
+		public ChooseSceneBy chooseSceneBy = ChooseSceneBy.Number;
+		public string newSceneName;
+		public int newSceneIndex;
+
+
+		public override ActionCategory Category { get { return ActionCategory.Player; }}
+		public override string Title { get { return "Teleport inactive"; }}
+		public override string Description { get { return "Moves the recorded position of an inactive Player to the current scene."; }}
 
 
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			playerID = AssignInteger (parameters, playerIDParameterID, playerID);
-			runtimeNewTransform = AssignFile (parameters, newTransformParameterID, newTransformConstantID, newTransform);
-			runtimeAssociatedCamera = AssignFile <_Camera> (parameters, associatedCameraParameterID, associatedCameraConstantID, associatedCamera);
+			runtimePlayerStart = AssignFile (parameters, newTransformParameterID, newTransformConstantID, newTransform);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			KickStarter.saveSystem.MoveInactivePlayerToCurrentScene (playerID, runtimeNewTransform, runtimeAssociatedCamera);
+			if (moveToCurrentScene)
+			{
+				KickStarter.saveSystem.MoveInactivePlayerToCurrentScene (playerID, teleportPlayerStartMethod, runtimePlayerStart);
+			}
+			else
+			{
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						string runtimeSceneName = (chooseSceneBy == ChooseSceneBy.Name) ? newSceneName : KickStarter.sceneChanger.IndexToName (newSceneIndex);
+						KickStarter.saveSystem.MoveInactivePlayer (playerID, runtimeSceneName, teleportPlayerStartMethod, newTransformConstantID);
+						break;
+
+					case ChooseSceneBy.Number:
+					default:
+						int runtimeSceneIndex = (chooseSceneBy == ChooseSceneBy.Name) ? KickStarter.sceneChanger.NameToIndex (newSceneName) : newSceneIndex;
+						KickStarter.saveSystem.MoveInactivePlayer (playerID, runtimeSceneIndex, teleportPlayerStartMethod, newTransformConstantID);
+						break;
+				}
+			}
 
 			return 0f;
 		}
@@ -63,7 +80,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (KickStarter.settingsManager != null)
 			{
@@ -111,57 +128,79 @@ namespace AC
 					if (playerNumber == -1)
 					{
 						// Wasn't found (item was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen Player no longer exists!");
+						if (playerID > 0) LogWarning ("Previously chosen Player no longer exists!");
 						
 						playerNumber = 0;
 						playerID = 0;
 					}
 				
-					playerNumber = EditorGUILayout.Popup ("New Player:", playerNumber, labelList.ToArray());
+					playerNumber = EditorGUILayout.Popup ("Player:", playerNumber, labelList.ToArray());
 					playerID = KickStarter.settingsManager.players[playerNumber].ID;
 				}
 
-				newTransformParameterID = Action.ChooseParameterGUI ("New Transform:", parameters, newTransformParameterID, ParameterType.GameObject);
-				if (newTransformParameterID >= 0)
+				moveToCurrentScene = EditorGUILayout.Toggle ("Move to current scene?", moveToCurrentScene);
+				if (moveToCurrentScene)
 				{
-					newTransformConstantID = 0;
-					newTransform = null;
+					teleportPlayerStartMethod = (TeleportPlayerStartMethod)EditorGUILayout.EnumPopup ("PlayerStart:", teleportPlayerStartMethod);
+
+					if (teleportPlayerStartMethod == TeleportPlayerStartMethod.EnteredHere)
+					{
+						newTransformParameterID = Action.ChooseParameterGUI ("New PlayerStart:", parameters, newTransformParameterID, ParameterType.GameObject);
+						if (newTransformParameterID >= 0)
+						{
+							newTransformConstantID = 0;
+							newTransform = null;
+						}
+						else
+						{
+							newTransform = (PlayerStart)EditorGUILayout.ObjectField ("New PlayerStart:", newTransform, typeof (PlayerStart), true);
+
+							newTransformConstantID = FieldToID (newTransform, newTransformConstantID);
+							newTransform = IDToField (newTransform, newTransformConstantID, true);
+						}
+					}
 				}
 				else
 				{
-					newTransform = (Transform) EditorGUILayout.ObjectField ("New Transform:", newTransform, typeof (Transform), true);
-					
-					newTransformConstantID = FieldToID (newTransform, newTransformConstantID);
-					newTransform = IDToField (newTransform, newTransformConstantID, true);
+					chooseSceneBy = (ChooseSceneBy)EditorGUILayout.EnumPopup ("Choose scene by:", chooseSceneBy);
+					switch (chooseSceneBy)
+					{
+						case ChooseSceneBy.Number:
+							newSceneIndex = EditorGUILayout.IntField ("New scene index:", newSceneIndex);
+							break;
+
+						case ChooseSceneBy.Name:
+							newSceneName = EditorGUILayout.TextField ("New scene name:", newSceneName);
+							break;
+
+						default:
+							break;
+					}
+
+					teleportPlayerStartMethod = (TeleportPlayerStartMethod)EditorGUILayout.EnumPopup ("PlayerStart:", teleportPlayerStartMethod);
+
+					if (teleportPlayerStartMethod == TeleportPlayerStartMethod.EnteredHere)
+					{
+						newTransformParameterID = -1;
+						newTransform = (PlayerStart)EditorGUILayout.ObjectField ("New PlayerStart:", newTransform, typeof (PlayerStart), true);
+
+						newTransformConstantID = FieldToID (newTransform, newTransformConstantID, true);
+						newTransform = IDToField (newTransform, newTransformConstantID, true);
+					}
 				}
 
-				associatedCameraParameterID = Action.ChooseParameterGUI ("Camera (optional):", parameters, associatedCameraParameterID, ParameterType.GameObject);
-				if (associatedCameraParameterID >= 0)
-				{
-					associatedCameraConstantID = 0;
-					associatedCamera = null;
-				}
-				else
-				{
-					associatedCamera = (_Camera) EditorGUILayout.ObjectField ("Camera (optional):", associatedCamera, typeof (_Camera), true);
-					
-					associatedCameraConstantID = FieldToID (associatedCamera, associatedCameraConstantID);
-					associatedCamera = IDToField (associatedCamera, associatedCameraConstantID, true);
-				}
+				
 			}
 			else
 			{
 				EditorGUILayout.HelpBox ("No Settings Manager assigned!", MessageType.Warning);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
-			AssignConstantID <_Camera> (associatedCamera, associatedCameraConstantID, associatedCameraParameterID);
-			AssignConstantID (newTransform, newTransformConstantID, newTransformParameterID);
+			AssignConstantID <PlayerStart> (newTransform, newTransformConstantID, newTransformParameterID);
 		}
 		
 
@@ -186,22 +225,58 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (newTransformParameterID < 0)
+			{
+				if (newTransform && newTransform.gameObject == gameObject) return true;
+				if (newTransformConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (_playerID < 0 || playerIDParameterID >= 0) return false;
+			return (playerID == _playerID);
+		}
+
 		#endif
 
 
 		/**
 		 * <summary>Creates a new instance of the 'Player: Teleport inactive' Action</summary>
 		 * <param name = "playerID">The ID number of the Player to teleport</param>
-		 * <param name = "newTransform">The new Transform for the Player to take</param>
+		 * <param name = "newPlayerStart">The new PlayerStart for the Player to take</param>
 		 * <param name = "newCamera">If set, the camera that will be active when the Player is next switched to</param>
 		 * <returns>The generated Action</returns>
 		 */
-		public static ActionPlayerTeleportInactive CreateNew (int playerID, Transform newTransform, _Camera newCamera = null)
+		public static ActionPlayerTeleportInactive CreateNew (int playerID, PlayerStart newPlayerStart, _Camera newCamera = null)
 		{
-			ActionPlayerTeleportInactive newAction = (ActionPlayerTeleportInactive) CreateInstance <ActionPlayerTeleportInactive>();
+			ActionPlayerTeleportInactive newAction = CreateNew<ActionPlayerTeleportInactive> ();
 			newAction.playerID = playerID;
-			newAction.newTransform = newTransform;
-			newAction.associatedCamera = newCamera;
+			newAction.teleportPlayerStartMethod = TeleportPlayerStartMethod.EnteredHere;
+			newAction.newTransform = newPlayerStart;
+			return newAction;
+		}
+
+
+		/**
+		 * <summary>Creates a new instance of the 'Player: Teleport inactive' Action</summary>
+		 * <param name = "playerID">The ID number of the Player to teleport</param>
+		 * <param name = "teleportPlayerStartMethod">The method by which to assign which PlayerStart the Player appears at</param>
+		 * <param name = "newPlayerStart">The new PlayerStart for the Player to take, if teleportPlayerStartMethod = TeleportPlayerStartMethod.EnteredHere</param>
+		 * <param name = "newCamera">If set, the camera that will be active when the Player is next switched to</param>
+		 * <returns>The generated Action</returns>
+		 */
+		public static ActionPlayerTeleportInactive CreateNew (int playerID, TeleportPlayerStartMethod teleportPlayerStartMethod, PlayerStart newPlayerStart = null, _Camera newCamera = null)
+		{
+			ActionPlayerTeleportInactive newAction = CreateNew<ActionPlayerTeleportInactive> ();
+			newAction.playerID = playerID;
+			newAction.teleportPlayerStartMethod = teleportPlayerStartMethod;
+			newAction.newTransform = newPlayerStart;
 			return newAction;
 		}
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"LightSwitch.cs"
  * 
@@ -21,21 +21,31 @@ namespace AC
 	 */
 	[RequireComponent (typeof (Light))]
 	[AddComponentMenu("Adventure Creator/Misc/Light switch")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_light_switch.html")]
-	#endif
 	public class LightSwitch : MonoBehaviour
 	{
 
+		#region Variables
+
 		/** If True, then the Light component will be enabled when the game begins. */
 		public bool enableOnStart = false;
+
+		protected Light _light;
+
+		#endregion
+
+
+		#region UnityStandards
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
 			Switch (enableOnStart);
 		}
-		
+
+		#endregion
+
+
+		#region PublicFunctions		
 
 		/**
 		 * Enables the Light component on the GameObject this script is attached to.
@@ -54,11 +64,21 @@ namespace AC
 			Switch (false);
 		}
 
+		#endregion
 
-		private void Switch (bool turnOn)
+
+		#region ProtectedFunctions
+
+		protected void Switch (bool turnOn)
 		{
-			GetComponent <Light>().enabled = turnOn;
+			if (_light == null)
+			{
+				_light = GetComponent <Light>();
+			}
+			_light.enabled = turnOn;
 		}
+
+		#endregion
 		
 	}
 

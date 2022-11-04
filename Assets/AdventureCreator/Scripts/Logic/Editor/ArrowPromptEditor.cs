@@ -1,3 +1,5 @@
+#if UNITY_EDITOR
+
 using UnityEngine;
 using UnityEditor;
 
@@ -12,38 +14,38 @@ namespace AC
 		{
 			ArrowPrompt _target = (ArrowPrompt) target;
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			GUILayout.Label ("Settings", EditorStyles.boldLabel);
 			_target.arrowPromptType = (ArrowPromptType) CustomGUILayout.EnumPopup ("Input type:", _target.arrowPromptType, "", "What kind of input the arrows respond to");
 			_target.disableHotspots = CustomGUILayout.ToggleLeft ("Disable Hotspots when active?", _target.disableHotspots, "", "If True, then Hotspots will be disabled when the arrows are on screen");
 			_target.positionFactor = CustomGUILayout.Slider ("Position factor:", _target.positionFactor, 0.5f, 4f, "", "A factor for the arrow position");
 			_target.scaleFactor = CustomGUILayout.Slider ("Scale factor:", _target.scaleFactor, 0.5f, 4f, "", "A factor for the arrow size");
 			_target.source = (ActionListSource) CustomGUILayout.EnumPopup ("Actions source:", _target.source, "", "Where the Actions are stored when not being run");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			EditorGUILayout.Space ();
 
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			GUILayout.Label ("Up arrow", EditorStyles.boldLabel);
 			ArrowGUI (_target.upArrow, _target.source, "Up");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			EditorGUILayout.Space ();
 			
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			GUILayout.Label ("Left arrow", EditorStyles.boldLabel);
 			ArrowGUI (_target.leftArrow, _target.source, "Left");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			EditorGUILayout.Space ();
 
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			GUILayout.Label ("Right arrow", EditorStyles.boldLabel);
 			ArrowGUI (_target.rightArrow, _target.source, "Right");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			EditorGUILayout.Space ();
 
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			GUILayout.Label ("Down arrow", EditorStyles.boldLabel);
 			ArrowGUI (_target.downArrow, _target.source, "Down");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
@@ -78,3 +80,5 @@ namespace AC
 	}
 
 }
+
+#endif

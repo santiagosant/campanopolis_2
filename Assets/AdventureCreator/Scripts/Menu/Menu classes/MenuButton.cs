@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuButton.cs"
  * 
@@ -11,6 +11,7 @@
 
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Serialization;
 #if UNITY_EDITOR
 using UnityEditor;	
 #endif
@@ -30,8 +31,7 @@ namespace AC
 		/** What pointer state registers as a 'click' for Unity UI Menus (PointerClick, PointerDown, PointerEnter) */
 		public UIPointerState uiPointerState = UIPointerState.PointerClick;
 
-		/** The text that's displayed on-screen */
-		public string label = "Element";
+		[SerializeField] [FormerlySerializedAs ("label")] private string _label = "Element";
 		/** The text that appears in the Hotspot label buffer when the mouse hovers over */
 		public string hotspotLabel = "";
 		/** The translation ID of the text that appears in the Hotspot label buffer when the mouse hovers over, as set in SpeechManager */
@@ -45,6 +45,8 @@ namespace AC
 		public float outlineSize = 2f;
 		/** The type of reaction that occurs when clicked (TurnOffMenu, Crossfade, OffsetElementSlot, RunActionList, CustomScript, OffsetJournal, SimulateInput) */
 		public AC_ButtonClickType buttonClickType;
+
+		protected bool shiftButtonIsEffective = true;
 
 		/** The ActionListAsset to run when clicked, if buttonClickType = AC_ButtonClickType.RunActionList */
 		public ActionListAsset actionList;
@@ -84,6 +86,7 @@ namespace AC
 		private MenuElement elementToShift;
 		private float clickAlpha = 0f;
 		private string fullText;
+		private bool disabledUI = false;
 
 		#if TextMeshProIsPresent
 		private TMPro.TextMeshProUGUI uiText;
@@ -92,16 +95,13 @@ namespace AC
 		#endif
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiText = null;
 			uiButton = null;
 			uiPointerState = UIPointerState.PointerClick;
-			label = "Button";
-			hotspotLabel = "";
+			_label = "Button";
+			hotspotLabel = string.Empty;
 			hotspotLabelID = -1;
 			isVisible = true;
 			isClickable = true;
@@ -114,8 +114,8 @@ namespace AC
 			anchor = TextAnchor.MiddleCenter;
 			SetSize (new Vector2 (10f, 5f));
 			doFade = false;
-			switchMenuTitle = "";
-			inventoryBoxTitle = "";
+			switchMenuTitle = string.Empty;
+			inventoryBoxTitle = string.Empty;
 			shiftInventory = AC_ShiftInventory.ShiftPrevious;
 			loopJournal = false;
 			actionList = null;
@@ -156,7 +156,7 @@ namespace AC
 			}
 			uiPointerState = _element.uiPointerState;
 
-			label = _element.label;
+			_label = _element._label;
 			hotspotLabel = _element.hotspotLabel;
 			hotspotLabelID = _element.hotspotLabelID;
 			anchor = _element.anchor;
@@ -191,16 +191,13 @@ namespace AC
 			{
 				elementToShift = _menu.GetElementWithName (inventoryBoxTitle);
 			}
+			shiftButtonIsEffective = true;
 
 			base.Initialise (_menu);
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			uiButton = LinkUIElement <UnityEngine.UI.Button> (canvas);
 			if (uiButton)
@@ -211,7 +208,11 @@ namespace AC
 				uiText = uiButton.GetComponentInChildren <Text>();
 				#endif
 
-				CreateUIEvent (uiButton, _menu, uiPointerState);
+				if (addEventListeners)
+				{
+					CreateUIEvent (uiButton, _menu, uiPointerState);
+				}
+				CreateHoverSoundHandler (uiButton, _menu, 0);
 			}
 		}
 
@@ -226,11 +227,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Gets the boundary of the element.</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiButton)
@@ -245,6 +241,22 @@ namespace AC
 		{
 			if (uiButton)
 			{
+				disabledUI = !state;
+
+				// Don't make interactable if dependent on others
+				if (state && buttonClickType == AC_ButtonClickType.OffsetElementSlot || buttonClickType == AC_ButtonClickType.OffsetJournal)
+				{
+					if (onlyShowWhenEffective && uiSelectableHideStyle == UISelectableHideStyle.DisableInteractability && Application.isPlaying && elementToShift != null)
+					{
+						if (buttonClickType == AC_ButtonClickType.OffsetElementSlot || !loopJournal)
+						{
+							if (!elementToShift.CanBeShifted (shiftInventory))
+							{
+								return;
+							}
+						}
+					}
+				}
 				uiButton.interactable = state;
 			}
 		}
@@ -256,7 +268,7 @@ namespace AC
 		{
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuButton)";
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			MenuSource source = menu.menuSource;
 
 			if (source != MenuSource.AdventureCreator)
@@ -264,11 +276,11 @@ namespace AC
 				uiButton = LinkedUiGUI <UnityEngine.UI.Button> (uiButton, "Linked Button:", source, "The Unity UI Button this is linked to");
 				uiSelectableHideStyle = (UISelectableHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiSelectableHideStyle, apiPrefix + ".uiSelectableHideStyle", "The method by which this element is hidden from view when made invisible");
 				uiPointerState = (UIPointerState) CustomGUILayout.EnumPopup ("Responds to:", uiPointerState, apiPrefix + ".uiPointerState", "What pointer state registers as a 'click' for Unity UI Menus");
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 			}
 
-			label = CustomGUILayout.TextField ("Button text:", label, apiPrefix + ".label", "The text that's displayed on-screen");
+			_label = CustomGUILayout.TextField ("Button text:", _label, apiPrefix + ".label", "The text that's displayed on-screen");
 			buttonClickType = (AC_ButtonClickType) CustomGUILayout.EnumPopup ("Click type:", buttonClickType, apiPrefix + ".buttonClickType", "The type of reaction that occurs when clicked");
 
 			if (buttonClickType == AC_ButtonClickType.TurnOffMenu)
@@ -316,7 +328,7 @@ namespace AC
 			hotspotLabel = CustomGUILayout.TextField ("Hotspot label override:", hotspotLabel, apiPrefix + ".hotspotLabel", "The text that appears in the Hotspot label buffer when the mouse hovers over");
 			alternativeInputButton = CustomGUILayout.TextField ("Alternative input button:", alternativeInputButton, apiPrefix + ".alternativeInputButton", "The name of the input button that triggers the element when pressed");
 			ChangeCursorGUI (menu);
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -345,12 +357,12 @@ namespace AC
 		private void ActionListGUI (string menuTitle, string apiPrefix)
 		{
 			actionList = ActionListAssetMenu.AssetGUI ("ActionList to run:", actionList, menuTitle + "_" + title + "_OnClick", apiPrefix + ".actionList", "The ActionList asset to run when clicked");
-			if (actionList != null && actionList.useParameters && actionList.parameters.Count > 0)
+			if (actionList && actionList.NumParameters > 0)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.BeginHorizontal ();
 				bool hasValid = false;
-				parameterID = Action.ChooseParameterGUI (string.Empty, actionList.parameters, parameterID, ParameterType.Integer);
+				parameterID = Action.ChooseParameterGUI (string.Empty, actionList.DefaultParameters, parameterID, ParameterType.Integer);
 				if (parameterID >= 0)
 				{
 					parameterValue = EditorGUILayout.IntField (parameterValue);
@@ -361,7 +373,7 @@ namespace AC
 				{
 					EditorGUILayout.HelpBox ("Only Integer parameters can be passed to a MenuButton's ActionList", MessageType.Info);
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 		}
 
@@ -375,21 +387,61 @@ namespace AC
 
 		public override int GetVariableReferences (int varID)
 		{
-			int numFound = 0;
 			string tokenText = "[var:" + varID.ToString () + "]";
 			if (label.Contains (tokenText))
 			{
-				numFound ++;
+				return 1;
 			}
-			return numFound + base.GetVariableReferences (varID);
+			return 0;
 		}
-		
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			if (label.ToLower ().Contains (oldTokenText))
+			{
+				string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Local, oldVarID);
+				label = label.Replace (oldTokenText, newTokenText);
+				return 1;
+			}
+			return 0;
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (buttonClickType == AC_ButtonClickType.RunActionList && actionList == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
+		
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiButton && uiButton.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
 
 
-		/**
-		 * Shows the assigned clickTexture overlay, which fades out over time.
-		 */
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiButton && uiButton.gameObject == gameObject)
+			{
+				return 0;
+			}
+			if (uiText && uiText.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
+
+		/** Shows the assigned clickTexture overlay, which fades out over time. */
 		public void ShowClick ()
 		{
 			if (isClickable)
@@ -401,7 +453,15 @@ namespace AC
 
 		public override string GetHotspotLabelOverride (int _slot, int _language)
 		{
+			if (uiButton && !uiButton.interactable) return string.Empty;
+
 			return GetHotspotLabel (_language);
+		}
+
+
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
 		}
 
 
@@ -409,13 +469,21 @@ namespace AC
 		{
 			SetEffectiveVisibility (true);
 
-			fullText = TranslateLabel (label, languageNumber);
+			fullText = TranslateLabel (languageNumber);
 			fullText = AdvGame.ConvertTokens (fullText, languageNumber);
 
-			if (uiButton != null)
+			if (uiButton)
 			{
-				UpdateUISelectable (uiButton, uiSelectableHideStyle);
-				if (uiText != null)
+				if (uiSelectableHideStyle == UISelectableHideStyle.DisableInteractability && disabledUI)
+				{
+					// Ignore in this special case, since we're already disabling the Menu UI
+				}
+				else
+				{
+					UpdateUISelectable (uiButton, uiSelectableHideStyle);
+				}
+
+				if (uiText)
 				{
 					uiText.text = fullText;
 				}
@@ -423,13 +491,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -470,21 +531,15 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element</returns>
-		 */
 		public override string GetLabel (int slot, int languageNumber)
 		{
-			return TranslateLabel (label, languageNumber);
+			return TranslateLabel (languageNumber);
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiButton != null)
+			if (uiButton)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiButton.gameObject);
 			}
@@ -494,24 +549,19 @@ namespace AC
 		
 		protected override void AutoSize ()
 		{
-			if (label == "" && backgroundTexture != null)
+			if (string.IsNullOrEmpty (label) && backgroundTexture)
 			{
 				GUIContent content = new GUIContent (backgroundTexture);
 				AutoSize (content);
 			}
 			else
 			{
-				GUIContent content = new GUIContent (TranslateLabel (label, Options.GetLanguage ()));
+				GUIContent content = new GUIContent (TranslateLabel (Options.GetLanguage ()));
 				AutoSize (content);
 			}
 		}
 
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
 		public override void RecalculateSize (MenuSource source)
 		{
 			SetEffectiveVisibility (false);
@@ -523,132 +573,131 @@ namespace AC
 
 		private void SetEffectiveVisibility (bool fromPreDisplay)
 		{
-			if (buttonClickType == AC_ButtonClickType.OffsetElementSlot || buttonClickType == AC_ButtonClickType.OffsetJournal)
-			{
-				if (onlyShowWhenEffective && Application.isPlaying && elementToShift != null)
-				{
-					if (buttonClickType == AC_ButtonClickType.OffsetElementSlot || !loopJournal)
-					{
-						bool newVisibleValue = elementToShift.CanBeShifted (shiftInventory);
-						if (newVisibleValue != isVisible)
-						{
-							IsVisible = newVisibleValue;
-
-							if (fromPreDisplay)
-							{
-								parentMenu.Recalculate ();
-							}
-						}
-					}
-				}
-			}
-		}
-
-
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
-		{
-			if (!_menu.IsClickable ())
+			if (!onlyShowWhenEffective || elementToShift == null || !Application.isPlaying)
 			{
 				return;
 			}
 
-			ShowClick ();
+			if (buttonClickType == AC_ButtonClickType.OffsetElementSlot || (buttonClickType == AC_ButtonClickType.OffsetJournal && !loopJournal))
+			{
+				bool isEffective = elementToShift.CanBeShifted (shiftInventory);
+				if (isEffective != shiftButtonIsEffective)
+				{
+					shiftButtonIsEffective = isEffective;
 
-			if (buttonClickType == AC_ButtonClickType.TurnOffMenu)
-			{
-				_menu.TurnOff (doFade);
-			}
-			else if (buttonClickType == AC_ButtonClickType.Crossfade)
-			{
-				AC.Menu menuToSwitchTo = PlayerMenus.GetMenuWithName (switchMenuTitle);
-				
-				if (menuToSwitchTo != null)
-				{
-					KickStarter.playerMenus.CrossFade (menuToSwitchTo);
-				}
-				else
-				{
-					ACDebug.LogWarning ("Cannot find any menu of name '" + switchMenuTitle + "'");
-				}
-			}
-			else if (buttonClickType == AC_ButtonClickType.OffsetElementSlot)
-			{
-				if (elementToShift != null)
-				{
-					elementToShift.Shift (shiftInventory, shiftAmount);
-					elementToShift.RecalculateSize (_menu.menuSource);
-					_menu.Recalculate ();
-				}
-				else
-				{
-					ACDebug.LogWarning ("Cannot find '" + inventoryBoxTitle + "' inside '" + _menu.title + "'");
-				}
-			}
-			else if (buttonClickType == AC_ButtonClickType.OffsetJournal)
-			{
-				MenuJournal journalToShift = (MenuJournal) PlayerMenus.GetElementWithName (_menu.title, inventoryBoxTitle);
-				
-				if (journalToShift != null)
-				{
-					journalToShift.Shift (shiftInventory, loopJournal, shiftAmount);
-					journalToShift.RecalculateSize (_menu.menuSource);
-					_menu.Recalculate ();
-				}
-				else
-				{
-					ACDebug.LogWarning ("Cannot find '" + inventoryBoxTitle + "' inside '" + _menu.title + "'");
-				}
-			}
-			else if (buttonClickType == AC_ButtonClickType.RunActionList)
-			{
-				if (actionList)
-				{
-					if (!actionList.canRunMultipleInstances)
+					if (fromPreDisplay)
 					{
-						KickStarter.actionListAssetManager.EndAssetList (actionList);
+						parentMenu.Recalculate ();
 					}
-
-					AdvGame.RunActionListAsset (actionList, parameterID, parameterValue);
 				}
 			}
-			else if (buttonClickType == AC_ButtonClickType.CustomScript)
-			{
-				MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
-			}
-			else if (buttonClickType == AC_ButtonClickType.SimulateInput)
-			{
-				KickStarter.playerInput.SimulateInput (simulateInput, inputAxis, simulateValue);
-			}
-			
-			base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on continuously.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
-			if (buttonClickType == AC_ButtonClickType.SimulateInput)
+			if (!_menu.IsClickable () || _mouseState != MouseState.SingleClick)
 			{
-				if (uiButton != null && uiPointerState == UIPointerState.PointerClick)
-				{
-					// Not applicable here
-					return;
-				}
-				KickStarter.playerInput.SimulateInput (simulateInput, inputAxis, simulateValue);
+				return false;
 			}
-			else if (buttonClickType == AC_ButtonClickType.CustomScript && allowContinuousClick)
+
+			ShowClick ();
+
+			switch (buttonClickType)
 			{
-				MenuSystem.OnElementClick (_menu, this, 0, (int) _mouseState);
+				case AC_ButtonClickType.TurnOffMenu:
+					_menu.TurnOff (doFade);
+					break;
+
+				case AC_ButtonClickType.Crossfade:
+					Menu menuToSwitchTo = PlayerMenus.GetMenuWithName (switchMenuTitle);
+					if (menuToSwitchTo != null)
+					{
+						KickStarter.playerMenus.CrossFade (menuToSwitchTo);
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot find any menu of name '" + switchMenuTitle + "'");
+					}
+					break;
+
+				case AC_ButtonClickType.OffsetElementSlot:
+					if (elementToShift != null)
+					{
+						elementToShift.Shift (shiftInventory, shiftAmount);
+						elementToShift.RecalculateSize (_menu.menuSource);
+						_menu.Recalculate ();
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot find '" + inventoryBoxTitle + "' inside '" + _menu.title + "'");
+					}
+					break;
+
+				case AC_ButtonClickType.OffsetJournal:
+					MenuJournal journalToShift = (MenuJournal) PlayerMenus.GetElementWithName (_menu.title, inventoryBoxTitle);
+					if (journalToShift != null)
+					{
+						journalToShift.Shift (shiftInventory, loopJournal, shiftAmount);
+						journalToShift.RecalculateSize (_menu.menuSource);
+						_menu.Recalculate ();
+					}
+					else
+					{
+						ACDebug.LogWarning ("Cannot find '" + inventoryBoxTitle + "' inside '" + _menu.title + "'");
+					}
+					break;
+
+				case AC_ButtonClickType.RunActionList:
+					if (actionList)
+					{
+						if (!actionList.canRunMultipleInstances)
+						{
+							KickStarter.actionListAssetManager.EndAssetList (actionList);
+						}
+						AdvGame.RunActionListAsset (actionList, parameterID, parameterValue);
+					}
+					break;
+
+				case AC_ButtonClickType.CustomScript:
+					MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
+					break;
+
+				case AC_ButtonClickType.SimulateInput:
+					KickStarter.playerInput.SimulateInput (simulateInput, inputAxis, simulateValue);
+					break;
+
+				default:
+					break;
+			}
+
+			return base.ProcessClick (_menu, _slot, _mouseState);
+		}
+
+
+		public override bool ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
+		{
+			switch (buttonClickType)
+			{ 
+				case AC_ButtonClickType.SimulateInput:
+					if (uiButton && uiPointerState == UIPointerState.PointerClick)
+					{
+						// Not applicable here
+						return false;
+					}
+					KickStarter.playerInput.SimulateInput (simulateInput, inputAxis, simulateValue);
+					return true;
+					
+				case AC_ButtonClickType.CustomScript:
+					if (allowContinuousClick)
+					{
+						MenuSystem.OnElementClick (_menu, this, 0, (int) _mouseState);
+						return true;
+					}
+					return false;
+
+				default:
+					return false;
 			}
 		}
 
@@ -660,15 +709,46 @@ namespace AC
 		 */
 		public string GetHotspotLabel (int languageNumber)
 		{
-			if (languageNumber > 0)
-			{
-				return KickStarter.runtimeLanguages.GetTranslation (hotspotLabel, hotspotLabelID, languageNumber);
-			}
-			return hotspotLabel;
+			return KickStarter.runtimeLanguages.GetTranslation (hotspotLabel, hotspotLabelID, languageNumber, GetTranslationType (0));
 		}
 
 
-		/** ITranslatable implementation */
+		public override bool IsVisible
+		{
+			get
+			{
+				return isVisible && shiftButtonIsEffective;
+			}
+			set
+			{
+				if (isVisible != value)
+				{
+					isVisible = value;
+					KickStarter.eventManager.Call_OnMenuElementChangeVisibility (this);
+				}
+			}
+		}
+
+
+		/** The text that's displayed on-screen */
+		public string label
+		{
+			get
+			{
+				return _label;
+			}
+			set
+			{
+				_label = value;
+				if (Application.isPlaying)
+				{
+					ClearCache ();
+				}
+			}
+		}
+
+
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -696,7 +776,26 @@ namespace AC
 		}
 
 
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.MenuElement;
+		}
+
+
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (index == 0)
+			{
+				label = updatedText;
+			}
+			else
+			{
+				hotspotLabel = updatedText;
+			}
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -742,12 +841,6 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC_TextType.MenuElement;
-		}
-
-
 		public bool CanTranslate (int index)
 		{
 			if (index == 0)
@@ -761,6 +854,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 
 	}
 

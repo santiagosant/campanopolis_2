@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberTransform.cs"
  * 
@@ -19,9 +19,7 @@ namespace AC
 	 * Attach this to GameObject whose position, parentage, or scene presence you wish to save.
 	 */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Transform")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_transform.html")]
-	#endif
 	public class RememberTransform : ConstantID
 	{
 
@@ -31,6 +29,13 @@ namespace AC
 		public bool saveScenePresence;
 		/** If non-zero, the Constant ID number of the prefab to re-spawn if not present in the scene, but saveScenePresence = true.  If zero, the prefab will be assumed to have the same ID as this. */
 		public int linkedPrefabID;
+		/** How to reference transform co-ordinates (Global, Local) */
+		public GlobalLocal transformSpace = GlobalLocal.Global;
+		
+		#if AddressableIsPresent
+		/** The name of the prefab to spawn if it needs to be added to the scene, and addressables are used when saving */
+		public string addressableName;
+		#endif
 
 		private bool savePrevented = false;
 
@@ -49,6 +54,7 @@ namespace AC
 		}
 
 
+		/** Initialises the component.  This needs to be called if the object it is attached to is generated/spawned at runtime manually through code. */
 		public void OnSpawn ()
 		{
 			if (linkedPrefabID != 0)
@@ -76,22 +82,41 @@ namespace AC
 			transformData.objectID = constantID;
 			transformData.savePrevented = savePrevented;
 
-			transformData.LocX = transform.position.x;
-			transformData.LocY = transform.position.y;
-			transformData.LocZ = transform.position.z;
+			switch (transformSpace)
+			{
+				case GlobalLocal.Global:
+					{
+						transformData.LocX = transform.position.x;
+						transformData.LocY = transform.position.y;
+						transformData.LocZ = transform.position.z;
 
-			Char attachedChar = transform.GetComponent <Char>();
-			if (attachedChar != null)
-			{
-				transformData.RotX = attachedChar.TransformRotation.eulerAngles.x;
-				transformData.RotY = attachedChar.TransformRotation.eulerAngles.y;
-				transformData.RotZ = attachedChar.TransformRotation.eulerAngles.z;
-			}
-			else
-			{
-				transformData.RotX = transform.eulerAngles.x;
-				transformData.RotY = transform.eulerAngles.y;
-				transformData.RotZ = transform.eulerAngles.z;
+						Char attachedChar = transform.GetComponent<Char> ();
+						if (attachedChar)
+						{
+							transformData.RotX = attachedChar.TransformRotation.eulerAngles.x;
+							transformData.RotY = attachedChar.TransformRotation.eulerAngles.y;
+							transformData.RotZ = attachedChar.TransformRotation.eulerAngles.z;
+						}
+						else
+						{
+							transformData.RotX = transform.eulerAngles.x;
+							transformData.RotY = transform.eulerAngles.y;
+							transformData.RotZ = transform.eulerAngles.z;
+						}
+					}
+					break;
+
+				case GlobalLocal.Local:
+					{
+						transformData.LocX = transform.localPosition.x;
+						transformData.LocY = transform.localPosition.y;
+						transformData.LocZ = transform.localPosition.z;
+
+						transformData.RotX = transform.localEulerAngles.x;
+						transformData.RotY = transform.localEulerAngles.y;
+						transformData.RotZ = transform.localEulerAngles.z;
+					}
+					break;
 			}
 			
 			transformData.ScaleX = transform.localScale.x;
@@ -99,6 +124,9 @@ namespace AC
 			transformData.ScaleZ = transform.localScale.z;
 
 			transformData.bringBack = saveScenePresence;
+			#if AddressableIsPresent
+			transformData.addressableName = (saveScenePresence) ? addressableName : string.Empty;
+			#endif
 			transformData.linkedPrefabID = (saveScenePresence) ? linkedPrefabID : 0;
 
 			if (saveParent)
@@ -112,15 +140,14 @@ namespace AC
 					return transformData;
 				}
 
-				while (t.parent != null)
+				while (t.parent)
 				{
 					t = t.parent;
 
-					if (t.GetComponent <AC.Char>())
-					{
-						AC.Char parentCharacter = t.GetComponent <AC.Char>();
-						
-						if (parentCharacter is Player || (parentCharacter.GetComponent <ConstantID>() && parentCharacter.GetComponent <ConstantID>().constantID != 0))
+					AC.Char parentCharacter = t.GetComponent <AC.Char>();
+					if (parentCharacter)
+					{						
+						if (parentCharacter.IsPlayer || (parentCharacter.GetComponent <ConstantID>() && parentCharacter.GetComponent <ConstantID>().constantID != 0))
 						{
 							if (transform.parent == parentCharacter.leftHandBone || transform.parent == parentCharacter.rightHandBone)
 							{
@@ -129,12 +156,20 @@ namespace AC
 									transformData.parentIsPlayer = true;
 									transformData.parentIsNPC = false;
 									transformData.parentID = 0;
+									transformData.parentPlayerID = -1;
+
+									if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && parentCharacter != KickStarter.player)
+									{
+										Player player = parentCharacter as Player;
+										transformData.parentPlayerID = player.ID;
+									}
 								}
 								else
 								{
 									transformData.parentIsPlayer = false;
 									transformData.parentIsNPC = true;
 									transformData.parentID = parentCharacter.GetComponent <ConstantID>().constantID;
+									transformData.parentPlayerID = -1;
 								}
 								
 								if (transform.parent == parentCharacter.leftHandBone)
@@ -177,36 +212,52 @@ namespace AC
 		{
 			if (data == null) return;
 			savePrevented = data.savePrevented; if (savePrevented) return;
-
+			
 			if (data.parentIsPlayer)
 			{
-				if (KickStarter.player)
+				Player player = KickStarter.player;
+
+				if (data.parentPlayerID >= 0)
+				{
+					player = null;
+					PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (data.parentPlayerID);
+					if (playerPrefab != null)
+					{
+						player = playerPrefab.GetSceneInstance ();
+					}
+				}
+
+				if (player)
 				{
 					if (data.heldHand == Hand.Left)
 					{
-						transform.parent = KickStarter.player.leftHandBone;
+						transform.parent = player.leftHandBone;
 					}
 					else
 					{
-						transform.parent = KickStarter.player.rightHandBone;
+						transform.parent = player.rightHandBone;
 					}
 				}
 			}
 			else if (data.parentID != 0)
 			{
-				ConstantID parentObject = Serializer.returnComponent <ConstantID> (data.parentID);
+				ConstantID parentObject = ConstantID.GetComponent <ConstantID> (data.parentID);
 
-				if (parentObject != null)
+				if (parentObject)
 				{
-					if (data.parentIsNPC && parentObject.GetComponent <NPC>())
+					if (data.parentIsNPC)
 					{
-						if (data.heldHand == Hand.Left)
+						Char _char = parentObject.GetComponent<NPC> ();
+						if (_char && !_char.IsPlayer)
 						{
-							transform.parent = parentObject.GetComponent <NPC>().leftHandBone;
-						}
-						else
-						{
-							transform.parent = parentObject.GetComponent <NPC>().rightHandBone;
+							if (data.heldHand == Hand.Left)
+							{
+								transform.parent = _char.leftHandBone;
+							}
+							else
+							{
+								transform.parent = _char.rightHandBone;
+							}
 						}
 					}
 					else
@@ -220,8 +271,19 @@ namespace AC
 				transform.parent = null;
 			}
 
-			transform.position = new Vector3 (data.LocX, data.LocY, data.LocZ);
-			transform.eulerAngles = new Vector3 (data.RotX, data.RotY, data.RotZ);
+			switch (transformSpace)
+			{
+				case GlobalLocal.Global:
+					transform.position = new Vector3 (data.LocX, data.LocY, data.LocZ);
+					transform.eulerAngles = new Vector3 (data.RotX, data.RotY, data.RotZ);
+					break;
+
+				case GlobalLocal.Local:
+					transform.localPosition = new Vector3 (data.LocX, data.LocY, data.LocZ);
+					transform.localEulerAngles = new Vector3 (data.RotX, data.RotY, data.RotZ);
+					break;
+			}
+
 			transform.localScale = new Vector3 (data.ScaleX, data.ScaleY, data.ScaleZ);
 		}
 
@@ -239,6 +301,11 @@ namespace AC
 		public int objectID;
 		/** If True, saving is prevented */
 		public bool savePrevented;
+
+		#if AddressableIsPresent
+		/** The addressable of the prefab to spawn, if necessary */
+		public string addressableName;
+		#endif
 
 		/** The X position */
 		public float LocX;
@@ -274,7 +341,8 @@ namespace AC
 		public bool parentIsPlayer = false;
 		/** If the GameObject's parent is a Character, which hand is it held in? (Left, Right) */
 		public Hand heldHand;
-
+		/** If player-switching is allowed, and the GameObject's parent is an inactive Player, the ID number of that Player */
+		public int parentPlayerID = -1;
 
 		/**
 		 * The default Constructor.

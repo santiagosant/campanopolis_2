@@ -5,7 +5,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"GameCamera25D.cs"
  * 
@@ -21,11 +21,11 @@ namespace AC
 	/**
 	 * A fixed camera that allows for a BackgroundImage to be displayed underneath all scene objects.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_game_camera25_d.html")]
-	#endif
 	public class GameCamera25D : _Camera
 	{
+
+		#region Variables
 
 		/** The BackgroundImage to display underneath all scene objects. */
 		public BackgroundImage backgroundImage;
@@ -34,6 +34,10 @@ namespace AC
 		/** The offset in perspective from the camera's centre */
 		public Vector2 perspectiveOffset = Vector2.zero;
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Enables the assigned backgroundImage, disables all other BackgroundImage objects, and ensures MainCamera can view it.
@@ -42,7 +46,7 @@ namespace AC
 		{
 			if (backgroundImage)
 			{
-				if (BackgroundCamera.Instance != null && BackgroundImageUI.Instance != null)
+				if (BackgroundCamera.Instance && BackgroundImageUI.Instance)
 				{
 					// Update mask/layers
 				}
@@ -90,14 +94,20 @@ namespace AC
 			SetProjection ();
 		}
 
+		#endregion
 
-		private void SetProjection ()
+
+		#region ProtectedFunctions
+
+		protected void SetProjection ()
 		{
 			if (MainCamera.AllowProjectionShifting (Camera))
 			{
 				Camera.projectionMatrix = AdvGame.SetVanishingPoint (Camera, perspectiveOffset);
 			}
 		}
+
+		#endregion
 
 
 		#if UNITY_EDITOR
@@ -126,8 +136,8 @@ namespace AC
 			{
 				Camera targetCamera = GetComponent <Camera>();
 
-				KickStarter.mainCamera.transform.position = transform.position;
-				KickStarter.mainCamera.transform.rotation = transform.rotation;
+				KickStarter.mainCamera.Transform.position = Transform.position;
+				KickStarter.mainCamera.Transform.rotation = Transform.rotation;
 				KickStarter.mainCamera.Camera.orthographic = targetCamera.orthographic;
 
 				KickStarter.mainCamera.Camera.fieldOfView = targetCamera.fieldOfView;
@@ -152,13 +162,9 @@ namespace AC
 			}
 		}
 
-		#endif
-
-
-		#if UNITY_EDITOR
 
 		[ContextMenu ("Make active")]
-		private void LocalMakeActive ()
+		protected void LocalMakeActive ()
 		{
 			MakeActive ();
 		}

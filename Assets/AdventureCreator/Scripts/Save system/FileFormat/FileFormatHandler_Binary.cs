@@ -13,6 +13,7 @@ using System.Runtime.Serialization.Formatters.Binary;
 namespace AC
 {
 
+	/** A format handler that serializes data into binary format */
 	public class FileFormatHandler_Binary : iFileFormatHandler
 	{
 
@@ -28,7 +29,7 @@ namespace AC
 		}
 
 
-		public string SerializeObject <T> (object dataObject)
+		public virtual string SerializeObject <T> (object dataObject)
 		{
 			#if CAN_USE_BINARY
 			BinaryFormatter binaryFormatter = new BinaryFormatter();
@@ -36,12 +37,12 @@ namespace AC
 			binaryFormatter.Serialize (memoryStream, dataObject);
 			return (Convert.ToBase64String (memoryStream.GetBuffer ()));
 			#else
-			return "";
+			return string.Empty;
 			#endif
 		}
 
 
-		public T DeserializeObject <T> (string dataString)
+		public virtual T DeserializeObject <T> (string dataString)
 		{
 			#if CAN_USE_BINARY
 			BinaryFormatter binaryFormatter = new BinaryFormatter ();
@@ -53,19 +54,19 @@ namespace AC
 		}
 
 
-		public string SerializeAllRoomData (List<SingleLevelData> dataObjects)
+		public virtual string SerializeAllRoomData (List<SingleLevelData> dataObjects)
 		{
 			return SerializeObject <List<SingleLevelData>> (dataObjects);
 		}
 
 
-		public List<SingleLevelData> DeserializeAllRoomData (string dataString)
+		public virtual List<SingleLevelData> DeserializeAllRoomData (string dataString)
 		{
 			return (List<SingleLevelData>) DeserializeObject <List<SingleLevelData>> (dataString);
 		}
 
 
-		public T LoadScriptData <T> (string dataString) where T : RememberData
+		public virtual T LoadScriptData <T> (string dataString) where T : RememberData
 		{
 			#if CAN_USE_BINARY
 			BinaryFormatter binaryFormatter = new BinaryFormatter();

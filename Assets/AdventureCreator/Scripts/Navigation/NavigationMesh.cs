@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavigationMesh.cs"
  * 
@@ -12,6 +12,7 @@
 
 using UnityEngine;
 using System.Collections.Generic;
+using System;
 
 namespace AC
 {
@@ -19,16 +20,14 @@ namespace AC
 	/**
 	 * Defines a walkable area of AC's built-in pathfinding algorithms.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_navigation_mesh.html")]
-	#endif
 	public class NavigationMesh : NavMeshBase
 	{
 
+		#region Variables
+
 		/** A List of holes within the base PolygonCollider2D */
 		public List<PolygonCollider2D> polygonColliderHoles = new List<PolygonCollider2D>();
-		/** If True, the boundary will be drawn in the Scene window (Polygon Collider-based navigation only) */
-		public bool showInEditor = true;
 		/** The condition for which dynamic 2D pathfinding can occur by generating holes around characters (None, OnlyStationaryCharacters, AllCharacters */
 		public CharacterEvasion characterEvasion = CharacterEvasion.OnlyStationaryCharacters;
 		/** The number of vertices created around characters to evade (Four, Eight, Sixteen). Higher values mean greater accuracy. */
@@ -40,14 +39,43 @@ namespace AC
 		/** The colour of its Gizmo when used for 2D polygons */
 		public Color gizmoColour = Color.white;
 
-		private PolygonCollider2D[] polygonCollider2Ds;
+		protected Vector3 upDirection = new Vector3 (0f, 1f, 0f);
+		protected PolygonCollider2D[] polygonCollider2Ds;
+
+		protected int originalPathCount = -1;
+		
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			BaseAwake ();
 		}
 
+		#if UNITY_EDITOR
+
+		protected void OnDrawGizmos ()
+		{
+			if (KickStarter.sceneSettings && UnityEditor.Selection.activeGameObject != gameObject)
+			{
+				DrawGizmos ();
+			}
+		}
+		
+		
+		protected void OnDrawGizmosSelected ()
+		{
+			DrawGizmos ();
+		}
+
+		#endif
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Integrates a PolygonCollider2D into the shape of the base PolygonCollider2D.
@@ -87,15 +115,7 @@ namespace AC
 		}
 
 
-		private void ResetHoles ()
-		{
-			KickStarter.navigationManager.navigationEngine.ResetHoles (this);
-		}
-
-
-		/**
-		 * Enables the GameObject so that it can be used in pathfinding.
-		 */
+		/** Enables the GameObject so that it can be used in pathfinding. */
 		public void TurnOn ()
 		{
 			if (KickStarter.navigationManager.navigationEngine)
@@ -106,50 +126,54 @@ namespace AC
 		}
 		
 
-		/**
-		 * Disables the GameObject from being used in pathfinding.
-		 */
+		/** Disables the GameObject from being used in pathfinding. */
 		public void TurnOff ()
 		{
-			if (KickStarter.settingsManager != null)
+			if (KickStarter.settingsManager)
 			{
 				gameObject.layer = LayerMask.NameToLayer (KickStarter.settingsManager.deactivatedLayer);
 			}
 		}
 
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		private void ResetHoles ()
+		{
+			KickStarter.navigationManager.navigationEngine.ResetHoles (this);
+		}
 
 		#if UNITY_EDITOR
 
-		protected void OnDrawGizmos ()
+		protected void DrawGizmos ()
 		{
-			if (showInEditor)
-			{
-				DrawGizmos ();
-			}
-		}
-		
-		
-		protected void OnDrawGizmosSelected ()
-		{
-			DrawGizmos ();
-		}
-
-
-		private void DrawGizmos ()
-		{
-			if (KickStarter.navigationManager != null)
+			if (KickStarter.navigationManager)
 			{
 				if (KickStarter.navigationManager.navigationEngine == null) KickStarter.navigationManager.ResetEngine ();
-				if (KickStarter.navigationManager.navigationEngine != null)
+				if (KickStarter.navigationManager.navigationEngine != null && KickStarter.sceneSettings.visibilityNavMesh)
 				{
-					KickStarter.navigationManager.navigationEngine.DrawGizmos (this.gameObject);
+					KickStarter.navigationManager.navigationEngine.DrawGizmos (gameObject);
 				}
+			}
+
+			if (Application.isPlaying) return;
+			Renderer _renderer = GetComponent<Renderer> ();
+			if (_renderer)
+			{
+				_renderer.enabled = KickStarter.sceneSettings.visibilityNavMesh;
 			}
 		}
 
 		#endif
 
+		#endregion
 
+
+		#region GetSet
+
+		/** All PolygonCollider2D components attached to the GameObject */
 		public PolygonCollider2D[] PolygonCollider2Ds
 		{
 			get
@@ -161,6 +185,37 @@ namespace AC
 				return polygonCollider2Ds;
 			}
 		}
+
+		/** The direction that is considered 'up'. This is only used by the MeshCollider navigation engine. */
+		public Vector3 UpDirection
+		{
+			get
+			{
+				return upDirection;
+			}
+			set
+			{
+				upDirection = value;
+			}
+		}
+
+
+		/** The number of paths baked into the first-attached PolygonCollider component */
+		public int OriginalPathCount
+		{
+			get
+			{
+				if (originalPathCount < 0)
+				{
+					originalPathCount = (PolygonCollider2Ds.Length > 0)
+										? PolygonCollider2Ds[0].pathCount
+										: 1;
+				}
+				return originalPathCount;
+			}
+		}
+
+		#endregion
 
 	}
 

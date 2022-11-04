@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTintMap.cs"
  * 
@@ -24,7 +24,9 @@ namespace AC
 	{
 
 		public bool isPlayer;
-		
+		public int playerID = -1;
+		public int playerParameterID = -1;
+
 		public FollowTintMap followTintMap;
 		public int followTintMapConstantID = 0;
 		public int followTintMapParameterID = -1;
@@ -41,24 +43,21 @@ namespace AC
 		public int newTintMapConstantID = 0;
 		public int newTintMapParameterID = -1;
 		protected TintMap runtimeNewTintMap;
-		
-		
-		public ActionTintMap ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Change Tint map";
-			description = "Changes which Tint map a Follow Tint Map component uses, and the intensity of the effect.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Change Tint map"; }}
+		public override string Description { get { return "Changes which Tint map a Follow Tint Map component uses, and the intensity of the effect."; }}
+		
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player && KickStarter.player.spriteChild != null && KickStarter.player.spriteChild.GetComponent <FollowTintMap>())
+				Player player = AssignPlayer (playerID, parameters, playerParameterID);
+				if (player != null && player.spriteChild != null)
 				{
-					runtimeFollowTintMap = KickStarter.player.spriteChild.GetComponent <FollowTintMap>();
+					runtimeFollowTintMap = player.spriteChild.GetComponent <FollowTintMap>();
 				}
 			}
 			else
@@ -78,7 +77,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeFollowTintMap == null)
 			{
@@ -142,12 +141,18 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			tintMapMethod = (TintMapMethod) EditorGUILayout.EnumPopup ("Change to make:", tintMapMethod);
 
 			isPlayer = EditorGUILayout.Toggle ("Affect Player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+				if (playerParameterID < 0)
+					playerID = ChoosePlayerGUI (playerID, true);
+			}
+			else
 			{
 				followTintMapParameterID = Action.ChooseParameterGUI ("FollowTintMap:", parameters, followTintMapParameterID, ParameterType.GameObject);
 				if (followTintMapParameterID >= 0)
@@ -197,17 +202,15 @@ namespace AC
 					}
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
 				FollowTintMap obToUpdate = followTintMap;
-				if (isPlayer)
+				if (isPlayer && (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
 				{
 					if (!fromAssetFile && GameObject.FindObjectOfType <Player>() != null)
 					{
@@ -227,7 +230,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			string labelAdd = tintMapMethod.ToString ();
 
@@ -242,7 +245,32 @@ namespace AC
 
 			return labelAdd;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (followTintMapParameterID < 0)
+			{
+				if (followTintMap && followTintMap.gameObject == gameObject) return true;
+				if (followTintMapConstantID == id && id != 0) return true;
+			}
+			if (newTintMapParameterID < 0 && tintMapMethod == TintMapMethod.ChangeTintMap)
+			{
+				if (newTintMap && newTintMap.gameObject == gameObject) return true;
+				if (newTintMapConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -254,7 +282,7 @@ namespace AC
 		 */
 		public static ActionTintMap CreateNew_ChangeTintMap (FollowTintMap followTintMap, TintMap newTintMap)
 		{
-			ActionTintMap newAction = (ActionTintMap) CreateInstance <ActionTintMap>();
+			ActionTintMap newAction = CreateNew<ActionTintMap> ();
 			newAction.tintMapMethod = TintMapMethod.ChangeTintMap;
 			newAction.followTintMap = followTintMap;
 			newAction.newTintMap = newTintMap;
@@ -272,7 +300,7 @@ namespace AC
 		 */
 		public static ActionTintMap CreateNew_ChangeIntensity (FollowTintMap followTintMap, float newIntensity, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionTintMap newAction = (ActionTintMap) CreateInstance <ActionTintMap>();
+			ActionTintMap newAction = CreateNew<ActionTintMap> ();
 			newAction.tintMapMethod = TintMapMethod.ChangeIntensity;
 			newAction.followTintMap = followTintMap;
 			newAction.newIntensity = newIntensity;

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharDirection.cs"
  * 
@@ -29,36 +29,43 @@ namespace AC
 
 		public bool isInstant;
 		public CharDirection direction;
+		public int directionParameterID = -1;
 
 		public Char charToMove;
 		protected Char runtimeCharToMove;
 
 		public bool isPlayer;
+		public int playerID = -1;
+		
 		[SerializeField] protected RelativeTo relativeTo = RelativeTo.Camera;
 		public enum RelativeTo { Camera, Character };
 
-		
-		public ActionCharFaceDirection ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Face direction";
-			description = "Makes a Character turn, either instantly or over time, to face a direction relative to the camera – i.e. up, down, left or right.";
-		}
-		
-		
+
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Face direction"; }}
+		public override string Description { get { return "Makes a Character turn, either instantly or over time, to face a direction relative to the camera – i.e. up, down, left or right."; }}
+
+
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			runtimeCharToMove = AssignFile <Char> (parameters, charToMoveParameterID, charToMoveID, charToMove);
-
 			if (isPlayer)
 			{
-				runtimeCharToMove = KickStarter.player;
+				runtimeCharToMove = AssignPlayer (playerID, parameters, charToMoveParameterID);
+			}
+			else
+			{
+				runtimeCharToMove = AssignFile <Char> (parameters, charToMoveParameterID, charToMoveID, charToMove);
+			}
+
+			if (directionParameterID >= 0)
+			{
+				int _directionInt = AssignInteger (parameters, directionParameterID, 0);
+				direction = (CharDirection) _directionInt;
 			}
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
@@ -71,7 +78,8 @@ namespace AC
 						runtimeCharToMove.EndPath ();
 					}
 
-					runtimeCharToMove.SetLookDirection (GetLookVector (), isInstant);
+					Vector3 lookVector = AdvGame.GetCharLookVector (direction, (relativeTo == RelativeTo.Character) ? runtimeCharToMove : null);
+					runtimeCharToMove.SetLookDirection (lookVector, isInstant);
 
 					if (!isInstant)
 					{
@@ -99,107 +107,33 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (runtimeCharToMove != null)
 			{
-				runtimeCharToMove.SetLookDirection (GetLookVector (), true);
+				Vector3 lookVector = AdvGame.GetCharLookVector (direction, (relativeTo == RelativeTo.Character) ? runtimeCharToMove : null);
+				runtimeCharToMove.SetLookDirection (lookVector, true);
 			}
 		}
 
 
-		private Vector3 GetLookVector ()
+		#if UNITY_EDITOR
+		
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			Vector3 camForward = KickStarter.CameraMain.transform.forward;
-			camForward = new Vector3 (camForward.x, 0f, camForward.z).normalized;
-
-			if (SceneSettings.IsTopDown ())
+			isPlayer = EditorGUILayout.Toggle ("Affect Player?", isPlayer);
+			if (isPlayer)
 			{
-				camForward = -KickStarter.CameraMain.transform.forward;
-			}
-			else if (SceneSettings.CameraPerspective == CameraPerspective.TwoD)
-			{
-				camForward = KickStarter.CameraMain.transform.up;
-			}
-
-			Vector3 camRight = new Vector3 (KickStarter.CameraMain.transform.right.x, 0f, KickStarter.CameraMain.transform.right.z);
-
-			// Angle slightly so that left->right rotations face camera
-			if (KickStarter.settingsManager.IsInFirstPerson ())
-			{
-				// No angle tweaking in first-person
-			}
-			else if (SceneSettings.CameraPerspective == CameraPerspective.TwoD)
-			{
-				camRight -= new Vector3 (0f, 0f, 0.01f);
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					charToMoveParameterID = ChooseParameterGUI ("Player ID:", parameters, charToMoveParameterID, ParameterType.Integer);
+					if (charToMoveParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
 			}
 			else
 			{
-				camRight -= camForward * 0.01f;
-			}
-
-			if (relativeTo == RelativeTo.Character)
-			{
-				camForward = runtimeCharToMove.TransformForward;
-				camRight = runtimeCharToMove.TransformRight;
-			}
-
-			Vector3 lookVector = Vector3.zero;
-			switch (direction)
-			{
-				case CharDirection.Down:
-					lookVector = -camForward;
-					break;
-
-				case CharDirection.Left:
-					lookVector = -camRight;
-					break;
-
-				case CharDirection.Right:
-					lookVector = camRight;
-					break;
-
-				case CharDirection.Up:
-					lookVector = camForward;
-					break;
-
-				case CharDirection.DownLeft:
-					lookVector = (-camForward - camRight).normalized;
-					break;
-
-				case CharDirection.DownRight:
-					lookVector = (-camForward + camRight).normalized;
-					break;
-
-				case CharDirection.UpLeft:
-					lookVector = (camForward - camRight).normalized;
-					break;
-
-				case CharDirection.UpRight:
-					lookVector = (camForward + camRight).normalized;
-					break;
-			}
-
-			if (SceneSettings.IsTopDown ())
-			{
-				return lookVector;
-			}
-			if (SceneSettings.CameraPerspective == CameraPerspective.TwoD && relativeTo == RelativeTo.Camera)
-			{
-				return new Vector3 (lookVector.x, 0f, lookVector.y).normalized;
-			}
-			return lookVector;
-		}
-		
-		
-		#if UNITY_EDITOR
-		
-		override public void ShowGUI (List<ActionParameter> parameters)
-		{
-			isPlayer = EditorGUILayout.Toggle ("Affect Player?", isPlayer);
-			if (!isPlayer)
-			{
-				charToMoveParameterID = Action.ChooseParameterGUI ("Character to turn:", parameters, charToMoveParameterID, ParameterType.GameObject);
+				charToMoveParameterID = ChooseParameterGUI ("Character to turn:", parameters, charToMoveParameterID, ParameterType.GameObject);
 				if (charToMoveParameterID >= 0)
 				{
 					charToMoveID = 0;
@@ -214,23 +148,26 @@ namespace AC
 				}
 			}
 
-			direction = (CharDirection) EditorGUILayout.EnumPopup ("Direction to face:", direction);
+			directionParameterID = Action.ChooseParameterGUI ("Direction to face:", parameters, directionParameterID, ParameterType.Integer);
+			if (directionParameterID < 0)
+			{
+				direction = (CharDirection) EditorGUILayout.EnumPopup ("Direction to face:", direction);
+			}
+
 			relativeTo = (RelativeTo) EditorGUILayout.EnumPopup ("Direction is relative to:", relativeTo);
 			isInstant = EditorGUILayout.Toggle ("Is instant?", isInstant);
 			if (!isInstant)
 			{
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (!isPlayer)
 			{
-				if (saveScriptsToo && charToMove != null && charToMove.GetComponent <NPC>())
+				if (saveScriptsToo && charToMove != null && !charToMove.IsPlayer)
 				{
 					AddSaveScript <RememberNPC> (charToMove);
 				}
@@ -240,7 +177,7 @@ namespace AC
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (charToMove != null)
 			{
@@ -248,7 +185,28 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && charToMoveParameterID < 0)
+			{
+				if (charToMove != null && charToMove.gameObject == _gameObject) return true;
+				if (charToMoveID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && charToMoveParameterID < 0) return true;
+			return (charToMoveParameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -263,7 +221,7 @@ namespace AC
 		 */
 		public static ActionCharFaceDirection CreateNew (AC.Char characterToTurn, CharDirection directionToFace, RelativeTo relativeTo = RelativeTo.Camera, bool isInstant = false, bool waitUntilFinish = false)
 		{
-			ActionCharFaceDirection newAction = (ActionCharFaceDirection) CreateInstance <ActionCharFaceDirection>();
+			ActionCharFaceDirection newAction = CreateNew<ActionCharFaceDirection> ();
 			newAction.charToMove = characterToTurn;
 			newAction.direction = directionToFace;
 			newAction.relativeTo = relativeTo;

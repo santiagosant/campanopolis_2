@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSendMessage.cs"
  * 
@@ -11,7 +11,6 @@
  */
 
 using UnityEngine.Events;
-
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -28,16 +27,12 @@ namespace AC
 		public bool ignoreWhenSkipping = false;
 		
 		
-		public ActionEvent ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Call event";
-			description = "Calls a given function on a GameObject.";
-		}
-		
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Call event"; }}
+		public override string Description { get { return "Calls a given function on a GameObject."; }}
 
-		override public float Run ()
+
+		public override float Run ()
 		{
 			if (unityEvent != null)
 			{
@@ -48,7 +43,7 @@ namespace AC
 		}
 
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (!ignoreWhenSkipping)
 			{
@@ -65,7 +60,11 @@ namespace AC
 		
 		public override void ShowGUI ()
 		{
-			var serializedObject = new UnityEditor.SerializedObject (this);
+			if (this == null) return;
+
+			#if AC_ActionListPrefabs
+			#else
+			var serializedObject = new SerializedObject (this);
 
 			serializedObject.Update ();
 			SerializedProperty eventProperty = serializedObject.FindProperty ("unityEvent");
@@ -79,10 +78,11 @@ namespace AC
 			}
 
 			serializedObject.ApplyModifiedProperties ();
+			#endif
 
+			#if !UNITY_2019_1_OR_NEWER
 			EditorGUILayout.HelpBox ("Parameters passed from here cannot be set, unfortunately, due to a Unity limitation.", MessageType.Warning);
-
-			AfterRunningOption ();
+			#endif
 		}
 
 		#endif

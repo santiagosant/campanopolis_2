@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarSequence.cs"
  * 
@@ -21,14 +21,15 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionVarPopup : ActionCheckMultiple
+	public class ActionVarPopup : Action
 	{
 		
 		public int variableID;
 		public int variableNumber;
 		public VariableLocation location = VariableLocation.Global;
 
-		private LocalVariables localVariables;
+		public int numSockets = 2;
+		protected LocalVariables localVariables;
 
 		public Variables variables;
 		public int variablesConstantID = 0;
@@ -40,19 +41,16 @@ namespace AC
 		[SerializeField] protected int placeholderPopUpLabelDataID = 0;
 		#endif
 
-		private GVar runtimeVariable;
-
-		
-		public ActionVarPopup ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Pop Up switch";
-			description = "Uses the value of a Pop Up Variable to determine which Action is run next. An option for each possible value the Variable can take will be displayed, allowing for different subsequent Actions to run.";
-		}
+		protected GVar runtimeVariable;
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Pop Up switch"; }}
+		public override string Description { get { return "Uses the value of a Pop Up Variable to determine which Action is run next. An option for each possible value the Variable can take will be displayed, allowing for different subsequent Actions to run."; }}
+		public override int NumSockets { get { return numSockets; }}
+
+
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -97,7 +95,7 @@ namespace AC
 		}
 		
 
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (runtimeVariable != null && runtimeVariable.type != VariableType.PopUp)
 			{
@@ -112,21 +110,21 @@ namespace AC
 			if (numSockets <= 0)
 			{
 				LogWarning ("Could not compute Random check because no values were possible!");
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 			
 			if (runtimeVariable != null)
 			{
-				return ProcessResult (runtimeVariable.val, actions);
+				return runtimeVariable.IntegerValue;
 			}
 			
-			return GenerateStopActionEnd ();
+			return -1;
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			location = (VariableLocation) EditorGUILayout.EnumPopup ("Source:", location);
 
@@ -233,7 +231,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			switch (location)
 			{
@@ -279,82 +277,26 @@ namespace AC
 			return string.Empty;
 		}
 
-
-		override public void SkipActionGUI (List<Action> actions, bool showGUI)
+		protected override string GetSocketLabel (int i)
 		{
-			if (numSockets < 0)
+			GVar _var = (parameterID < 0) ? GetVariable () : null;
+			if (_var != null)
 			{
-				numSockets = 0;
-			}
-		
-			if (numSockets < endings.Count)
-			{
-				endings.RemoveRange (numSockets, endings.Count - numSockets);
-			}
-			else if (numSockets > endings.Count)
-			{
-				if (numSockets > endings.Capacity)
+				string[] popUpLabels = _var.GenerateEditorPopUpLabels ();
+				if (i < popUpLabels.Length)
 				{
-					endings.Capacity = numSockets;
-				}
-				for (int i=endings.Count; i<numSockets; i++)
-				{
-					ActionEnd newEnd = new ActionEnd ();
-					if (i > 0)
-					{
-						newEnd.resultAction = ResultAction.Stop;
-					}
-					endings.Add (newEnd);
+					return "If = '" + popUpLabels[i] + "':";
 				}
 			}
-			
-			foreach (ActionEnd ending in endings)
+			else if (KickStarter.variablesManager)
 			{
-				if (showGUI)
+				PopUpLabelData popUpLabelData = AdvGame.GetReferences ().variablesManager.GetPopUpLabelData (placeholderPopUpLabelDataID);
+				if (parameterID >= 0 && popUpLabelData != null)
 				{
-					EditorGUILayout.Space ();
-					int i = endings.IndexOf (ending);
-
-					GVar _var = (parameterID < 0) ? GetVariable () : null;
-					if (_var != null)
-					{
-						string[] popUpLabels = _var.GenerateEditorPopUpLabels ();
-						ending.resultAction = (ResultAction) EditorGUILayout.EnumPopup ("If = '" + popUpLabels[i] + "':", (ResultAction) ending.resultAction);
-					}
-					else if (AdvGame.GetReferences ().variablesManager == null)
-					{
-						ending.resultAction = (ResultAction) EditorGUILayout.EnumPopup ("If = '" + i.ToString () + "':", (ResultAction) ending.resultAction);
-					}
-					else
-					{
-						PopUpLabelData popUpLabelData = AdvGame.GetReferences ().variablesManager.GetPopUpLabelData (placeholderPopUpLabelDataID);
-						if (parameterID >= 0 && popUpLabelData != null)
-						{
-							ending.resultAction = (ResultAction) EditorGUILayout.EnumPopup ("If = '" + popUpLabelData.GetValue (i) + "':", (ResultAction) ending.resultAction);
-						}
-						else
-						{
-							ending.resultAction = (ResultAction) EditorGUILayout.EnumPopup ("If = '" + i.ToString () + "':", (ResultAction) ending.resultAction);
-						}
-					}
-				}
-				
-				if (ending.resultAction == ResultAction.RunCutscene && showGUI)
-				{
-					if (isAssetFile)
-					{
-						ending.linkedAsset = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList to run:", ending.linkedAsset, typeof (ActionListAsset), false);
-					}
-					else
-					{
-						ending.linkedCutscene = (Cutscene) EditorGUILayout.ObjectField ("Cutscene to run:", ending.linkedCutscene, typeof (Cutscene), true);
-					}
-				}
-				else if (ending.resultAction == ResultAction.Skip)
-				{
-					SkipActionGUI (ending, actions, showGUI);
+					return "If = '" + popUpLabelData.GetValue (i) + "':";
 				}
 			}
+			return "If = '" + i.ToString () + "':";
 		}
 
 
@@ -389,29 +331,63 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
 			if (location == _location && variableID == varID && parameterID < 0)
 			{
-				if (location != VariableLocation.Component || (variables != null && variables == _variables))
+				if (location != VariableLocation.Component || (variables && variables == _variables) || (_variablesConstantID != 0 && variablesConstantID == _variablesConstantID))
 				{
 					thisCount ++;
 				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+
+			if (location == _location && variableID == oldVarID && parameterID < 0)
+			{
+				if (location != VariableLocation.Component || (variables && variables == _variables) || (_variablesConstantID != 0 && variablesConstantID == _variablesConstantID))
+				{
+					variableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (location == VariableLocation.Component && parameterID < 0)
 			{
+				if (saveScriptsToo && variables && parameterID < 0)
+				{
+					AddSaveScript<RememberVariables> (variables);
+				}
+
 				AssignConstantID <Variables> (variables, variablesConstantID, -1);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0 && location == VariableLocation.Component)
+			{
+				if (variables && variables.gameObject == gameObject) return true;
+				return (variablesConstantID == id && id != 0);
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 
 		#endif
@@ -461,7 +437,7 @@ namespace AC
 		 */
 		public static ActionVarPopup CreateNew_Global (int globalVariableID)
 		{
-			ActionVarPopup newAction = (ActionVarPopup) CreateInstance <ActionVarPopup>();
+			ActionVarPopup newAction = CreateNew<ActionVarPopup> ();
 			newAction.location = VariableLocation.Global;
 			newAction.variableID = globalVariableID;
 
@@ -482,7 +458,7 @@ namespace AC
 		 */
 		public static ActionVarPopup CreateNew_Local (int localVariableID)
 		{
-			ActionVarPopup newAction = (ActionVarPopup) CreateInstance <ActionVarPopup>();
+			ActionVarPopup newAction = CreateNew<ActionVarPopup> ();
 			newAction.location = VariableLocation.Local;
 			newAction.variableID = localVariableID;
 
@@ -504,7 +480,7 @@ namespace AC
 		 */
 		public static ActionVarPopup CreateNew_Component (Variables variables, int componentVariableID)
 		{
-			ActionVarPopup newAction = (ActionVarPopup) CreateInstance <ActionVarPopup>();
+			ActionVarPopup newAction = CreateNew<ActionVarPopup> ();
 			newAction.location = VariableLocation.Component;
 			newAction.variables = variables;
 			newAction.variableID = componentVariableID;

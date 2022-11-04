@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionHighlight.cs"
  * 
@@ -34,21 +34,17 @@ namespace AC
 		protected Highlight runtimeHighlightObject;
 
 		public int invID;
-		private int invNumber;
+		protected int invNumber;
 		
-		private InventoryManager inventoryManager;
-
-		
-		public ActionHighlight ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Highlight";
-			description = "Gives a glow effect to any mesh object with the Highlight script component attached to it. Can also be used to make Inventory items glow, making it useful for tutorial sections.";
-		}
+		protected InventoryManager inventoryManager;
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Highlight"; }}
+		public override string Description { get { return "Gives a glow effect to any mesh object with the Highlight script component attached to it. Can also be used to make Inventory items glow, making it useful for tutorial sections."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (whatToHighlight == WhatToHighlight.SceneObject)
 			{
@@ -61,7 +57,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (whatToHighlight == WhatToHighlight.SceneObject && runtimeHighlightObject == null)
 			{
@@ -70,35 +66,40 @@ namespace AC
 
 			if (whatToHighlight == WhatToHighlight.SceneObject)
 			{
-				if (highlightType == HighlightType.Enable)
+				switch (highlightType)
 				{
-					if (isInstant)
-					{
-						runtimeHighlightObject.HighlightOnInstant ();
-					}
-					else
-					{
-						runtimeHighlightObject.HighlightOn ();
-					}
-				}
-				else if (highlightType == HighlightType.Disable)
-				{
-					if (isInstant)
-					{
-						runtimeHighlightObject.HighlightOffInstant ();
-					}
-					else
-					{
-						runtimeHighlightObject.HighlightOff ();
-					}
-				}
-				else if (highlightType == HighlightType.PulseOnce)
-				{
-					runtimeHighlightObject.Flash ();
-				}
-				else if (highlightType == HighlightType.PulseContinually)
-				{
-					runtimeHighlightObject.Pulse ();
+					case HighlightType.Enable:
+						if (isInstant)
+						{
+							runtimeHighlightObject.HighlightOnInstant();
+						}
+						else
+						{
+							runtimeHighlightObject.HighlightOn();
+						}
+						break;
+
+					case HighlightType.Disable:
+						if (isInstant)
+						{
+							runtimeHighlightObject.HighlightOffInstant();
+						}
+						else
+						{
+							runtimeHighlightObject.HighlightOff();
+						}
+						break;
+
+					case HighlightType.PulseOnce:
+						runtimeHighlightObject.Flash();
+						break;
+
+					case HighlightType.PulseContinually:
+						runtimeHighlightObject.Pulse();
+						break;
+
+					default:
+						break;
 				}
 			}
 
@@ -126,7 +127,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			whatToHighlight = (WhatToHighlight) EditorGUILayout.EnumPopup ("What to highlight:", whatToHighlight);
 
@@ -178,7 +179,7 @@ namespace AC
 						
 						if (invNumber == -1)
 						{
-							ACDebug.LogWarning ("Previously chosen item no longer exists!");
+							if (invID > 0) LogWarning ("Previously chosen item no longer exists!");
 							invNumber = 0;
 							invID = 0;
 						}
@@ -212,12 +213,10 @@ namespace AC
 			{
 				isInstant = EditorGUILayout.Toggle ("Is instant?", isInstant);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (whatToHighlight == WhatToHighlight.SceneObject)
 			{
@@ -239,7 +238,18 @@ namespace AC
 
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0 && whatToHighlight == WhatToHighlight.SceneObject)
+			{
+				if (highlightObject && highlightObject.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
 		#endif
 
 
@@ -252,7 +262,7 @@ namespace AC
 		 */
 		public static ActionHighlight CreateNew_SceneObject (Highlight objectToAffect, HighlightType highlightType, bool isInstant = false)
 		{
-			ActionHighlight newAction = (ActionHighlight) CreateInstance <ActionHighlight>();
+			ActionHighlight newAction = CreateNew<ActionHighlight> ();
 			newAction.whatToHighlight = WhatToHighlight.SceneObject;
 			newAction.highlightObject = objectToAffect;
 			newAction.highlightType = highlightType;
@@ -270,7 +280,7 @@ namespace AC
 		 */
 		public static ActionHighlight CreateNew_InventoryItem (int itemIDToAffect, HighlightType highlightType, bool isInstant = false)
 		{
-			ActionHighlight newAction = (ActionHighlight) CreateInstance <ActionHighlight>();
+			ActionHighlight newAction = CreateNew<ActionHighlight> ();
 			newAction.whatToHighlight = WhatToHighlight.InventoryItem;
 			newAction.invID = itemIDToAffect;
 			newAction.highlightType = highlightType;

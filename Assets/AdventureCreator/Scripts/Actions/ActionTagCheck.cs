@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTagCheck.cs"
  * 
@@ -29,18 +29,14 @@ namespace AC
 
 		public string tagsToCheck;
 		public int tagsToCheckParameterID = -1;
-		
-		
-		public ActionTagCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Check tag";
-			description = "This action checks which tag has been assigned to a given GameObject.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Check tag"; }}
+		public override string Description { get { return "This action checks which tag has been assigned to a given GameObject."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeObjectToCheck = AssignFile (parameters, objectToCheckParameterID, objectToCheckConstantID, objectToCheck);
 			tagsToCheck = AssignString (parameters, tagsToCheckParameterID, tagsToCheck);
@@ -70,7 +66,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			objectToCheckParameterID = Action.ChooseParameterGUI ("GameObject to check:", parameters, objectToCheckParameterID, ParameterType.GameObject);
 			if (objectToCheckParameterID >= 0)
@@ -86,7 +82,7 @@ namespace AC
 				objectToCheck = IDToField (objectToCheck, objectToCheckConstantID, false);
 			}
 
-			tagsToCheckParameterID = Action.ChooseParameterGUI ("Check has tag(s):", parameters, tagsToCheckParameterID, ParameterType.String);
+			tagsToCheckParameterID = Action.ChooseParameterGUI ("Check has tag(s):", parameters, tagsToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (tagsToCheckParameterID < 0)
 			{
 				tagsToCheck = EditorGUILayout.TextField ("Check has tag(s):", tagsToCheck);
@@ -95,7 +91,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (objectToCheck, objectToCheckConstantID, objectToCheckParameterID);
 		}
@@ -110,6 +106,17 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (objectToCheckParameterID < 0)
+			{
+				if (objectToCheck && objectToCheck == gameObject) return true;
+				if (objectToCheckConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
 		#endif
 
 
@@ -121,7 +128,7 @@ namespace AC
 		 */
 		public static ActionTagCheck CreateNew (GameObject gameObject, string tag)
 		{
-			ActionTagCheck newAction = (ActionTagCheck) CreateInstance <ActionTagCheck>();
+			ActionTagCheck newAction = CreateNew<ActionTagCheck> ();
 			newAction.objectToCheck = gameObject;
 			newAction.tagsToCheck = tag;
 			return newAction;
@@ -136,7 +143,7 @@ namespace AC
 		 */
 		public static ActionTagCheck CreateNew (GameObject gameObject, string[] tags)
 		{
-			ActionTagCheck newAction = (ActionTagCheck) CreateInstance <ActionTagCheck>();
+			ActionTagCheck newAction = CreateNew<ActionTagCheck> ();
 			newAction.objectToCheck = gameObject;
 			string combined = string.Empty;
 			for (int i=0; i<tags.Length; i++)

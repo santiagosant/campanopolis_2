@@ -11,12 +11,16 @@ namespace AC
 	{
 
 		protected Vector2 scrollPos;
+		protected bool showOptions = true;
+		protected bool showTracks = true;
 
 
 		protected static void Init <T> (string title) where T : SoundtrackStorageWindow
 		{
-			T window = EditorWindow.GetWindowWithRect <T> (new Rect (300, 200, 350, 360), true, title, true);
-			UnityVersionHandler.SetWindowTitle (window, title);
+			T window = (T) GetWindow (typeof (T));
+			window.position = new Rect (300, 200, 350, 440);
+			window.titleContent.text = title;
+			window.minSize = new Vector2 (300, 260);
 		}
 
 
@@ -29,55 +33,66 @@ namespace AC
 			set
 			{}
 		}
-		
-		
-		protected void SharedGUI (string actionName)
+
+
+		protected virtual string APIPrefix
 		{
-			if (AdvGame.GetReferences ().settingsManager == null)
+			get
 			{
-				EditorGUILayout.HelpBox ("A Settings Manager must be assigned before this window can display correctly.", MessageType.Warning);
-				return;
+				return string.Empty;
 			}
+		}
 
+
+		protected void SharedGUI (string headerLabel)
+		{
 			SettingsManager settingsManager = AdvGame.GetReferences ().settingsManager;
-			EditorGUILayout.HelpBox ("Assign any music tracks you want to be able to play using the '" + actionName + "' Action here.", MessageType.Info);
-			EditorGUILayout.Space ();
 
-			scrollPos = EditorGUILayout.BeginScrollView (scrollPos, GUILayout.Height (255f));
-
-			List<MusicStorage> storages = Storages;
-			for (int i=0; i<storages.Count; i++)
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
+			showTracks = CustomGUILayout.ToggleHeader (showTracks, headerLabel);
+			if (showTracks)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				List<MusicStorage> storages = Storages;
 
-				EditorGUILayout.BeginHorizontal ();
-				EditorGUILayout.LabelField (storages[i].ID.ToString () + ":", EditorStyles.boldLabel);
-				if (GUILayout.Button ("-", GUILayout.MaxWidth (20f)))
+				bool showMixerOptions = settingsManager.volumeControl == VolumeControl.AudioMixerGroups;
+				scrollPos = EditorGUILayout.BeginScrollView (scrollPos);
+
+				for (int i=0; i<storages.Count; i++)
 				{
-					Undo.RecordObject (settingsManager, "Delete entry");
-					storages.RemoveAt (i);
-					i=0;
-					return;
+					CustomGUILayout.BeginVertical ();
+
+					EditorGUILayout.BeginHorizontal ();
+					EditorGUILayout.LabelField (storages[i].ID.ToString () + ":", EditorStyles.boldLabel);
+					if (GUILayout.Button ("-", GUILayout.MaxWidth (20f)))
+					{
+						Undo.RecordObject (settingsManager, "Delete entry");
+						storages.RemoveAt (i);
+						i=0;
+						return;
+					}
+					EditorGUILayout.EndHorizontal ();
+
+					storages[i].ShowGUI (APIPrefix + "[" + i + "]", showMixerOptions);
+
+					CustomGUILayout.EndVertical ();
 				}
-				EditorGUILayout.EndHorizontal ();
 
-				storages[i].audioClip = (AudioClip) EditorGUILayout.ObjectField ("Clip:", storages[i].audioClip, typeof (AudioClip), false);
-				storages[i].relativeVolume = EditorGUILayout.Slider ("Relative volume:", storages[i].relativeVolume, 0f, 1f);
+				EditorGUILayout.EndScrollView ();
 
-				EditorGUILayout.EndVertical ();
+				if (GUILayout.Button ("Add new clip"))
+				{
+					Undo.RecordObject (settingsManager, "Delete music entry");
+					storages.Add (new MusicStorage (GetIDArray (storages.ToArray ())));
+				}
+
+				Storages = storages;
 			}
+			CustomGUILayout.EndVertical ();
 
-			EditorGUILayout.EndScrollView ();
-
-			if (GUILayout.Button ("Add new clip"))
+			if (GUI.changed)
 			{
-				Undo.RecordObject (settingsManager, "Delete music entry");
-				storages.Add (new MusicStorage (GetIDArray (storages.ToArray ())));
+				EditorUtility.SetDirty (settingsManager);
 			}
-
-			EditorGUILayout.Space ();
-
-			Storages = storages;
 		}
 
 

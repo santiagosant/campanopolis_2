@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharPathFind.cs"
  * 
@@ -32,6 +32,8 @@ namespace AC
 		
 		public Marker marker;
 		public bool isPlayer;
+		public int playerID = -1;
+		public int playerParameterID = -1;
 		public Char charToMove;
 		public PathSpeed speed;
 		public bool pathFind = true;
@@ -40,37 +42,33 @@ namespace AC
 		public bool doTimeLimit;
 		public int maxTimeParameterID = -1;
 		public float maxTime = 10f;
-		[SerializeField] private OnReachTimeLimit onReachTimeLimit = OnReachTimeLimit.TeleportToDestination;
-		private enum OnReachTimeLimit { TeleportToDestination, StopMoving };
-		private float currentTimer;
+		[SerializeField] protected OnReachTimeLimit onReachTimeLimit = OnReachTimeLimit.TeleportToDestination;
+		protected enum OnReachTimeLimit { TeleportToDestination, StopMoving };
+		protected float currentTimer;
 		protected Char runtimeChar;
 		protected Marker runtimeMarker;
 
 		public bool faceAfter = false;
 		protected bool isFacingAfter;
 
-		
-		public ActionCharPathFind ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Move to point";
-			description = "Moves a character to a given Marker object. By default, the character will attempt to pathfind their way to the marker, but can optionally just move in a straight line.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Move to point"; }}
+		public override string Description { get { return "Moves a character to a given Marker object. By default, the character will attempt to pathfind their way to the marker, but can optionally just move in a straight line."; }}
 
 
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				runtimeChar = KickStarter.player;
+				runtimeChar = AssignPlayer (playerID, parameters, playerParameterID);
 			}
 			else
 			{
 				runtimeChar = AssignFile <Char> (parameters, charToMoveParameterID, charToMoveID, charToMove);
 			}
 
-			Hotspot markerHotspot = AssignFile <Hotspot> (parameters, markerParameterID, markerID, null);
+			Hotspot markerHotspot = AssignFile <Hotspot> (parameters, markerParameterID, markerID, null, false);
 			if (markerHotspot != null && markerHotspot.walkToMarker != null)
 			{
 				runtimeMarker = markerHotspot.walkToMarker;
@@ -85,7 +83,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
@@ -100,7 +98,7 @@ namespace AC
 					}
 					else
 					{
-						if (runtimeChar is NPC)
+						if (!runtimeChar.IsPlayer)
 						{
 							NPC npcToMove = (NPC) runtimeChar;
 							npcToMove.StopFollowing ();
@@ -111,14 +109,14 @@ namespace AC
 						path.affectY = true;
 
 						Vector3[] pointArray;
-						Vector3 targetPosition = runtimeMarker.transform.position;
+						Vector3 targetPosition = runtimeMarker.Position;
 
 						if (SceneSettings.ActInScreenSpace ())
 						{
 							targetPosition = AdvGame.GetScreenNavMesh (targetPosition);
 						}
 
-						float distance = Vector3.Distance (targetPosition, runtimeChar.transform.position);
+						float distance = Vector3.Distance (targetPosition, runtimeChar.Transform.position);
 						if (distance <= KickStarter.settingsManager.GetDestinationThreshold ())
 						{
 							isRunning = false;
@@ -127,7 +125,7 @@ namespace AC
 
 						if (pathFind && KickStarter.navigationManager)
 						{
-							pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (runtimeChar.transform.position, targetPosition, runtimeChar);
+							pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (runtimeChar.Transform.position, targetPosition, runtimeChar);
 						}
 						else
 						{
@@ -176,7 +174,7 @@ namespace AC
 						if (!isFacingAfter)
 						{
 							isFacingAfter = true;
-							runtimeChar.SetLookDirection (runtimeMarker.transform.forward, false);
+							runtimeChar.SetLookDirection (runtimeMarker.ForwardDirection, false);
 							return defaultPauseTime;
 						}
 						else
@@ -220,20 +218,20 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (runtimeChar != null && runtimeMarker != null)
 			{
 				runtimeChar.EndPath ();
 
-				if (runtimeChar is NPC)
+				if (!runtimeChar.IsPlayer)
 				{
 					NPC npcToMove = (NPC) runtimeChar;
 					npcToMove.StopFollowing ();
 				}
 				
 				Vector3[] pointArray;
-				Vector3 targetPosition = runtimeMarker.transform.position;
+				Vector3 targetPosition = runtimeMarker.Position;
 				
 				if (SceneSettings.ActInScreenSpace ())
 				{
@@ -242,7 +240,7 @@ namespace AC
 				
 				if (pathFind && KickStarter.navigationManager)
 				{
-					pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (runtimeChar.transform.position, targetPosition);
+					pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (runtimeChar.Transform.position, targetPosition);
 					KickStarter.navigationManager.navigationEngine.ResetHoles (KickStarter.sceneSettings.navMesh);
 				}
 				else
@@ -260,14 +258,14 @@ namespace AC
 				}
 				else
 				{
-					runtimeChar.SetLookDirection (pointArray[i] - runtimeChar.transform.position, true);
+					runtimeChar.SetLookDirection (pointArray[i] - runtimeChar.Transform.position, true);
 				}
 
 				runtimeChar.Teleport (pointArray [i]);
 
 				if (faceAfter)
 				{
-					runtimeChar.SetLookDirection (runtimeMarker.transform.forward, true);
+					runtimeChar.SetLookDirection (runtimeMarker.ForwardDirection, true);
 				}
 			}
 		}
@@ -275,13 +273,22 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
 
-			if (!isPlayer)
+			if (isPlayer)
 			{
-				charToMoveParameterID = Action.ChooseParameterGUI ("Character to move:", parameters, charToMoveParameterID, ParameterType.GameObject);
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+					if (playerParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
+			{
+				charToMoveParameterID = ChooseParameterGUI ("Character to move:", parameters, charToMoveParameterID, ParameterType.GameObject);
 				if (charToMoveParameterID >= 0)
 				{
 					charToMoveID = 0;
@@ -335,16 +342,14 @@ namespace AC
 					onReachTimeLimit = (OnReachTimeLimit) EditorGUILayout.EnumPopup ("On reach time limit:", onReachTimeLimit);
 				}
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
-				if (!isPlayer && charToMove != null && charToMove.GetComponent <NPC>())
+				if (!isPlayer && charToMove != null && !charToMove.IsPlayer)
 				{
 					AddSaveScript <RememberNPC> (charToMove);
 				}
@@ -358,7 +363,7 @@ namespace AC
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (marker != null)
 			{
@@ -372,6 +377,32 @@ namespace AC
 				}
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && charToMoveParameterID < 0)
+			{
+				if (charToMove && charToMove.gameObject == _gameObject) return true;
+				if (charToMoveID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>()) return true;
+			if (markerParameterID < 0)
+			{
+				if (marker && marker.gameObject == _gameObject) return true;
+				if (markerID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
 		}
 
 		#endif
@@ -389,7 +420,7 @@ namespace AC
 		 */
 		public static ActionCharPathFind CreateNew (Char charToMove, Marker marker, PathSpeed pathSpeed = PathSpeed.Walk, bool usePathfinding = true, bool waitUntilFinish = true, bool turnToFaceAfter = false)
 		{
-			ActionCharPathFind newAction = (ActionCharPathFind) CreateInstance <ActionCharPathFind>();
+			ActionCharPathFind newAction = CreateNew<ActionCharPathFind> ();
 			newAction.charToMove = charToMove;
 			newAction.marker = marker;
 			newAction.speed = pathSpeed;

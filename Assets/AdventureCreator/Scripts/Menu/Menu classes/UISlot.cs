@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"UISlot.cs"
  * 
@@ -26,6 +26,8 @@ namespace AC
 	public class UISlot
 	{
 
+		#region Variables
+
 		/** The Unity UI Button this is linked to */
 		public UnityEngine.UI.Button uiButton;
 		/** The ConstantID number of the linked Unity UI Button */
@@ -42,14 +44,19 @@ namespace AC
 		private Image uiImage;
 		private RawImage uiRawImage;
 
-		private Color originalColour;
+		private Color originalNormalColour;
+		private Color originalHighlightedColour;
 		private UnityEngine.Sprite emptySprite;
 		private Texture cacheTexture;
+		private Sprite originalSprite;
+		private bool canSetOriginalImage;
+
+		#endregion
 
 
-		/**
-		 * The default Constructor.
-		 */
+		#region Constructors
+
+		/** The default Constructor. */
 		public UISlot ()
 		{
 			uiButton = null;
@@ -60,6 +67,18 @@ namespace AC
 			sprite = null;
 		}
 
+
+		/** A Constructor that gets its values by copying another */
+		public UISlot (UISlot uiSlot)
+		{
+			uiButton = uiSlot.uiButton;
+			uiButtonID = uiSlot.uiButtonID;
+			sprite = uiSlot.sprite;
+			uiImage = null;
+			uiRawImage = null;
+		}
+
+		#endregion
 
 		#if UNITY_EDITOR
 
@@ -79,15 +98,21 @@ namespace AC
 		#endif
 
 
+		#region PublicFunctions
+
 		/**
 		 * <summary>Gets the boundary of the UI Button.</summary>
 		 * <returns>The boundary Rect of the UI Button</returns>
 		 */
 		public RectTransform GetRectTransform ()
 		{
-			if (uiButton != null && uiButton.GetComponent <RectTransform>())
+			if (uiButton)
 			{
-				return uiButton.GetComponent <RectTransform>();
+				RectTransform rectTransform = uiButton.GetComponent <RectTransform>();
+				if (rectTransform)
+				{
+					return rectTransform;
+				}
 			}
 			return null;
 		}
@@ -97,10 +122,11 @@ namespace AC
 		 * <summary>Links the UI GameObjects to the class, based on the supplied uiButtonID.</summary>
 		 * <param name = "canvas">The Canvas that contains the UI GameObjects</param>
 		 * <param name = "linkUIGraphic">What Image component the Element's Graphics should be linked to (ImageComponent, ButtonTargetGraphic)</param>
+		 * <param name = "emptySlotTexture">If set, the texture to use when a slot is considered empty</param>
 		 */
-		public void LinkUIElements (Canvas canvas, LinkUIGraphic linkUIGraphic)
+		public void LinkUIElements (Canvas canvas, LinkUIGraphic linkUIGraphic, Texture2D emptySlotTexture = null)
 		{
-			if (canvas != null)
+			if (canvas)
 			{
 				uiButton = Serializer.GetGameObjectComponent <UnityEngine.UI.Button> (uiButtonID, canvas.gameObject);
 			}
@@ -124,7 +150,7 @@ namespace AC
 				}
 				else if (linkUIGraphic == LinkUIGraphic.ButtonTargetGraphic)
 				{
-					if (uiButton.targetGraphic != null)
+					if (uiButton.targetGraphic)
 					{
 						if (uiButton.targetGraphic is Image)
 						{
@@ -141,14 +167,21 @@ namespace AC
 					}
 				}
 
-				originalColour = uiButton.colors.normalColor;
+				originalNormalColour = uiButton.colors.normalColor;
+				originalHighlightedColour = uiButton.colors.highlightedColor;
+				originalSprite = (uiImage) ? uiImage.sprite : null;
+			}
+
+			if (emptySlotTexture)
+			{
+				emptySprite = Sprite.Create (emptySlotTexture, new Rect (0f, 0f, emptySlotTexture.width, emptySlotTexture.height), new Vector2 (0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
 			}
 		}
 
 
 		/**
 		 * <summary>Sets the text of the UI Button.</summary>
-		 * <param title = "_text">The text to assign the Button</param>
+		 * <param name = "_text">The text to assign the Button</param>
 		 */
 		public void SetText (string _text)
 		{
@@ -161,15 +194,20 @@ namespace AC
 
 		/**
 		 * <summary>Sets the image of the UI Button using a Texture.</summary>
-		 * <param title = "_texture">The texture to assign the Button</param>
+		 * <param name = "_texture">The texture to assign the Button</param>
 		 */
 		public void SetImage (Texture _texture)
 		{
-			if (uiRawImage != null)
+			if (uiRawImage)
 			{
+				if (_texture == null)
+				{
+					_texture = EmptySprite.texture;
+				}
+
 				uiRawImage.texture = _texture;
 			}
-			else if (uiImage != null)
+			else if (uiImage)
 			{
 				if (_texture == null)
 				{
@@ -180,7 +218,7 @@ namespace AC
 					if (_texture is Texture2D)
 					{
 						Texture2D texture2D = (Texture2D) _texture;
-						sprite = UnityEngine.Sprite.Create (texture2D, new Rect (0f, 0f, texture2D.width, texture2D.height), new Vector2 (0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+						sprite = Sprite.Create (texture2D, new Rect (0f, 0f, texture2D.width, texture2D.height), new Vector2 (0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
 					}
 					else
 					{
@@ -188,7 +226,7 @@ namespace AC
 					}
 				}
 
-				if (_texture != null)
+				if (_texture)
 				{
 					cacheTexture = _texture;
 				}
@@ -199,11 +237,11 @@ namespace AC
 
 		/**
 		 * <summary>Sets the image of the UI Button using a Sprite.</summary>
-		 * <param title = "_sprite">The sprite to assign the Button</param>
+		 * <param name = "_sprite">The sprite to assign the Button</param>
 		 */
 		public void SetImageAsSprite (Sprite _sprite)
 		{
-			if (uiImage != null)
+			if (uiImage)
 			{
 				if (_sprite == null)
 				{
@@ -219,30 +257,37 @@ namespace AC
 		}
 
 
-		private Sprite EmptySprite
-		{
-			get
-			{
-				if (emptySprite == null)
-				{
-					emptySprite = Resources.Load <UnityEngine.Sprite> (Resource.emptySlot);
-				}
-				return emptySprite;
-			}
-		}
-
-
 		/**
 		 * <summary>Enables the visibility of the linked UI Button.</summary>
-		 * <param name = "uiHideStyle">The method by which the UI element is hidden (DisableObject, ClearContent, DisableInteractibility) </param>
+		 * <param name = "uiHideStyle">The method by which the UI element is hidden (DisableObject, ClearContent) </param>
 		 */
 		public void ShowUIElement (UIHideStyle uiHideStyle)
 		{
-			if (Application.isPlaying && uiButton != null && uiButton.gameObject != null)
+			if (Application.isPlaying && uiButton && uiButton.gameObject)
 			{
 				if (uiHideStyle == UIHideStyle.DisableObject && !uiButton.gameObject.activeSelf)
 				{
 					uiButton.gameObject.SetActive (true);
+				}
+				else if (uiHideStyle == UIHideStyle.ClearContent)
+				{
+					if (originalSprite && canSetOriginalImage) SetImageAsSprite (originalSprite);
+				}
+			}
+		}
+
+
+		public void ShowUIElement (UISelectableHideStyle uiHideStyle)
+		{
+			if (Application.isPlaying && uiButton && uiButton.gameObject)
+			{
+				if (uiHideStyle == UISelectableHideStyle.DisableObject && !uiButton.gameObject.activeSelf)
+				{
+					uiButton.gameObject.SetActive (true);
+				}
+				else if (uiHideStyle == UISelectableHideStyle.DisableInteractability)
+				{
+					uiButton.interactable = true;
 				}
 			}
 		}
@@ -250,11 +295,11 @@ namespace AC
 
 		/**
 		 * <summary>Disables the visibility of the linked UI Button.</summary>
-		 * <param name = "uiHideStyle">The method by which the UI element is hidden (DisableObject, ClearContent, DisableInteractibility) </param>
+		 * <param name = "uiHideStyle">The method by which the UI element is hidden (DisableObject, ClearContent) </param>
 		 */
 		public void HideUIElement (UIHideStyle uiHideStyle)
 		{
-			if (Application.isPlaying && uiButton != null && uiButton.gameObject != null && uiButton.gameObject.activeSelf)
+			if (Application.isPlaying && uiButton && uiButton.gameObject && uiButton.gameObject.activeSelf)
 			{
 				if (uiHideStyle == UIHideStyle.DisableObject)
 				{
@@ -269,29 +314,57 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Adds a UISlotClick component to the Button, which acts as a click-handler.</summary>
-		 * <param title = "_menu">The Menu that the Button is linked to</param>
-		 * <param title = "_element">The MenuElement within _menu that the Button is linked to</param>
-		 * <param title = "_slot">The index number of the slot within _element that the Button is linked to</param>
-		 */
-		public void AddClickHandler (AC.Menu _menu, MenuElement _element, int _slot)
+		public void HideUIElement (UISelectableHideStyle uiHideStyle)
 		{
-			UISlotClick uiSlotClick = uiButton.gameObject.AddComponent <UISlotClick>();
-			uiSlotClick.Setup (_menu, _element, _slot);
+			if (Application.isPlaying && uiButton && uiButton.gameObject && uiButton.gameObject.activeSelf)
+			{
+				if (uiHideStyle == UISelectableHideStyle.DisableObject)
+				{
+					uiButton.gameObject.SetActive (false);
+				}
+				else if (uiHideStyle == UISelectableHideStyle.DisableInteractability)
+				{
+					uiButton.interactable = false;
+				}
+			}
 		}
 
 
 		/**
-		 * <summary>Changes the 'normal' colour of the linked UI Button.</summary>
-		 * <param name = "newColour">The new 'normal' colour to set</param>
+		 * <summary>Adds a UISlotClick component to the Button, which acts as a click-handler.</summary>
+		 * <param name = "_menu">The Menu that the Button is linked to</param>
+		 * <param name = "_element">The MenuElement within _menu that the Button is linked to</param>
+		 * <param name = "_slot">The index number of the slot within _element that the Button is linked to</param>
 		 */
-		public void SetColour (Color newColour)
+		public void AddClickHandler (AC.Menu _menu, MenuElement _element, int _slot)
 		{
-			if (uiButton != null)
+			UISlotClickRight uiSlotRightClick = uiButton.gameObject.GetComponent <UISlotClickRight>();
+			if (uiSlotRightClick == null)
+			{
+				UISlotClick uiSlotClick = uiButton.GetComponent <UISlotClick>();
+				if (uiSlotClick)
+				{
+					Object.Destroy (uiSlotClick);
+				}
+
+				uiSlotRightClick = uiButton.gameObject.AddComponent <UISlotClickRight> ();
+				uiSlotRightClick.Setup (_menu, _element, _slot);
+			}
+		}
+
+
+		/**
+		 * <summary>Changes the colours of the linked UI Button.</summary>
+		 * <param name = "newNormalColour">The new 'normal' colour to set</param>
+		 * * <param name = "newHighlightedColour">The new 'highlighted' colour to set</param>
+		 */
+		public void SetColours (Color newNormalColour, Color newHighlightedColour)
+		{
+			if (uiButton)
 			{
 				ColorBlock colorBlock = uiButton.colors;
-				colorBlock.normalColor = newColour;
+				colorBlock.normalColor = newNormalColour;
+				colorBlock.highlightedColor = newHighlightedColour;
 				uiButton.colors = colorBlock;
 			}
 		}
@@ -302,13 +375,60 @@ namespace AC
 		 */
 		public void RestoreColour ()
 		{
-			if (uiButton != null)
+			if (uiButton)
 			{
 				ColorBlock colorBlock = uiButton.colors;
-				colorBlock.normalColor = originalColour;
+				colorBlock.normalColor = originalNormalColour;
+				colorBlock.highlightedColor = originalHighlightedColour;
 				uiButton.colors = colorBlock;
 			}
 		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** Checks if the associated UI components can set a Hotspot label when selected */
+		public bool CanOverrideHotspotLabel
+		{
+			get
+			{
+				if (uiButton)
+				{
+					return uiButton.interactable;
+				}
+				return true;
+			}
+		}
+
+
+		private Sprite EmptySprite
+		{
+			get
+			{
+				if (emptySprite == null)
+				{
+					emptySprite = Resource.EmptySlot;
+				}
+				return emptySprite;
+			}
+		}
+
+
+		public bool CanSetOriginalImage
+		{
+			get
+			{
+				return canSetOriginalImage;
+			}
+			set
+			{
+				canSetOriginalImage = value;
+			}
+		}
+
+		#endregion
 
 	}
 

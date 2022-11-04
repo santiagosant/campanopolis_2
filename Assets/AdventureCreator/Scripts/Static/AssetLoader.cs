@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AssetLoader.cs"
  * 
@@ -11,16 +11,12 @@
  */
 
 
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
-
-#if UNITY_2017_1_OR_NEWER
-#define ALLOW_TIMELINE
-#endif
+//#endif
 
 using UnityEngine;
-#if ALLOW_TIMELINE
+#if !ACIgnoreTimeline
 using UnityEngine.Timeline;
 #endif
 #if ALLOW_VIDEO
@@ -41,7 +37,8 @@ namespace AC
 		private static Object[] animationAssets;
 		private static Object[] materialAssets;
 		private static Object[] actionListAssets;
-		#if ALLOW_TIMELINE
+		private static Object[] runtimeAnimatorControllerAssets;
+		#if !ACIgnoreTimeline
 		private static Object[] timelineAssets;
 		#endif
 		#if ALLOW_VIDEO
@@ -58,6 +55,15 @@ namespace AC
 		{
 			if (originalFile != null)
 			{
+				#if AddressableIsPresent
+				if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
+				{
+					string _name = originalFile.name;
+					_name = _name.Replace (" (Instance)", string.Empty);
+					return _name;
+				}
+				#endif
+
 				string name = originalFile.GetType () + originalFile.name;
 				name = name.Replace (" (Instance)", string.Empty);
 				return name;
@@ -106,7 +112,7 @@ namespace AC
 			{
 				newFile = RetrieveActionListAssets (_name);
 			}
-			#if ALLOW_TIMELINE
+			#if !ACIgnoreTimeline
 			else if (originalFile is TimelineAsset)
 			{
 				newFile = RetrieveTimelines (_name);
@@ -118,9 +124,14 @@ namespace AC
 				newFile = RetrieveVideoClips (_name);
 			}
 			#endif
+			else if (originalFile is RuntimeAnimatorController)
+			{
+				newFile = RetrieveRuntimeAnimatorControllerAssets (_name);
+			}
 			else
 			{
-				Object[] genericAssets = RetrieveAssetFiles<T> (null, string.Empty);
+				Object[] genericAssets = null;
+				RetrieveAssetFiles<T> (ref genericAssets, string.Empty);
 				newFile = GetAssetFile<T> (genericAssets, _name);
 			}
 
@@ -130,7 +141,7 @@ namespace AC
 
 		private static Texture RetrieveTextures (string _name)
 		{
-			textureAssets = RetrieveAssetFiles <Texture> (textureAssets, "Textures");
+			RetrieveAssetFiles <Texture> (ref textureAssets, "Textures");
 			return GetAssetFile <Texture> (textureAssets, _name);
 		}
 
@@ -142,36 +153,36 @@ namespace AC
 		 */
 		public static AudioClip RetrieveAudioClip (string _name)
 		{
-			audioAssets = RetrieveAssetFiles <AudioClip> (audioAssets, "Audio");
+			RetrieveAssetFiles <AudioClip> (ref audioAssets, "Audio");
 			return GetAssetFile <AudioClip> (audioAssets, _name);
 		}
 
 
 		private static AnimationClip RetrieveAnimClips (string _name)
 		{
-			animationAssets = RetrieveAssetFiles <AnimationClip> (animationAssets, "Animations");
+			RetrieveAssetFiles <AnimationClip> (ref animationAssets, "Animations");
 			return GetAssetFile <AnimationClip> (animationAssets, _name);
 		}
 
 
 		private static Material RetrieveMaterials (string _name)
 		{
-			materialAssets = RetrieveAssetFiles <Material> (materialAssets, "Materials");
+			RetrieveAssetFiles <Material> (ref materialAssets, "Materials");
 			return GetAssetFile <Material> (materialAssets, _name);
 		}
 
 
 		private static ActionListAsset RetrieveActionListAssets (string _name)
 		{
-			actionListAssets = RetrieveAssetFiles <ActionListAsset> (actionListAssets, "ActionLists");
+			RetrieveAssetFiles <ActionListAsset> (ref actionListAssets, "ActionLists");
 			return GetAssetFile <ActionListAsset> (actionListAssets, _name);
 		}
 
 
-		#if ALLOW_TIMELINE
+		#if !ACIgnoreTimeline
 		private static TimelineAsset RetrieveTimelines (string _name)
 		{
-			timelineAssets = RetrieveAssetFiles <TimelineAsset> (timelineAssets, "Timelines");
+			RetrieveAssetFiles <TimelineAsset> (ref timelineAssets, "Timelines");
 			return GetAssetFile <TimelineAsset> (timelineAssets, _name);
 		}
 		#endif
@@ -180,10 +191,17 @@ namespace AC
 		#if ALLOW_VIDEO
 		private static VideoClip RetrieveVideoClips (string _name)
 		{
-			videoAssets = RetrieveAssetFiles <VideoClip> (videoAssets, "VideoClips");
+			RetrieveAssetFiles <VideoClip> (ref videoAssets, "VideoClips");
 			return GetAssetFile <VideoClip> (videoAssets, _name);
 		}
 		#endif
+
+
+		private static RuntimeAnimatorController RetrieveRuntimeAnimatorControllerAssets (string _name)
+		{
+			RetrieveAssetFiles <RuntimeAnimatorController> (ref runtimeAnimatorControllerAssets, "Animators");
+			return GetAssetFile <RuntimeAnimatorController> (runtimeAnimatorControllerAssets, _name);
+		}
 
 
 		private static T GetAssetFile <T> (Object[] assetFiles, string _name) where T : Object
@@ -204,7 +222,7 @@ namespace AC
 		}
 
 
-		private static Object[] RetrieveAssetFiles <T> (Object[] assetFiles, string saveableFolderName) where T : Object
+		private static void RetrieveAssetFiles <T> (ref Object[] assetFiles, string saveableFolderName) where T : Object
 		{
 			if (assetFiles == null && !string.IsNullOrEmpty (saveableFolderName))
 			{
@@ -214,14 +232,10 @@ namespace AC
 			{
 				assetFiles = Resources.LoadAll (string.Empty, typeof (T));
 			}
-
-			return assetFiles;
 		}
 
 
-		/**
-		 * Clears the cache of stored assets from memory.
-		 */
+		/** Clears the cache of stored assets from memory. */
 		public static void UnloadAssets ()
 		{
 			textureAssets = null;
@@ -229,9 +243,11 @@ namespace AC
 			animationAssets = null;
 			materialAssets = null;
 			actionListAssets = null;
-			#if ALLOW_TIMELINE
+			runtimeAnimatorControllerAssets = null;
+			#if !ACIgnoreTimeline
 			timelineAssets = null;
 			#endif
+
 			Resources.UnloadUnusedAssets ();
 		}
 

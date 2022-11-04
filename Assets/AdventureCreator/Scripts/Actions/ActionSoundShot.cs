@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSoundShot.cs"
  * 
@@ -28,27 +28,29 @@ namespace AC
 		public Transform origin;
 		protected Transform runtimeOrigin;
 
+		public AudioSource audioSource;
+		public int audioSourceConstantID = 0;
+		public int audioSourceParameterID = -1;
+		protected AudioSource runtimeAudioSource;
+		
 		public AudioClip audioClip;
 		public int audioClipParameterID = -1;
 
-		
-		public ActionSoundShot ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Sound;
-			title = "Play one-shot";
-			description = "Plays an AudioClip once without the need for a Sound object.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override ActionCategory Category { get { return ActionCategory.Sound; }}
+		public override string Title { get { return "Play one-shot"; }}
+		public override string Description { get { return "Plays an AudioClip once without the need for a Sound object."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeOrigin = AssignFile (parameters, parameterID, constantID, origin);
 			audioClip = (AudioClip) AssignObject <AudioClip> (parameters, audioClipParameterID, audioClip);
+			runtimeAudioSource = (AudioSource) AssignFile <AudioSource> (parameters, audioSourceParameterID, audioSourceConstantID, audioSource);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (audioClip == null)
 			{
@@ -59,14 +61,21 @@ namespace AC
 			{
 				isRunning = true;
 
-				Vector3 originPos = KickStarter.CameraMain.transform.position;
-				if (runtimeOrigin != null)
+				if (runtimeAudioSource)
 				{
-					originPos = runtimeOrigin.position;
+					runtimeAudioSource.PlayOneShot (audioClip, Options.GetSFXVolume ());
 				}
-
-				float volume = Options.GetSFXVolume ();
-				AudioSource.PlayClipAtPoint (audioClip, originPos, volume);
+				else
+				{
+					Vector3 originPos = KickStarter.CameraMainTransform.position;
+					if (runtimeOrigin != null)
+					{
+						originPos = runtimeOrigin.position;
+					}
+					
+					float volume = Options.GetSFXVolume ();
+					AudioSource.PlayClipAtPoint (audioClip, originPos, volume);
+				}
 
 				if (willWait)
 				{
@@ -79,20 +88,27 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (audioClip == null)
 			{
 				return;
 			}
 
-			AudioSource[] audioSources = FindObjectsOfType (typeof (AudioSource)) as AudioSource[];
-			foreach (AudioSource audioSource in audioSources)
+			if (runtimeAudioSource)
 			{
-				if (audioSource.clip == audioClip && audioSource.isPlaying && audioSource.GetComponent<Sound>() == null)
+				// Can't stop audio in this case
+			}
+			else
+			{
+				AudioSource[] audioSources = Object.FindObjectsOfType (typeof (AudioSource)) as AudioSource[];
+				foreach (AudioSource audioSource in audioSources)
 				{
-					audioSource.Stop ();
-					return;
+					if (audioSource.clip == audioClip && audioSource.isPlaying && audioSource.GetComponent<Sound>() == null)
+					{
+						audioSource.Stop ();
+						return;
+					}
 				}
 			}
 		}
@@ -100,47 +116,73 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			audioClipParameterID = Action.ChooseParameterGUI ("Clip to play:", parameters, audioClipParameterID, ParameterType.UnityObject);
+			audioClipParameterID = ChooseParameterGUI ("Clip to play:", parameters, audioClipParameterID, ParameterType.UnityObject);
 			if (audioClipParameterID < 0)
 			{
 				audioClip = (AudioClip) EditorGUILayout.ObjectField ("Clip to play:", audioClip, typeof (AudioClip), false);
 			}
 
-			parameterID = Action.ChooseParameterGUI ("Position (optional):", parameters, parameterID, ParameterType.GameObject);
-			if (parameterID >= 0)
+			audioSourceParameterID = ChooseParameterGUI ("Audio source (optional):", parameters, audioSourceParameterID, ParameterType.GameObject);
+			if (audioSourceParameterID >= 0)
 			{
-				constantID = 0;
-				origin = null;
+				audioSourceConstantID = 0;
+				audioSource = null;
 			}
 			else
 			{
-				origin = (Transform) EditorGUILayout.ObjectField ("Position (optional):", origin, typeof (Transform), true);
+				audioSource = (AudioSource) EditorGUILayout.ObjectField ("Audio source (optional):", audioSource, typeof (AudioSource), false);
+
+				audioSourceConstantID = FieldToID (audioSource, audioSourceConstantID);
+				audioSource = IDToField (audioSource, audioSourceConstantID, false);
+			}
+
+			if (audioSource == null && audioSourceParameterID < 0)
+			{
+				parameterID = ChooseParameterGUI ("Position (optional):", parameters, parameterID, ParameterType.GameObject);
+				if (parameterID >= 0)
+				{
+					constantID = 0;
+					origin = null;
+				}
+				else
+				{
+					origin = (Transform) EditorGUILayout.ObjectField ("Position (optional):", origin, typeof (Transform), true);
 				
-				constantID = FieldToID (origin, constantID);
-				origin = IDToField (origin, constantID, false);
+					constantID = FieldToID (origin, constantID);
+					origin = IDToField (origin, constantID, false);
+				}
 			}
 
 			willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (origin, constantID, parameterID);
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (audioClip != null)
 			{
 				return audioClip.name;
 			}
 			return string.Empty;
+		}
+
+		
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (origin && origin.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 		
 		#endif
@@ -155,7 +197,7 @@ namespace AC
 		 */
 		public static ActionSoundShot CreateNew (AudioClip clipToPlay, Transform origin = null, bool waitUntilFinish = false)
 		{
-			ActionSoundShot newAction = (ActionSoundShot) CreateInstance <ActionSoundShot>();
+			ActionSoundShot newAction = CreateNew<ActionSoundShot> ();
 			newAction.audioClip = clipToPlay;
 			newAction.origin = origin;
 			newAction.willWait = waitUntilFinish;

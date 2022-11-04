@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MusicCrossfade.cs"
  * 
@@ -23,40 +23,47 @@ namespace AC
 	public class MusicCrossfade : MonoBehaviour
 	{
 
-		private AudioSource _audioSource;
-		private bool isFadingOut = false;
-		private float fadeTime = 0f;
-		private float originalFadeTime = 0f;
-		private float originalVolume = 0f;
+		#region Variables
 
-		private bool isPlaying;
+		protected AudioSource _audioSource;
+		protected float fadeTime = 0f;
+		protected float originalFadeTime = 0f;
+		protected float originalVolume = 0f;
+
+		#endregion
 
 
-		private void Awake ()
+		#region PublicFunctions
+
+		/**
+		 * Updates the AudioSource's volume.
+		 * This is called every frame by Music.
+		 */
+		public void _Update ()
 		{
-			_audioSource = GetComponent <AudioSource>();
-			_audioSource.ignoreListenerPause = KickStarter.settingsManager.playMusicWhilePaused;
+			float i = fadeTime / originalFadeTime;  // starts as 1, ends as 0
+			_audioSource.volume = originalVolume * i;
+
+			if (Mathf.Approximately (Time.deltaTime, 0f))
+			{
+				fadeTime -= Time.fixedDeltaTime;
+			}
+			else
+			{
+				fadeTime -= Time.deltaTime;
+			}
+
+			if (fadeTime <= 0f)
+			{
+				Stop ();
+			}
 		}
 
 
-		/**
-		 * Stops the current audio immediately/
-		 */
+		/** Stops the current audio immediately. */
 		public void Stop ()
 		{
-			isFadingOut = false;
-			_audioSource.Stop ();
-			isPlaying = false;
-		}
-
-
-		/**
-		 * <summary>Checks if the crossfade audio is playing</summary>
-		 * <returns>True if the crossfade audio is playing</returns>
-		 */
-		public bool IsPlaying ()
-		{
-			return isPlaying;
+			Destroy (gameObject);
 		}
 
 
@@ -65,59 +72,39 @@ namespace AC
 		 * <param name = "audioSourceToCopy">The AudioSource to copy clip and volume data from</param>
 		 * <param name = "_fadeTime">The duration, in seconds, of the fade effect</param>
 		 */
-		public void FadeOut (AudioSource audioSourceToCopy, float _fadeTime)
+		public static MusicCrossfade FadeOut (Soundtrack soundtrack, AudioSource audioSourceToCopy, float _fadeTime)
 		{
-			Stop ();
-
-			if (audioSourceToCopy == null || audioSourceToCopy.clip == null || _fadeTime <= 0f)
+			if (soundtrack == null || audioSourceToCopy == null || audioSourceToCopy.clip == null || _fadeTime <= 0f)
 			{
-				return;
+				return null;
 			}
+			GameObject newOb = new GameObject (soundtrack.soundType.ToString () + " crossfade");
+			newOb.transform.parent = soundtrack.transform;
+			newOb.transform.localPosition = Vector3.zero;
 
-			_audioSource.clip = audioSourceToCopy.clip;
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
-			_audioSource.outputAudioMixerGroup = audioSourceToCopy.outputAudioMixerGroup;
-			#endif
-			_audioSource.volume = audioSourceToCopy.volume;
-			_audioSource.timeSamples = audioSourceToCopy.timeSamples;
-			_audioSource.loop = false;
-			_audioSource.Play ();
-			isPlaying = true;
+			AudioSource newAudioSource = newOb.AddComponent <AudioSource>();
+			newAudioSource.spatialBlend = 0f;
+			newAudioSource.playOnAwake = false;
+			newAudioSource.ignoreListenerPause = soundtrack.playWhilePaused;
 
-			originalFadeTime = _fadeTime;
-			originalVolume = audioSourceToCopy.volume;
-			fadeTime = _fadeTime;
+			MusicCrossfade newCrossfade = newOb.AddComponent <MusicCrossfade>();
+			newCrossfade._audioSource = newAudioSource;
 
-			isFadingOut = true;
+			newAudioSource.clip = audioSourceToCopy.clip;
+			newAudioSource.outputAudioMixerGroup = audioSourceToCopy.outputAudioMixerGroup;
+			newAudioSource.volume = audioSourceToCopy.volume;
+			newAudioSource.timeSamples = audioSourceToCopy.timeSamples;
+			newAudioSource.loop = audioSourceToCopy.loop;
+			newAudioSource.Play ();
+
+			newCrossfade.originalFadeTime = _fadeTime;
+			newCrossfade.originalVolume = audioSourceToCopy.volume;
+			newCrossfade.fadeTime = _fadeTime;
+
+			return newCrossfade;
 		}
 
-
-		/**
-		 * Updates the AudioSource's volume.
-		 * This is called every frame by Music.
-		 */
-		public void _Update ()
-		{
-			if (isFadingOut)
-			{
-				float i = fadeTime / originalFadeTime;  // starts as 1, ends as 0
-				_audioSource.volume = originalVolume * i;
-
-				if (Mathf.Approximately (Time.time, 0f))
-				{
-					fadeTime -= Time.fixedDeltaTime;
-				}
-				else
-				{
-					fadeTime -= Time.deltaTime;
-				}
-
-				if (fadeTime <= 0f)
-				{
-					Stop ();
-				}
-			}
-		}
+		#endregion
 
 	}
 

@@ -3,6 +3,7 @@
 namespace AC
 {
 
+	/** A file handler that stores Options data in PlayerPrefs */
 	public class OptionsFileHandler_PlayerPrefs : iOptionsFileHandler
 	{
 
@@ -15,7 +16,7 @@ namespace AC
 
 			PlayerPrefs.SetString (prefKeyName, dataString);
 
-			#if UNITY_PS4
+			#if UNITY_PS4 || UNITY_SWITCH
 			PlayerPrefs.Save ();
 			#endif
 
@@ -77,9 +78,9 @@ namespace AC
 		private string GetPrefKeyName (int profileID)
 		{
 			string profileName = "Profile";
-			if (AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.saveFileName != "")
+			if (AdvGame.GetReferences ().settingsManager && !string.IsNullOrEmpty (AdvGame.GetReferences ().settingsManager.SavePrefix))
 			{
-				profileName = AdvGame.GetReferences ().settingsManager.saveFileName;
+				profileName = AdvGame.GetReferences ().settingsManager.SavePrefix;
 				profileName = profileName.Replace (" ", "_");
 			}
 

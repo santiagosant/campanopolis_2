@@ -8,9 +8,7 @@ using UnityEditor;
 namespace AC
 {
 	
-	/**
-	 * Provides an EditorWindow to manage the export of script-sheets
-	 */
+	/** Provides an EditorWindow to manage the export of script-sheets */
 	public class ScriptSheetWindow : EditorWindow
 	{
 
@@ -28,18 +26,21 @@ namespace AC
 		private bool limitToMissingAudio = false;
 		private Vector2 scroll;
 
+		private string[] sceneFiles;
+
 
 		/**
 		 * <summary>Initialises the window.</summary>
 		 * <param name = "_languageIndex">The index number of the language to select by default.</param>
 		 */
-		public static void Init (int _languageIndex = 0)
+		public static void Init (string[] _sceneFiles, int _languageIndex = 0)
 		{
 			ScriptSheetWindow window = EditorWindow.GetWindowWithRect <ScriptSheetWindow> (new Rect (0, 0, 400, 305), true, "Script sheet exporter", true);
 
-			UnityVersionHandler.SetWindowTitle (window, "Script sheet exporter");
+			window.titleContent.text = "Script sheet exporter";
 			window.position = new Rect (300, 200, 400, 305);
 			window.languageIndex = _languageIndex;
+			window.sceneFiles = _sceneFiles;
 		}
 		
 		
@@ -57,9 +58,9 @@ namespace AC
 			EditorGUILayout.HelpBox ("Check the settings below and click 'Create' to save a new script sheet.", MessageType.Info);
 			EditorGUILayout.Space ();
 			
-			if (speechManager.languages.Count > 1)
+			if (speechManager.Languages.Count > 1)
 			{
-				languageIndex = EditorGUILayout.Popup ("Language:", languageIndex, speechManager.languages.ToArray ());
+				languageIndex = EditorGUILayout.Popup ("Language:", languageIndex, speechManager.GetLanguageNameArray ());
 			}
 			else
 			{
@@ -94,7 +95,7 @@ namespace AC
 					
 					if (tagNumber == -1)
 					{
-						ACDebug.LogWarning ("Previously chosen speech tag no longer exists!");
+						if (tagID > 0) ACDebug.LogWarning ("Previously chosen speech tag no longer exists!");
 						tagNumber = 0;
 						tagID = 0;
 					}
@@ -108,7 +109,10 @@ namespace AC
 				}
 			}
 
-			limitToMissingAudio = EditorGUILayout.Toggle ("Limit to lines with no audio?", limitToMissingAudio);
+			if (speechManager.referenceSpeechFiles != ReferenceSpeechFiles.ByAddressable)
+			{
+				limitToMissingAudio = EditorGUILayout.Toggle ("Limit to lines with no audio?", limitToMissingAudio);
+			}
 
 			includeDescriptions = EditorGUILayout.Toggle ("Include descriptions?", includeDescriptions);
 			removeTokens = EditorGUILayout.Toggle ("Remove text tokens?", removeTokens);
@@ -158,7 +162,7 @@ namespace AC
 			suggestedFilename += " - ";
 			if (languageIndex > 0)
 			{
-				suggestedFilename += speechManager.languages[languageIndex] + " ";
+				suggestedFilename += speechManager.Languages[languageIndex].name + " ";
 			}
 			suggestedFilename += "script.html";
 			
@@ -174,7 +178,7 @@ namespace AC
 				gameName = AdvGame.GetReferences ().settingsManager.saveFileName;
 				if (languageIndex > 0)
 				{
-					gameName += " (" + speechManager.languages[languageIndex] + ")";
+					gameName += " (" + speechManager.Languages[languageIndex].name + ")";
 				}
 			}
 			
@@ -194,7 +198,7 @@ namespace AC
 			script.Append ("<h2>Created: " + DateTime.UtcNow.ToString("HH:mm dd MMMM, yyyy") + "</h2>\n");
 			
 			// By scene
-			foreach (string sceneFile in speechManager.sceneFiles)
+			foreach (string sceneFile in sceneFiles)
 			{
 				List<SpeechLine> sceneSpeechLines = new List<SpeechLine>();
 

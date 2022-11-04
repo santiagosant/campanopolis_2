@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberVideoPlayer.cs"
  * 
@@ -10,56 +10,51 @@
  * 
  */
 
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 #if ALLOW_VIDEO
-
 using UnityEngine;
 using UnityEngine.Video;
+#if AddressableIsPresent
+using System.Collections;
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
 namespace AC
 {
 	
-	/**
-	 * Attach this to GameObjects whose VideoPlayer's playback state you wish to save.
-	 * (Compatibly with Unity 5.6 and later only)
-	 */
+	/** Attach this to GameObjects whose VideoPlayer's playback state you wish to save. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Video Player")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_video_player.html")]
-	#endif
 	public class RememberVideoPlayer : Remember
 	{
 
 		/** If True, the VideoClip assigned in the VideoPlayer component will be stored in save game files. */
 		public bool saveClipAsset;
 
+		private VideoPlayer videoPlayer;
 		private double loadTime;
 		private bool playAfterLoad;
 
 
-		/**
-		 * <summary>Serialises appropriate GameObject values into a string.</summary>
-		 * <returns>The data, serialised as a string</returns>
-		 */
 		public override string SaveData ()
 		{
 			VideoPlayerData videoPlayerData = new VideoPlayerData ();
 			videoPlayerData.objectID = constantID;
 			videoPlayerData.savePrevented = savePrevented;
 
-			if (GetComponent <VideoPlayer>())
+			if (VideoPlayer)
 			{
-				VideoPlayer videoPlayer = GetComponent <VideoPlayer>();
 				videoPlayerData.isPlaying = videoPlayer.isPlaying;
 				videoPlayerData.currentFrame = videoPlayer.frame;
 				videoPlayerData.currentTime = videoPlayer.time;
 
 				if (saveClipAsset)
 				{
-					if (videoPlayer.clip != null)
+					if (videoPlayer.clip)
 					{
 						videoPlayerData.clipAssetID = AssetLoader.GetAssetInstanceID (videoPlayer.clip);
 					}
@@ -70,10 +65,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Deserialises a string of data, and restores the GameObject to its previous state.</summary>
-		 * <param name = "stringData">The data, serialised as a string</param>
-		 */
 		public override void LoadData (string stringData)
 		{
 			VideoPlayerData data = Serializer.LoadScriptData <VideoPlayerData> (stringData);
@@ -83,56 +74,92 @@ namespace AC
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (GetComponent <VideoPlayer>())
+			if (VideoPlayer)
 			{
-				VideoPlayer videoPlayer = GetComponent <VideoPlayer>();
-
-				if (saveClipAsset)
+				#if AddressableIsPresent
+				if (saveClipAsset && KickStarter.settingsManager.saveAssetReferencesWithAddressables && !string.IsNullOrEmpty (data.clipAssetID))
 				{
-					VideoClip _clip = AssetLoader.RetrieveAsset (videoPlayer.clip, data.clipAssetID);
-					if (_clip != null)
-					{
-						videoPlayer.clip = _clip;
-					}
+					StopAllCoroutines ();
+					StartCoroutine (LoadDataFromAddressable (data));
+					return;
 				}
+				#endif
 
-				//videoPlayer.frame = data.currentFrame;
-				videoPlayer.time = data.currentTime;
+				LoadDataFromResources (data);
+			}
+		}
 
-				if (data.isPlaying)
+
+		#if AddressableIsPresent
+
+		private IEnumerator LoadDataFromAddressable (VideoPlayerData data)
+		{
+			AsyncOperationHandle<VideoClip> handle = Addressables.LoadAssetAsync<VideoClip> (data.clipAssetID);
+			yield return handle;
+			if (handle.Status == AsyncOperationStatus.Succeeded)
+			{
+				videoPlayer.clip = handle.Result;
+			}
+			Addressables.Release (handle);
+
+			LoadRemainingData (data);
+		}
+
+		#endif
+
+
+		private void LoadDataFromResources (VideoPlayerData data)
+		{
+			if (saveClipAsset)
+			{
+				VideoClip _clip = AssetLoader.RetrieveAsset (videoPlayer.clip, data.clipAssetID);
+				if (_clip)
+				{
+					videoPlayer.clip = _clip;
+				}
+			}
+			
+			LoadRemainingData (data);
+		}
+
+
+		private void LoadRemainingData (VideoPlayerData data)
+		{
+			videoPlayer.time = data.currentTime;
+
+			if (data.isPlaying)
+			{
+				if (!videoPlayer.isPrepared)
+				{
+					loadTime = data.currentTime;
+					playAfterLoad = true;
+					videoPlayer.prepareCompleted += OnPrepareVideo;
+					videoPlayer.Prepare ();
+				}
+				else
+				{
+					videoPlayer.Play ();
+				}
+			}
+			else
+			{
+				if (data.currentTime > 0f)
 				{
 					if (!videoPlayer.isPrepared)
 					{
 						loadTime = data.currentTime;
-						playAfterLoad = true;
+						playAfterLoad = false;
 						videoPlayer.prepareCompleted += OnPrepareVideo;
 						videoPlayer.Prepare ();
 					}
 					else
 					{
-						videoPlayer.Play ();
+						videoPlayer.Pause ();
 					}
 				}
 				else
 				{
-					if (data.currentTime > 0f)
-					{
-						if (!videoPlayer.isPrepared)
-						{
-							loadTime = data.currentTime;
-							playAfterLoad = false;
-							videoPlayer.prepareCompleted += OnPrepareVideo;
-							videoPlayer.Prepare ();
-						}
-						else
-						{
-							videoPlayer.Pause ();
-						}
-					}
-					else
-					{
-						videoPlayer.Stop ();
-					}
+					videoPlayer.Stop ();
 				}
 			}
 		}
@@ -150,13 +177,24 @@ namespace AC
 				videoPlayer.Pause ();
 			}
 		}
+
+
+		private VideoPlayer VideoPlayer
+		{
+			get
+			{
+				if (videoPlayer == null)
+				{
+					videoPlayer = GetComponent <VideoPlayer>();
+				}
+				return videoPlayer;
+			}
+		}
 		
 	}
 
 
-	/**
-	 * A data container used by the RememberVisibility script.
-	 */
+	/** A data container used by the RememberVisibility script. */
 	[System.Serializable]
 	public class VideoPlayerData : RememberData
 	{
@@ -171,9 +209,7 @@ namespace AC
 		public string clipAssetID;
 
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public VideoPlayerData () { }
 
 	}

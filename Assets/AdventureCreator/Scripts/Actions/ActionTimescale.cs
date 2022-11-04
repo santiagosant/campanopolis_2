@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTimescale.cs"
  * 
@@ -27,25 +27,21 @@ namespace AC
 		public int parameterID = -1;
 		public bool useTimeCurve = false;
 		public AnimationCurve timeCurve;
-		
-		
-		public ActionTimescale ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "Change timescale";
-			description = "Changes the timescale to a value between 0 and 1. This allows for slow-motion effects.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Change timescale"; }}
+		public override string Description { get { return "Changes the timescale to a value between 0 and 1. This allows for slow-motion effects."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			timeScale = AssignFloat (parameters, parameterID, timeScale);
 			if (timeScale < 0f) timeScale = 0f;
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
@@ -88,7 +84,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			useTimeCurve = EditorGUILayout.Toggle ("Use time curve?", useTimeCurve);
 			if (useTimeCurve)
@@ -109,8 +105,6 @@ namespace AC
 					timeScale = EditorGUILayout.Slider ("Timescale:", timeScale, 0f, 1f);
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 		
 		#endif
@@ -123,7 +117,7 @@ namespace AC
 		 */
 		public static ActionTimescale CreateNew (float newTimeScale)
 		{
-			ActionTimescale newAction = (ActionTimescale) CreateInstance <ActionTimescale>();
+			ActionTimescale newAction = CreateNew<ActionTimescale> ();
 			newAction.useTimeCurve = false;
 			newAction.timeScale = newTimeScale;
 			return newAction;
@@ -138,7 +132,7 @@ namespace AC
 		 */
 		public static ActionTimescale CreateNew (AnimationCurve newTimeCurve, bool waitUntilFinish = false)
 		{
-			ActionTimescale newAction = (ActionTimescale) CreateInstance <ActionTimescale>();
+			ActionTimescale newAction = CreateNew<ActionTimescale> ();
 			newAction.useTimeCurve = true;
 			newAction.timeCurve = newTimeCurve;
 			newAction.willWait = waitUntilFinish;

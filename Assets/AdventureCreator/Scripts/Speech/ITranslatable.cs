@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ITranslatable.cs"
  * 
@@ -37,6 +37,8 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		void UpdateTranslatableString (int index, string updatedText);
 
 		/**
 		 * <summary>Gets the maximum number of possible translatable texts.</summary>

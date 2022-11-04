@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -20,7 +22,7 @@ namespace AC
 
 		public static void PropertiesGUI (DialogueOption _target)
 	    {
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Dialogue Option properties", EditorStyles.boldLabel);
 			_target.source = (ActionListSource) CustomGUILayout.EnumPopup ("Actions source:", _target.source, "", "Where the Actions are stored");
 			if (_target.source == ActionListSource.AssetFile)
@@ -28,6 +30,7 @@ namespace AC
 				_target.assetFile = (ActionListAsset) CustomGUILayout.ObjectField <ActionListAsset> ("ActionList asset:", _target.assetFile, false, "", "The ActionList asset that stores the Actions");
 				_target.syncParamValues = CustomGUILayout.Toggle ("Sync parameter values?", _target.syncParamValues, "", "If True, the ActionList asset's parameter values will be shared amongst all linked ActionLists");
 			}
+			_target.actionListType = (ActionListType) CustomGUILayout.EnumPopup ("When running:", _target.actionListType, "", "The effect that running the Actions has on the rest of the game");
 			if (_target.actionListType == ActionListType.PauseGameplay)
 			{
 				_target.isSkippable = CustomGUILayout.Toggle ("Is skippable?", _target.isSkippable, "", "If True, the Actions will be skipped when the user presses the 'EndCutscene' Input button");
@@ -41,31 +44,31 @@ namespace AC
 			{
 				_target.useParameters = CustomGUILayout.Toggle ("Set local parameter values?", _target.useParameters, "", "If True, parameter values set here will be assigned locally, and not on the ActionList asset");
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			if (_target.useParameters)
 			{
 				if (_target.source == ActionListSource.InScene)
 				{
 					EditorGUILayout.Space ();
-					EditorGUILayout.BeginVertical ("Button");
+					CustomGUILayout.BeginVertical ();
 
 					EditorGUILayout.LabelField ("Parameters", EditorStyles.boldLabel);
 					ShowParametersGUI (_target, null, _target.parameters);
 
-					EditorGUILayout.EndVertical ();
+					CustomGUILayout.EndVertical ();
 				}
 				else if (!_target.syncParamValues && _target.source == ActionListSource.AssetFile && _target.assetFile != null && _target.assetFile.useParameters)
 				{
 					bool isAsset = UnityVersionHandler.IsPrefabFile (_target.gameObject);
 
 					EditorGUILayout.Space ();
-					EditorGUILayout.BeginVertical ("Button");
+					CustomGUILayout.BeginVertical ();
 
 					EditorGUILayout.LabelField ("Local parameter values", EditorStyles.boldLabel);
-					ShowLocalParametersGUI (_target.parameters, _target.assetFile.parameters, isAsset);
+					ShowLocalParametersGUI (_target.parameters, _target.assetFile.GetParameters (), isAsset);
 
-					EditorGUILayout.EndVertical ();
+					CustomGUILayout.EndVertical ();
 				}
 			}
 		}
@@ -73,3 +76,5 @@ namespace AC
 	}
 
 }
+
+#endif

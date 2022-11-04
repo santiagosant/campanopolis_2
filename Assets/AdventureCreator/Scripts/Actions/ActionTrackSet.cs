@@ -1,9 +1,9 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
- *	"ActionMoveableTrack.cs"
+ *	"ActionTrackSet.cs"
  * 
  *	This action is used to automatically move
  *	a draggable object along a track, provided
@@ -25,6 +25,10 @@ namespace AC
 	public class ActionTrackSet : Action
 	{
 		
+		public DragTrack newTrack;
+		public int newTrackConstantID = 0;
+		protected DragTrack runtimeNewTrack;
+
 		public Moveable_Drag dragObject;
 		public int dragParameterID = -1;
 		public int dragConstantID = 0;
@@ -40,18 +44,15 @@ namespace AC
 		public bool stopOnCollide = false;
 		public LayerMask layerMask;
 
+
+		public override ActionCategory Category { get { return ActionCategory.Moveable; }}
+		public override string Title { get { return "Set track position"; }}
+		public override string Description { get { return "Moves a Draggable object along its track automatically to a specific point. The effect will be disabled once the object reaches the intended point, or the Action is run again with the speed value set as a negative number."; }}
 		
-		public ActionTrackSet ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Moveable;
-			title = "Set track position";
-			description = "Moves a Draggable object along its track automatically to a specific point. The effect will be disabled once the object reaches the intended point, or the Action is run again with the speed value set as a negative number.";
-		}
 
-
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
+			runtimeNewTrack = AssignFile <DragTrack> (newTrackConstantID, newTrack);
 			runtimeDragObject = AssignFile <Moveable_Drag> (parameters, dragParameterID, dragConstantID, dragObject);
 
 			positionAlong = AssignFloat (parameters, positionParameterID, positionAlong);
@@ -60,10 +61,17 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeDragObject == null)
 			{
+				isRunning = false;
+				return 0f;
+			}
+
+			if (runtimeNewTrack != null)
+			{
+				runtimeDragObject.SnapToTrack (runtimeNewTrack, positionAlong);
 				isRunning = false;
 				return 0f;
 			}
@@ -107,7 +115,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (runtimeDragObject == null)
 			{
@@ -116,11 +124,11 @@ namespace AC
 			
 			runtimeDragObject.AutoMoveAlongTrack (positionAlong, 0f, removePlayerControl);
 		}
-		
-		
+
+
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			dragParameterID = Action.ChooseParameterGUI ("Draggable object:", parameters, dragParameterID, ParameterType.GameObject);
 			if (dragParameterID >= 0)
@@ -141,31 +149,37 @@ namespace AC
 				}
 			}
 
+			newTrack = (DragTrack)EditorGUILayout.ObjectField("Track (optional):", newTrack, typeof(DragTrack), true);
+
+			newTrackConstantID = FieldToID<DragTrack>(newTrack, newTrackConstantID);
+			newTrack = IDToField<DragTrack>(newTrack, newTrackConstantID, false);
+
 			positionParameterID = Action.ChooseParameterGUI ("New track position:", parameters, positionParameterID, ParameterType.Float);
 			if (positionParameterID < 0)
 			{
 				positionAlong = EditorGUILayout.Slider ("New track position:", positionAlong, 0f, 1f);
 			}
 
-			isInstant = EditorGUILayout.Toggle ("Is instant?", isInstant);
-			if (!isInstant)
+			if (newTrack == null)
 			{
-				speed = EditorGUILayout.FloatField ("Movement speed:", speed);
-				removePlayerControl = EditorGUILayout.Toggle ("Remove player control?", removePlayerControl);
-				stopOnCollide = EditorGUILayout.Toggle ("Stop if has collision?", stopOnCollide);
-				if (stopOnCollide)
+				isInstant = EditorGUILayout.Toggle ("Is instant?", isInstant);
+				if (!isInstant)
 				{
-					layerMask = AdvGame.LayerMaskField ("'Stop' collision layer(s):", layerMask);
-				}
+					speed = EditorGUILayout.FloatField ("Movement speed:", speed);
+					removePlayerControl = EditorGUILayout.Toggle ("Remove player control?", removePlayerControl);
+					stopOnCollide = EditorGUILayout.Toggle ("Stop if has collision?", stopOnCollide);
+					if (stopOnCollide)
+					{
+						layerMask = AdvGame.LayerMaskField ("'Stop' collision layer(s):", layerMask);
+					}
 
-				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
+					willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
+				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -184,11 +198,22 @@ namespace AC
 			return string.Empty;
 		}
 
+		
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (dragParameterID < 0)
+			{
+				if (dragObject && dragObject.gameObject == gameObject) return true;
+				if (dragConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
 		#endif
 
 
 		/**
-		 * <summary>Creates a new instance of the 'Object: Set track position' Action</summary>
+		 * <summary>Creates a new instance of the 'Moveable: Set track position' Action</summary>
 		 * <param name = "dragObject">The moveable object to move</param>
 		 * <param name = "newTrackPosition">The moveable object's new target track position</param>
 		 * <param name = "movementSpeed">How quickly to move the object</param>
@@ -200,7 +225,7 @@ namespace AC
 		 */
 		public static ActionTrackSet CreateNew (Moveable_Drag draggableObject, float newTrackPosition, float movementSpeed = 0f, bool removePlayerControl = false, bool stopUponCollision = false, LayerMask collisionLayer = new LayerMask (), bool waitUntilFinish = false)
 		{
-			ActionTrackSet newAction = (ActionTrackSet) CreateInstance <ActionTrackSet>();
+			ActionTrackSet newAction = CreateNew<ActionTrackSet> ();
 			newAction.dragObject = draggableObject;
 			newAction.positionAlong = newTrackPosition;
 			newAction.isInstant = (movementSpeed <= 0f);

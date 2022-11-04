@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSceneCheckAttribute.cs"
  * 
@@ -38,19 +38,15 @@ namespace AC
 		public string stringValue;
 		public bool checkCase = true;
 
-		private SceneSettings sceneSettings;
+		protected SceneSettings sceneSettings;
 
 		
-		public ActionSceneCheckAttribute ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Scene;
-			title = "Check attribute";
-			description = "Queries the value of a scene attribute declared in the Scene Manager.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Scene; }}
+		public override string Title { get { return "Check attribute"; }}
+		public override string Description { get { return "Queries the value of a scene attribute declared in the Scene Manager."; }}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (sceneSettings == null)
 			{
@@ -61,26 +57,26 @@ namespace AC
 		}
 
 		
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (attributeID == -1)
 			{
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 
 			InvVar attribute = sceneSettings.GetAttribute (attributeID);
 			if (attribute != null)
 			{
-				return ProcessResult (CheckCondition (attribute), actions);
+				return CheckCondition (attribute) ? 0 : 1;
 			}
 
 			LogWarning ("Cannot find the scene attribute with an ID of " + attributeID);
-			return GenerateStopActionEnd ();
+			return -1;
 		
 		}
 		
 		
-		private bool CheckCondition (InvVar attribute)
+		protected bool CheckCondition (InvVar attribute)
 		{
 			if (attribute == null)
 			{
@@ -92,96 +88,64 @@ namespace AC
 			{
 				case VariableType.Boolean:
 				{
-					int fieldValue = attribute.val;
+					int fieldValue = attribute.IntegerValue;
 					int compareValue = (int) boolValue;
 
 					if (boolCondition == BoolCondition.EqualTo)
 					{
-						if (fieldValue == compareValue)
-						{
-							return true;
-						}
+						return (fieldValue == compareValue);
 					}
 					else
 					{
-						if (fieldValue != compareValue)
-						{
-							return true;
-						}
+						return (fieldValue != compareValue);
 					}
-					break;
 				}
 
 				case VariableType.Integer:
 				case VariableType.PopUp:
 				{
-					int fieldValue = attribute.val;
+					int fieldValue = attribute.IntegerValue;
 					int compareValue = intValue;
 
 					if (intCondition == IntCondition.EqualTo)
 					{
-						if (fieldValue == compareValue)
-						{
-							return true;
-						}
+						return (fieldValue == compareValue);
 					}
 					else if (intCondition == IntCondition.NotEqualTo)
 					{
-						if (fieldValue != compareValue)
-						{
-							return true;
-						}
+						return (fieldValue != compareValue);
 					}
 					else if (intCondition == IntCondition.LessThan)
 					{
-						if (fieldValue < compareValue)
-						{
-							return true;
-						}
+						return (fieldValue < compareValue);
 					}
 					else if (intCondition == IntCondition.MoreThan)
 					{
-						if (fieldValue > compareValue)
-						{
-							return true;
-						}
+						return (fieldValue > compareValue);
 					}
-
 					break;
 				}
 
 				case VariableType.Float:
 				{
-					float fieldValue = attribute.floatVal;
+					float fieldValue = attribute.FloatValue;
 					float compareValue = floatValue;
 
 					if (intCondition == IntCondition.EqualTo)
 					{
-						if (Mathf.Approximately (fieldValue, compareValue))
-						{
-							return true;
-						}
+						return (Mathf.Approximately (fieldValue, compareValue));
 					}
 					else if (intCondition == IntCondition.NotEqualTo)
 					{
-						if (!Mathf.Approximately (fieldValue, compareValue))
-						{
-							return true;
-						}
+						return (!Mathf.Approximately (fieldValue, compareValue));
 					}
 					else if (intCondition == IntCondition.LessThan)
 					{
-						if (fieldValue < compareValue)
-						{
-							return true;
-						}
+						return (fieldValue < compareValue);
 					}
 					else if (intCondition == IntCondition.MoreThan)
 					{
-						if (fieldValue > compareValue)
-						{
-							return true;
-						}
+						return (fieldValue > compareValue);
 					}
 
 					break;
@@ -189,7 +153,7 @@ namespace AC
 
 				case VariableType.String:
 				{
-					string fieldValue = attribute.textVal;
+					string fieldValue = attribute.TextValue;
 					string compareValue = AdvGame.ConvertTokens (stringValue);
 
 					if (!checkCase)
@@ -200,20 +164,9 @@ namespace AC
 
 					if (boolCondition == BoolCondition.EqualTo)
 					{
-						if (fieldValue == compareValue)
-						{
-							return true;
-						}
+						return (fieldValue == compareValue);
 					}
-					else
-					{
-						if (fieldValue != compareValue)
-						{
-							return true;
-						}
-					}
-
-					break;
+					return (fieldValue != compareValue);
 				}
 
 				default:
@@ -226,7 +179,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			if (AdvGame.GetReferences ().settingsManager)
 			{
@@ -256,7 +209,7 @@ namespace AC
 			if (attributeNumber == -1)
 			{
 				// Wasn't found (variable was deleted?), so revert to zero
-				ACDebug.LogWarning ("Previously chosen attribute no longer exists!");
+				if (ID > 0) LogWarning ("Previously chosen attribute no longer exists!");
 				attributeNumber = 0;
 				ID = 0;
 			}
@@ -330,7 +283,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (sceneSettings != null)
 			{
@@ -376,7 +329,7 @@ namespace AC
 		#endif
 
 
-		private int GetVarNumber (List<InvVar> attributes, int ID)
+		protected int GetVarNumber (List<InvVar> attributes, int ID)
 		{
 			int i = 0;
 			foreach (InvVar attribute in attributes)
@@ -399,7 +352,7 @@ namespace AC
 		 */
 		public static ActionSceneCheckAttribute CreateNew (int attributeID, bool value)
 		{
-			ActionSceneCheckAttribute newAction = (ActionSceneCheckAttribute) CreateInstance <ActionSceneCheckAttribute>();
+			ActionSceneCheckAttribute newAction = CreateNew<ActionSceneCheckAttribute> ();
 			newAction.attributeID = attributeID;
 			newAction.boolValue = (value) ? BoolValue.True : BoolValue.False;
 			return newAction;
@@ -415,7 +368,7 @@ namespace AC
 		 */
 		public static ActionSceneCheckAttribute CreateNew (int attributeID, int value, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionSceneCheckAttribute newAction = (ActionSceneCheckAttribute) CreateInstance <ActionSceneCheckAttribute>();
+			ActionSceneCheckAttribute newAction = CreateNew<ActionSceneCheckAttribute> ();
 			newAction.attributeID = attributeID;
 			newAction.intValue = value;
 			newAction.intCondition = condition;
@@ -432,7 +385,7 @@ namespace AC
 		 */
 		public static ActionSceneCheckAttribute CreateNew (int attributeID, float value, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionSceneCheckAttribute newAction = (ActionSceneCheckAttribute) CreateInstance <ActionSceneCheckAttribute>();
+			ActionSceneCheckAttribute newAction = CreateNew<ActionSceneCheckAttribute> ();
 			newAction.attributeID = attributeID;
 			newAction.floatValue = value;
 			newAction.intCondition = condition;
@@ -449,7 +402,7 @@ namespace AC
 		 */
 		public static ActionSceneCheckAttribute CreateNew (int attributeID, string value, bool isCaseSensitive = false)
 		{
-			ActionSceneCheckAttribute newAction = (ActionSceneCheckAttribute) CreateInstance <ActionSceneCheckAttribute>();
+			ActionSceneCheckAttribute newAction = CreateNew<ActionSceneCheckAttribute> ();
 			newAction.attributeID = attributeID;
 			newAction.stringValue = value;
 			newAction.checkCase = isCaseSensitive;

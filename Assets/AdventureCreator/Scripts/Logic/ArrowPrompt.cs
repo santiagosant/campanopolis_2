@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ArrowPrompt.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 * This component provides the ability to display up to four arrows on-screen.
 	 * Each arrow responds to player input, and can run an ActionList when the relevant input is detected.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_arrow_prompt.html")]
-	#endif
-	public class ArrowPrompt : MonoBehaviour
+	public class ArrowPrompt : MonoBehaviour, iActionListAssetReferencer
 	{
+
+		#region Variables
 
 		/** Where the Actions are stored when not being run (InScene, AssetFile) */
 		public ActionListSource source;
@@ -46,30 +46,38 @@ namespace AC
 		/** A factor for the arrow size */
 		public float scaleFactor = 1f;
 
-		private bool isOn = false;
+		protected bool isOn = false;
 		
-		private AC_Direction directionToAnimate;
-		private float alpha = 0f;
-		private float arrowSize = 0.05f;
+		protected AC_Direction directionToAnimate;
+		protected float alpha = 0f;
+		protected float arrowSize = 0.05f;
+
+		#endregion
 
 
-		private void OnEnable ()
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void Start ()
+		protected void Start ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Draws the arrow(s) on screen, if appropriate.
@@ -136,30 +144,6 @@ namespace AC
 		}
 
 
-		private Rect GetUpRect (float scale = 0.05f)
-		{
-			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.5f, 0.1f * positionFactor, scale * 2f * scaleFactor, scale * scaleFactor));
-		}
-
-
-		private Rect GetDownRect (float scale = 0.05f)
-		{
-			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.5f, 1f - (0.1f * positionFactor), scale * 2f * scaleFactor, scale * scaleFactor));
-		}
-
-
-		private Rect GetLeftRect (float scale = 0.05f)
-		{
-			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.05f * positionFactor * 2f, 0.5f, scale * scaleFactor, scale * 2f * scaleFactor));
-		}
-
-
-		private Rect GetRightRect (float scale = 0.05f)
-		{
-			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (1f - (0.05f * positionFactor * 2f), 0.5f, scale * scaleFactor, scale * 2f * scaleFactor));
-		}
-
-
 		/**
 		 * <summary>Enables the ArrowPrompt.</summary>
 		 */
@@ -177,18 +161,7 @@ namespace AC
 				arrowSize = 0.05f;
 			}
 		}
-		
-		
-		private void Disable ()
-		{
-			if (KickStarter.playerInput)
-			{
-				KickStarter.playerInput.activeArrows = null;
-			}
-			
-			isOn = false;
-		}
-		
+
 
 		/**
 		 * <summary>Disables the ArrowPrompt.</summary>
@@ -255,9 +228,48 @@ namespace AC
 				rightArrow.Run (source);
 			}
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected Rect GetUpRect (float scale = 0.05f)
+		{
+			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.5f, 0.1f * positionFactor, scale * 2f * scaleFactor, scale * scaleFactor));
+		}
+
+
+		protected Rect GetDownRect (float scale = 0.05f)
+		{
+			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.5f, 1f - (0.1f * positionFactor), scale * 2f * scaleFactor, scale * scaleFactor));
+		}
+
+
+		protected Rect GetLeftRect (float scale = 0.05f)
+		{
+			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (0.05f * positionFactor * 2f, 0.5f, scale * scaleFactor, scale * 2f * scaleFactor));
+		}
+
+
+		protected Rect GetRightRect (float scale = 0.05f)
+		{
+			return KickStarter.mainCamera.LimitMenuToAspect (AdvGame.GUIRect (1f - (0.05f * positionFactor * 2f), 0.5f, scale * scaleFactor, scale * 2f * scaleFactor));
+		}
+
 		
+		protected void Disable ()
+		{
+			if (KickStarter.playerInput)
+			{
+				KickStarter.playerInput.activeArrows = null;
+			}
+			
+			isOn = false;
+		}
 		
-		private IEnumerator FadeIn ()
+
+		protected IEnumerator FadeIn ()
 		{
 			alpha = 0f;
 			
@@ -276,7 +288,7 @@ namespace AC
 		}
 		
 		
-		private IEnumerator FadeOut (AC_Direction direction)
+		protected IEnumerator FadeOut (AC_Direction direction)
 		{
 			arrowSize = 0.05f;
 			alpha = 1f;
@@ -298,15 +310,19 @@ namespace AC
 		}
 		
 		
-		private void SetGUIAlpha (float alpha)
+		protected void SetGUIAlpha (float alpha)
 		{
 			Color tempColor = GUI.color;
 			tempColor.a = alpha;
 			GUI.color = tempColor;
 		}
 
+		#endregion
 
-		private float LargeSize
+
+		#region GetSet
+
+		protected float LargeSize
 		{
 			get
 			{
@@ -315,13 +331,32 @@ namespace AC
 		}
 
 
-		private float SmallSize
+		protected float SmallSize
 		{
 			get
 			{
 				return arrowSize * scaleFactor;
 			}
 		}
+
+		#endregion
+
+
+		#if UNITY_EDITOR
+
+		public bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (source == ActionListSource.AssetFile)
+			{
+				if (upArrow.isPresent && upArrow.linkedActionList == actionListAsset) return true;
+				if (leftArrow.isPresent && leftArrow.linkedActionList == actionListAsset) return true;
+				if (rightArrow.isPresent && rightArrow.linkedActionList == actionListAsset) return true;
+				if (downArrow.isPresent && downArrow.linkedActionList == actionListAsset) return true;
+			}
+			return false;
+		}
+
+		#endif
 
 	}
 
@@ -362,14 +397,14 @@ namespace AC
 		{
 			if (actionListSource == ActionListSource.AssetFile)
 			{
-				if (linkedActionList != null)
+				if (linkedActionList)
 				{
 					linkedActionList.Interact ();
 				}
 			}
 			else if (actionListSource == ActionListSource.InScene)
 			{
-				if (linkedCutscene != null)
+				if (linkedCutscene)
 				{
 					linkedCutscene.Interact ();
 				}

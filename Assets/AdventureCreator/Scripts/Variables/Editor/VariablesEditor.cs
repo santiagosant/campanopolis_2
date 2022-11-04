@@ -1,7 +1,7 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
-using System.Collections;
-using System.Collections.Generic;
 
 namespace AC
 {
@@ -34,18 +34,23 @@ namespace AC
 			{
 				selectedVar = VariablesManager.ShowVarList (selectedVar, _target.vars, VariableLocation.Component, varFilter, _target.filter, typeFilter, !Application.isPlaying, _target);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
+
+			if (selectedVar != null && !_target.vars.Contains (selectedVar))
+			{
+				selectedVar = null;
+			}
 
 			if (selectedVar != null)
 			{
 				EditorGUILayout.Space ();
 				EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 				showProperties = CustomGUILayout.ToggleHeader (showProperties, "Variable '" + selectedVar.label + "' properties");
-				if (showVariablesList)
+				if (showProperties)
 				{
 					VariablesManager.ShowVarGUI (selectedVar, VariableLocation.Component, !Application.isPlaying, null, string.Empty, _target);
 				}
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			UnityVersionHandler.CustomSetDirty (_target);
@@ -72,9 +77,11 @@ namespace AC
 				EditorGUILayout.EndHorizontal ();
 			}
 		
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 	}
 
 }
+
+#endif

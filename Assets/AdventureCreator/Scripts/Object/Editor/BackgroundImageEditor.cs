@@ -1,10 +1,8 @@
-﻿#if !UNITY_2017_3_OR_NEWER
-#define ALLOW_LEGACY_UI
-#endif
+﻿#if UNITY_STANDALONE && UNITY_EDITOR
 
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 using UnityEngine;
 using UnityEditor;
@@ -15,7 +13,6 @@ using UnityEngine.Video;
 namespace AC
 {
 
-	#if UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE)
 	[CustomEditor (typeof (BackgroundImage))]
 	public class BackgroundImageEditor : Editor
 	{
@@ -31,45 +28,20 @@ namespace AC
 		
 		public override void OnInspectorGUI ()
 		{
-			EditorGUILayout.BeginVertical ("Button");
-
-			#if ALLOW_LEGACY_UI
-
-			_target.backgroundMethod25D = (BackgroundImage.BackgroundMethod25D) CustomGUILayout.EnumPopup ("Method:", _target.backgroundMethod25D, string.Empty, "How 2.5D backgrounds are renderered");
-			switch (_target.backgroundMethod25D)
-			{
-				case BackgroundImage.BackgroundMethod25D.GUITexture:
-					if (Object.FindObjectOfType <BackgroundImageUI>() != null)
-					{
-						BackgroundImageUI.Instance.ClearTexture (null);
-					}
-					if (_target.GUITexture == null)
-					{
-						EditorGUILayout.HelpBox ("A GUITexture component must be attached to this object for the chosen method to work.", MessageType.Warning);
-					}
-					break;
-
-				case BackgroundImage.BackgroundMethod25D.UnityUI:
-					_target = ShowUnityUIMethod (_target);
-					break;
-			}
-
-			#else
+			CustomGUILayout.BeginVertical ();
 
 			_target = ShowUnityUIMethod (_target);
-
-			#endif
 
 			#if ALLOW_VIDEO
 			if (_target.backgroundImageSource == BackgroundImage.BackgroundImageSource.VideoClip)
 			{
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 				UnityVersionHandler.CustomSetDirty (_target);
 				return;
 			}
 			#endif
 
-			#if UNITY_STANDALONE && (UNITY_5 || UNITY_2017_1_OR_NEWER || UNITY_PRO_LICENSE) && !UNITY_2018_2_OR_NEWER
+			#if UNITY_STANDALONE && !UNITY_2018_2_OR_NEWER
 
 			EditorGUILayout.LabelField ("When playing a MovieTexture:");
 			_target.loopMovie = CustomGUILayout.Toggle ("Loop clip?", _target.loopMovie, string.Empty, "If True, then any MovieTexture set as the background will be looped");
@@ -77,7 +49,7 @@ namespace AC
 
 			#endif
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
 
@@ -94,7 +66,7 @@ namespace AC
 					break;
 
 				case BackgroundImage.BackgroundImageSource.VideoClip:
-				_target.backgroundTexture = (Texture) CustomGUILayout.ObjectField <Texture> ("Placeholder texture:", _target.backgroundTexture, false, string.Empty, "The texture to display full-screen while the VideoClip is being prepared");
+					_target.backgroundTexture = (Texture) CustomGUILayout.ObjectField <Texture> ("Placeholder texture:", _target.backgroundTexture, false, string.Empty, "The texture to display full-screen while the VideoClip is being prepared");
 					_target.backgroundVideo = (VideoClip) CustomGUILayout.ObjectField <VideoClip> ("Video clip:", _target.backgroundVideo, false, string.Empty, "The VideoClip to animate full-screen");
 					break;
 			}
@@ -109,6 +81,7 @@ namespace AC
 		}
 
 	}
-	#endif
 
 }
+
+#endif

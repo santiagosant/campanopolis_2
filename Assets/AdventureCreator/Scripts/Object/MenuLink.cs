@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuLink.cs"
  * 
@@ -9,10 +9,6 @@
  *  in the Menu Manager, allowing for 3D, scene-based menus
  * 
  */
-
-#if !UNITY_2017_2_OR_NEWER
-#define ALLOW_LEGACY_UI
-#endif
 
 using UnityEngine;
 
@@ -23,11 +19,11 @@ namespace AC
 	 * Before Unity's UI system was introduced, this component was used to link GameObjects to Menu elements defined in the MenuManager, allowing for 3D menus.
 	 * This is now considered outdated, as Unity UIs that render in World Space can now be linked to the MenuManager instead.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_menu_link.html")]
-	#endif
 	public class MenuLink : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The name of the associated Menu */
 		public string menuName = "";
@@ -38,16 +34,24 @@ namespace AC
 		/** If True, then any GUIText or TextMesh components will have their text values overridden by that of the associated MenuElement */
 		public bool setTextLabels = false;
 
-		private AC.Menu menu;
-		private MenuElement element;
-	
+		protected AC.Menu menu;
+		protected MenuElement element;
 
-		private void Start ()
+		protected TextMesh textMesh;
+
+		#endregion
+
+
+		#region UnityStandards	
+
+		protected void Start ()
 		{
-			if (menuName == "" || elementName == "")
+			if (string.IsNullOrEmpty (menuName) || string.IsNullOrEmpty (elementName))
 			{
 				return;
 			}
+
+			textMesh = GetComponent <TextMesh>();
 
 			try
 			{
@@ -61,24 +65,30 @@ namespace AC
 		}
 
 
-		private void FixedUpdate ()
+		protected void FixedUpdate ()
 		{
 			if (element && setTextLabels)
 			{
 				int languageNumber = Options.GetLanguage ();
-				#if ALLOW_LEGACY_UI
-				if (GetComponent <GUIText>())
+
+				if (textMesh)
 				{
-					GetComponent <GUIText>().text = GetLabel (languageNumber);
-				}
-				#endif
-				if (GetComponent <TextMesh>())
-				{
-					GetComponent <TextMesh>().text = GetLabel (languageNumber);
+					textMesh.text = GetLabel (languageNumber);
 				}
 			}
 		}
 
+
+		protected void OnDestroy ()
+		{
+			element = null;
+			menu = null;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Gets the associated MenuElement's label.</summary>
@@ -132,12 +142,7 @@ namespace AC
 			}
 		}
 
-
-		private void OnDestroy ()
-		{
-			element = null;
-			menu = null;
-		}
+		#endregion
 
 	}
 

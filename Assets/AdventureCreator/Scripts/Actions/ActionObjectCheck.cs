@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionObjectCheck.cs"
  * 
@@ -30,22 +30,18 @@ namespace AC
 		protected GameObject runtimeGameObject;
 
 
-		public ActionObjectCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Check presence";
-			description = "Use to determine if a particular GameObject or prefab is present in the current scene.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Check presence"; }}
+		public override string Description { get { return "Use to determine if a particular GameObject or prefab is present in the current scene."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeGameObject = AssignFile (parameters, parameterID, constantID, gameObject);
 		}
 		
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (runtimeGameObject != null && runtimeGameObject.activeInHierarchy)
 			{
@@ -57,7 +53,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Object to check:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -85,9 +81,20 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (gameObject, constantID, parameterID);
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (gameObject && gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 		
 		#endif
@@ -100,7 +107,7 @@ namespace AC
 		 */
 		public static ActionObjectCheck CreateNew (GameObject objectToCheck)
 		{
-			ActionObjectCheck newAction = (ActionObjectCheck) CreateInstance <ActionObjectCheck>();
+			ActionObjectCheck newAction = CreateNew<ActionObjectCheck> ();
 			newAction.gameObject = objectToCheck;
 			return newAction;
 		}

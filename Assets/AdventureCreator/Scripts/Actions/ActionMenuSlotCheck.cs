@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMenuSlotCheck.cs"
  * 
@@ -20,7 +20,7 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionMenuSlotCheck : ActionCheck
+	public class ActionMenuSlotCheck : ActionCheck, IMenuReferencer
 	{
 		
 		public string menuToCheck = "";
@@ -34,16 +34,12 @@ namespace AC
 		public IntCondition intCondition;
 
 		
-		public ActionMenuSlotCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Menu;
-			title = "Check num slots";
-			description = "Queries the number of slots on a given menu element.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Menu; }}
+		public override string Title { get { return "Check num slots"; }}
+		public override string Description { get { return "Queries the number of slots on a given menu element."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuToCheck = AssignString (parameters, menuToCheckParameterID, menuToCheck);
 			elementToCheck = AssignString (parameters, elementToCheckParameterID, elementToCheck);
@@ -51,40 +47,29 @@ namespace AC
 		}
 		
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			MenuElement menuElement = PlayerMenus.GetElementWithName (menuToCheck, elementToCheck);
 			if (menuElement != null)
 			{
 				int numSlots = menuElement.GetNumSlots ();
 
-				if (intCondition == IntCondition.EqualTo)
+				switch (intCondition)
 				{
-					if (numToCheck == numSlots)
-					{
-						return true;
-					}
-				}
-				else if (intCondition == IntCondition.LessThan)
-				{
-					if (numToCheck > numSlots)
-					{
-						return true;
-					}
-				}
-				else if (intCondition == IntCondition.MoreThan)
-				{
-					if (numToCheck < numSlots)
-					{
-						return true;
-					}
-				}
-				else if (intCondition == IntCondition.NotEqualTo)
-				{
-					if (numToCheck != numSlots)
-					{
-						return true;
-					}
+					case IntCondition.EqualTo:
+						return (numSlots == numToCheck);
+
+					case IntCondition.NotEqualTo:
+						return (numSlots != numToCheck);
+
+					case IntCondition.LessThan:
+						return (numSlots < numToCheck);
+
+					case IntCondition.MoreThan:
+						return (numSlots > numToCheck);
+
+					default:
+						return false;
 				}
 			}
 			
@@ -94,15 +79,15 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			menuToCheckParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToCheckParameterID, ParameterType.String);
+			menuToCheckParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (menuToCheckParameterID < 0)
 			{
 				menuToCheck = EditorGUILayout.TextField ("Menu containing element:", menuToCheck);
 			}
 			
-			elementToCheckParameterID = Action.ChooseParameterGUI ("Element to check:", parameters, elementToCheckParameterID, ParameterType.String);
+			elementToCheckParameterID = Action.ChooseParameterGUI ("Element to check:", parameters, elementToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (elementToCheckParameterID < 0)
 			{
 				elementToCheck = EditorGUILayout.TextField ("Element to check:", elementToCheck);
@@ -125,7 +110,26 @@ namespace AC
 		{
 			return menuToCheck + " " + elementToCheck;
 		}
-		
+
+
+		public int GetNumMenuReferences (string menuName, string elementName = "")
+		{
+			if (menuToCheckParameterID < 0 && menuName == menuToCheck)
+			{
+				if (string.IsNullOrEmpty (elementName))
+				{
+					return 1;
+				}
+
+				if (elementToCheckParameterID < 0 && elementToCheck == elementName)
+				{
+					return 1;
+				}
+			}
+
+			return 0;
+		}
+
 		#endif
 
 
@@ -139,7 +143,7 @@ namespace AC
 		 */
 		public static ActionMenuSlotCheck CreateNew (string menuName, string elementName, int numSlots, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionMenuSlotCheck newAction = (ActionMenuSlotCheck) CreateInstance <ActionMenuSlotCheck>();
+			ActionMenuSlotCheck newAction = CreateNew<ActionMenuSlotCheck> ();
 			newAction.menuToCheck = menuName;
 			newAction.elementToCheck = elementName;
 			newAction.intCondition = condition;

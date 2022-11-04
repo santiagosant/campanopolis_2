@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionScene.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -22,6 +23,8 @@ namespace AC
 	public class ActionSceneSwitchPrevious : Action
 	{
 		
+		public bool useActivePlayer = false;
+
 		public bool assignScreenOverlay;
 		public bool onlyPreload = false;
 
@@ -32,102 +35,127 @@ namespace AC
 		public int relativeMarkerParameterID = -1;
 
 
-		public ActionSceneSwitchPrevious ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Scene;
-			title = "Switch previous";
-			description = "Moves the Player to the previously-loaded scene. The scene must be listed in Unity's Build Settings. By default, the screen will cut to black during the transition, but the last frame of the current scene can instead be overlayed. This allows for cinematic effects: if the next scene fades in, it will cause a crossfade effect; if the next scene doesn't fade, it will cause a straight cut.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Scene; }}
+		public override string Title { get { return "Switch previous"; }}
+		public override string Description { get { return "Moves the Player to the previously-loaded scene. By default, the screen will cut to black during the transition, but the last frame of the current scene can instead be overlayed. This allows for cinematic effects: if the next scene fades in, it will cause a crossfade effect; if the next scene doesn't fade, it will cause a straight cut."; }}
+		public override int NumSockets { get { return (onlyPreload) ? 1 : 0; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeRelativeMarker = AssignFile <Marker> (parameters, relativeMarkerParameterID, relativeMarkerID, relativeMarker);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			if (!assignScreenOverlay || (!relativePosition && onlyPreload))
+			bool runtimeActivePlayer = useActivePlayer;
+
+			if (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow)
 			{
-				ChangeScene ();
-				return 0f;
-			}
-
-			if (!isRunning)
-			{
-				if (KickStarter.sceneChanger.GetPreviousSceneInfo () == null || KickStarter.sceneChanger.GetPreviousSceneInfo ().IsNull)
-				{
-					LogWarning ("Cannot load previous scene as there is no data stored - is this the first scene in the game?");
-					return 0f;
-				}
-
-				isRunning = true;
-				KickStarter.mainCamera._ExitSceneWithOverlay ();
-				return defaultPauseTime;
-			}
-			else
-			{
-				ChangeScene ();
-				isRunning = false;
-				return 0f;
-			}
-		}
-
-
-		override public void Skip ()
-		{
-			ChangeScene ();
-		}
-
-
-		private void ChangeScene ()
-		{
-			SceneInfo sceneInfo = KickStarter.sceneChanger.GetPreviousSceneInfo ();
-			if (sceneInfo == null || sceneInfo.IsNull)
-			{
-				LogWarning ("Cannot load previous scene as there is no data stored - is this the first scene in the game?");
-				return;
+				runtimeActivePlayer = false;
 			}
 
 			if (!onlyPreload && relativePosition && runtimeRelativeMarker != null)
 			{
-				KickStarter.sceneChanger.SetRelativePosition (runtimeRelativeMarker.transform);
+				KickStarter.sceneChanger.SetRelativePosition (runtimeRelativeMarker);
 			}
 
-			if (onlyPreload && !relativePosition)
+			switch (KickStarter.settingsManager.referenceScenesInSave)
 			{
-				if (AdvGame.GetReferences ().settingsManager.useAsyncLoading)
-				{
-					KickStarter.sceneChanger.PreloadScene (sceneInfo);
-				}
-				else
-				{
-					LogWarning ("To pre-load scenes, 'Load scenes asynchronously?' must be enabled in the Settings Manager.");
-				}
+				case ChooseSceneBy.Name:
+					string previousSceneName = GetSceneName (runtimeActivePlayer);
+					if (string.IsNullOrEmpty (previousSceneName))
+					{
+						LogWarning ("Cannot load previous scene as there is no data stored - is this the first scene in the game?");
+						return 0f;
+					}
+
+					if (onlyPreload && !relativePosition)
+					{
+						if (AdvGame.GetReferences ().settingsManager.useAsyncLoading)
+						{
+							KickStarter.sceneChanger.PreloadScene (previousSceneName);
+						}
+						else
+						{
+							LogWarning ("To pre-load scenes, 'Load scenes asynchronously?' must be enabled in the Settings Manager.");
+						}
+					}
+					else
+					{
+						KickStarter.sceneChanger.ChangeScene (previousSceneName, true, false, assignScreenOverlay);
+					}
+					break;
+
+				case ChooseSceneBy.Number:
+				default:
+					int previousSceneIndex = GetSceneIndex (runtimeActivePlayer);
+					if (previousSceneIndex < 0)
+					{
+						LogWarning ("Cannot load previous scene as there is no data stored - is this the first scene in the game?");
+						return 0f;
+					}
+
+					if (onlyPreload && !relativePosition)
+					{
+						if (AdvGame.GetReferences ().settingsManager.useAsyncLoading)
+						{
+							KickStarter.sceneChanger.PreloadScene (previousSceneIndex);
+						}
+						else
+						{
+							LogWarning ("To pre-load scenes, 'Load scenes asynchronously?' must be enabled in the Settings Manager.");
+						}
+					}
+					else
+					{
+						KickStarter.sceneChanger.ChangeScene (previousSceneIndex, true, false, assignScreenOverlay);
+					}
+					break;
 			}
-			else
-			{
-				KickStarter.sceneChanger.ChangeScene (sceneInfo, true);
-			}
+
+			return 0f;
 		}
 
 
-		override public ActionEnd End (List<Action> actions)
+		private int GetSceneIndex (bool runtimeActivePlayer)
 		{
-			if (onlyPreload && !relativePosition)
+			if (runtimeActivePlayer)
 			{
-				return base.End (actions);
+				PlayerData playerData = KickStarter.saveSystem.GetPlayerData (KickStarter.saveSystem.CurrentPlayerID);
+				if (playerData != null)
+				{
+					return playerData.previousScene;
+				}
 			}
-			return GenerateStopActionEnd ();
+			return KickStarter.sceneChanger.PreviousSceneIndex;
 		}
-		
 
-		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		private string GetSceneName (bool runtimeActivePlayer)
 		{
+			if (runtimeActivePlayer)
+			{
+				PlayerData playerData = KickStarter.saveSystem.GetPlayerData (KickStarter.saveSystem.CurrentPlayerID);
+				if (playerData != null)
+				{
+					return playerData.previousSceneName;
+				}
+			}
+			return KickStarter.sceneChanger.PreviousSceneName;
+		}
+
+
+#if UNITY_EDITOR
+
+		public override void ShowGUI (List<ActionParameter> parameters)
+		{
+			if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+			{
+				useActivePlayer = EditorGUILayout.ToggleLeft ("Player's previous scene, not game's?", useActivePlayer);
+			}
+
 			onlyPreload = EditorGUILayout.ToggleLeft ("Don't change scene, just preload data?", onlyPreload);
 
 			if (!onlyPreload)
@@ -151,7 +179,7 @@ namespace AC
 				}
 			}
 
-			if (onlyPreload && !relativePosition)
+			if (onlyPreload)
 			{
 				if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.useAsyncLoading)
 				{}
@@ -159,21 +187,28 @@ namespace AC
 				{
 					EditorGUILayout.HelpBox ("To pre-load scenes, 'Load scenes asynchronously?' must be enabled in the Settings Manager.", MessageType.Warning);
 				}
-
-				numSockets = 1;
-				AfterRunningOption ();
 			}
 			else
 			{
-				numSockets = 0;
 				assignScreenOverlay = EditorGUILayout.ToggleLeft ("Overlay current screen during switch?", assignScreenOverlay);
 			}
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (relativeMarker, relativeMarkerID, relativeMarkerParameterID);
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (relativePosition && relativeMarkerParameterID < 0)
+			{
+				if (relativeMarker && relativeMarker.gameObject == gameObject) return true;
+				if (relativeMarkerID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 		
 		#endif
@@ -186,7 +221,7 @@ namespace AC
 		 */
 		public static ActionSceneSwitchPrevious CreateNew (bool overlayCurrentScreen)
 		{
-			ActionSceneSwitchPrevious newAction = (ActionSceneSwitchPrevious) CreateInstance <ActionSceneSwitchPrevious>();
+			ActionSceneSwitchPrevious newAction = CreateNew<ActionSceneSwitchPrevious> ();
 			newAction.assignScreenOverlay = overlayCurrentScreen;
 			return newAction;
 		}

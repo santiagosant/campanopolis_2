@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDialogOptionRename.cs"
  * 
@@ -9,6 +9,7 @@
  * 
 */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -29,24 +30,20 @@ namespace AC
 		public int constantID;
 		public Conversation linkedConversation;
 		protected Conversation runtimeLinkedConversation;
-		
-		
-		public ActionDialogOptionRename ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Dialogue;
-			title = "Rename option";
-			description = "Renames the label of a dialogue option.";
-		}
 
 
-		override public void AssignValues ()
+		public override ActionCategory Category { get { return ActionCategory.Dialogue; }}
+		public override string Title { get { return "Rename option"; }}
+		public override string Description { get { return "Renames the label of a dialogue option."; }}
+
+
+		public override void AssignValues ()
 		{
 			runtimeLinkedConversation = AssignFile <Conversation> (constantID, linkedConversation);
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeLinkedConversation != null)
 			{
@@ -63,11 +60,6 @@ namespace AC
 		{
 			linkedConversation = (Conversation) EditorGUILayout.ObjectField ("Conversation:", linkedConversation, typeof (Conversation), true);
 
-			if (linkedConversation)
-			{
-				linkedConversation.Upgrade ();
-			}
-
 			constantID = FieldToID <Conversation> (linkedConversation, constantID);
 			linkedConversation = IDToField <Conversation> (linkedConversation, constantID, true);
 
@@ -76,8 +68,6 @@ namespace AC
 				optionID = ShowOptionGUI (linkedConversation.options, optionID);
 				newLabel = EditorGUILayout.TextField ("New label text:", newLabel);
 			}
-
-			AfterRunningOption ();
 		}
 
 
@@ -111,8 +101,8 @@ namespace AC
 				if (tempNumber == -1)
 				{
 					// Wasn't found (variable was deleted?), so revert to zero
-					if (optionID != 0)
-						ACDebug.LogWarning ("Previously chosen option no longer exists!");
+					if (optionID > 0)
+						LogWarning ("Previously chosen option no longer exists!");
 					tempNumber = 0;
 					optionID = 0;
 				}
@@ -131,7 +121,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -141,7 +131,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (linkedConversation != null)
 			{
@@ -182,23 +172,47 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
-			string tokenText = AdvGame.GetVariableTokenText (location, varID);
+			string tokenText = AdvGame.GetVariableTokenText (location, varID, _variablesConstantID);
 
 			if (!string.IsNullOrEmpty (tokenText) && newLabel.Contains (tokenText))
 			{
 				thisCount ++;
 			}
-			thisCount += base.GetVariableReferences (parameters, location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+			string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, _variablesConstantID);
+
+			if (!string.IsNullOrEmpty (oldTokenText) && newLabel.Contains (oldTokenText))
+			{
+				string newTokenText = AdvGame.GetVariableTokenText (location, oldVarID, _variablesConstantID);
+				newLabel = newLabel.Replace (oldTokenText, newTokenText);
+				thisCount++;
+			}
+			thisCount += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (linkedConversation && linkedConversation.gameObject == _gameObject) return true;
+			if (constantID == id) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 
 		#endif
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -213,6 +227,12 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			newLabel = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -257,6 +277,8 @@ namespace AC
 
 		#endif
 
+		#endregion
+
 
 		/**
 		 * <summary>Creates a new instance of the 'Conversation: Rename option' Action</summary>
@@ -268,7 +290,7 @@ namespace AC
 		 */
 		public static ActionDialogOptionRename CreateNew (Conversation conversationToModify, int dialogueOptionID, string newLabelText, int translationID = -1)
 		{
-			ActionDialogOptionRename newAction = (ActionDialogOptionRename) CreateInstance <ActionDialogOptionRename>();
+			ActionDialogOptionRename newAction = CreateNew<ActionDialogOptionRename> ();
 			newAction.linkedConversation = conversationToModify;
 			newAction.optionID = dialogueOptionID;
 			newAction.newLabel = newLabelText;

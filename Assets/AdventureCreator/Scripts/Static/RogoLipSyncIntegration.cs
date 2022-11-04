@@ -38,30 +38,25 @@ namespace AC
 		}
 
 
-		public static void Play (Char speaker, int lineID, string language)
+		public static AudioSource Play (Char speaker, int lineID, string language)
 		{
 			if (speaker == null)
 			{
-				return;
+				return null;
 			}
 
 			#if RogoLipSyncIsPresent
 			if (lineID > -1 && speaker != null && KickStarter.speechManager.searchAudioFiles)
 			{
-				LipSyncData lipSyncData = (LipSyncData) KickStarter.runtimeLanguages.GetSpeechLipsyncFile <LipSyncData> (lineID, speaker);
+				LipSyncData lipSyncData = KickStarter.runtimeLanguages.GetSpeechLipsyncFile <LipSyncData> (lineID, speaker);
 
 				if (lipSyncData != null)
 				{
-					LipSync[] lipSyncs = speaker.GetComponentsInChildren <LipSync>();
-					if (lipSyncs != null && lipSyncs.Length > 0)
+					LipSync lipSync = speaker.GetComponent <LipSync>();
+					if (lipSync != null && lipSync.enabled)
 					{
-						foreach (LipSync lipSync in lipSyncs)
-						{
-							if (lipSync != null && lipSync.enabled)
-							{
-								lipSync.Play (lipSyncData);
-							}
-						}
+						lipSync.Play (lipSyncData);
+						return (lipSyncData.clip) ? lipSync.audioSource : null;
 					}
 					else
 					{
@@ -72,6 +67,8 @@ namespace AC
 			#else
 			ACDebug.LogError ("The 'RogoLipSyncIsPresent' preprocessor define must be declared in the Player Settings.");
 			#endif
+
+			return null;
 		}
 
 
@@ -83,16 +80,10 @@ namespace AC
 			}
 			
 			#if RogoLipSyncIsPresent
-			LipSync[] lipSyncs = speaker.GetComponentsInChildren <LipSync>();
-			if (lipSyncs != null && lipSyncs.Length > 0)
+			LipSync lipSync = speaker.GetComponentInChildren <LipSync>();
+			if (lipSync != null && lipSync.enabled)
 			{
-				foreach (LipSync lipSync in lipSyncs)
-				{
-					if (lipSync != null && lipSync.enabled)
-					{
-						lipSync.Stop (true);
-					}
-				}
+				lipSync.Stop (true);
 			}
 			#endif
 		}

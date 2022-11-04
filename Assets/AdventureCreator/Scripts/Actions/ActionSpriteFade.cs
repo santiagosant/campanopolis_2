@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSpriteFade.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -30,23 +31,19 @@ namespace AC
 		public FadeType fadeType = FadeType.fadeIn;
 		public float fadeSpeed;
 
-		
-		public ActionSpriteFade ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Fade sprite";
-			description = "Fades a sprite in or out.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Fade sprite"; }}
+		public override string Description { get { return "Fades a sprite in or out."; }}
 		
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeSpriteFader = AssignFile <SpriteFader> (parameters, parameterID, constantID, spriteFader);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeSpriteFader == null)
 			{
@@ -73,7 +70,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (runtimeSpriteFader != null)
 			{
@@ -84,7 +81,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Sprite to fade:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -104,12 +101,10 @@ namespace AC
 			
 			fadeSpeed = EditorGUILayout.Slider ("Time to fade:", fadeSpeed, 0f, 10f);
 			willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -119,13 +114,24 @@ namespace AC
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (spriteFader != null)
 			{
 				return fadeType.ToString () + " " + spriteFader.gameObject.name;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (spriteFader && spriteFader.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 		
 		#endif
@@ -141,7 +147,7 @@ namespace AC
 		 */
 		public static ActionSpriteFade CreateNew (SpriteFader spriteFaderToAffect, FadeType fadeType, float transitionTime = 1f, bool waitUntilFinish = false)
 		{
-			ActionSpriteFade newAction = (ActionSpriteFade) CreateInstance <ActionSpriteFade>();
+			ActionSpriteFade newAction = CreateNew<ActionSpriteFade> ();
 			newAction.spriteFader = spriteFaderToAffect;
 			newAction.fadeType = fadeType;
 			newAction.fadeSpeed = transitionTime;

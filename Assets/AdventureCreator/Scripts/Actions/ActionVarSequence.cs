@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarSequence.cs"
  * 
@@ -21,18 +21,20 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionVarSequence : ActionCheckMultiple
+	public class ActionVarSequence : Action
 	{
 		
 		public int parameterID = -1;
 		public int variableID;
 		public bool doLoop = false;
 
-		public bool saveToVariable = true;
-		private int ownVarValue = 0;
+		public int numSockets = 2;
+
+		public bool saveToVariable = false;
+		protected int ownVarValue = 0;
 
 		public VariableLocation location = VariableLocation.Global;
-		private LocalVariables localVariables;
+		protected LocalVariables localVariables;
 
 		public Variables variables;
 		public int variablesConstantID = 0;
@@ -41,16 +43,13 @@ namespace AC
 		protected Variables runtimeVariables;
 
 		
-		public ActionVarSequence ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Run sequence";
-			description = "Uses the value of an integer Variable to determine which Action is run next. The value is incremented by one each time (and reset to zero when a limit is reached), allowing for different subsequent Actions to play each time the Action is run.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Run sequence"; }}
+		public override string Description { get { return "Uses the value of an integer Variable to determine which Action is run next. The value is incremented by one each time (and reset to zero when a limit is reached), allowing for different subsequent Actions to play each time the Action is run."; }}
+		public override int NumSockets { get { return numSockets; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeVariable = null;
 			if (saveToVariable)
@@ -84,27 +83,36 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
-			if (actionList != null)
+			if (saveToVariable)
 			{
-				localVariables = UnityVersionHandler.GetLocalVariablesOfGameObject (actionList.gameObject);
-			}
-			if (localVariables == null)
-			{
-				localVariables = KickStarter.localVariables;
+				if (actionList != null)
+				{
+					localVariables = UnityVersionHandler.GetLocalVariablesOfGameObject (actionList.gameObject);
+				}
+				if (localVariables == null)
+				{
+					localVariables = KickStarter.localVariables;
+				}
 			}
 
 			base.AssignParentList (actionList);
 		}
 		
+
+		public override void ResetAssetValues ()
+		{
+			ownVarValue = 0;
+		}
 		
-		public override ActionEnd End (List<Action> actions)
+
+		public override int GetNextOutputIndex ()
 		{
 			if (numSockets <= 0)
 			{
 				LogWarning ("Could not compute Random check because no values were possible!");
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 
 			if (!saveToVariable)
@@ -123,37 +131,32 @@ namespace AC
 					}
 				}
 
-				return ProcessResult (value, actions);
+				return value;
 			}
 			
 			if (variableID == -1)
 			{
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 			
 			if (runtimeVariable != null)
 			{
 				if (runtimeVariable.type == VariableType.Integer)
 				{
-					if (runtimeVariable.val < 1)
+					int newValue = runtimeVariable.IntegerValue;
+					if (newValue < 1) newValue = 1;
+
+					int originalValue = newValue - 1;
+					newValue ++;
+
+					if (newValue > numSockets)
 					{
-						runtimeVariable.val = 1;
+						newValue = (doLoop) ? 1 : numSockets;
 					}
-					int originalValue = runtimeVariable.val-1;
-					runtimeVariable.val ++;
-					if (runtimeVariable.val > numSockets)
-					{
-						if (doLoop)
-						{
-							runtimeVariable.val = 1;
-						}
-						else
-						{
-							runtimeVariable.val = numSockets;
-						}
-					}
+
+					runtimeVariable.IntegerValue = newValue;
 					runtimeVariable.Upload (location, runtimeVariables);
-					return ProcessResult (originalValue, actions);
+					return originalValue;
 				}
 				else
 				{
@@ -161,13 +164,13 @@ namespace AC
 				}
 			}
 			
-			return GenerateStopActionEnd ();
+			return -1;
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			numSockets = EditorGUILayout.DelayedIntField ("# of possible values:", numSockets);
 			numSockets = Mathf.Clamp (numSockets, 1, 20);
@@ -186,10 +189,6 @@ namespace AC
 				else if (location == VariableLocation.Local && isAssetFile)
 				{
 					EditorGUILayout.HelpBox ("Local variables cannot be accessed in ActionList assets.", MessageType.Info);
-				}
-				else if (location == VariableLocation.Component)
-				{
-					variables = (Variables) EditorGUILayout.ObjectField ("Component:", variables, typeof (Variables), true);
 				}
 
 				if ((location == VariableLocation.Global && AdvGame.GetReferences ().variablesManager != null) ||
@@ -318,30 +317,63 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
 			if (saveToVariable && location == _location && variableID == varID && parameterID < 0)
 			{
-				if (location != VariableLocation.Component || (variables != null && variables == _variables))
+				if (location != VariableLocation.Component || (variables && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
 				{
 					thisCount ++;
 				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
-			if (saveScriptsToo &&
-				location == VariableLocation.Component)
+			int thisCount = 0;
+
+			if (saveToVariable && location == _location && variableID == oldVarID && parameterID < 0)
 			{
+				if (location != VariableLocation.Component || (variables && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
+				{
+					variableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		{
+			if (location == VariableLocation.Component)
+			{
+				if (saveScriptsToo && variables && parameterID < 0)
+				{
+					AddSaveScript<RememberVariables> (variables);
+				}
+
 				AssignConstantID <Variables> (variables, variablesConstantID, parameterID);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0 && location == VariableLocation.Component)
+			{
+				if (variables && variables.gameObject == gameObject) return true;
+				return (variablesConstantID == id && id != 0);
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 
 		#endif
@@ -355,7 +387,7 @@ namespace AC
 		 */
 		public static ActionVarSequence CreateNew (int numOutcomes, bool doLoop)
 		{
-			ActionVarSequence newAction = (ActionVarSequence) CreateInstance <ActionVarSequence>();
+			ActionVarSequence newAction = CreateNew<ActionVarSequence> ();
 			newAction.numSockets = numOutcomes;
 			newAction.doLoop = doLoop;
 			return newAction;

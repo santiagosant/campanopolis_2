@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPlayerCheck.cs"
  * 
@@ -31,22 +31,18 @@ namespace AC
 		#endif
 
 		
-		public ActionPlayerCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Player;
-			title = "Check";
-			description = "Queries which Player prefab is currently being controlled. This only applies to games for which 'Player switching' has been allowed in the Settings Manager.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Player; }}
+		public override string Title { get { return "Check"; }}
+		public override string Description { get { return "Queries which Player prefab is currently being controlled. This only applies to games for which 'Player switching' has been allowed in the Settings Manager."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			playerID = AssignInteger (parameters, playerIDParameterID, playerID);
 		}
 		
 
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (KickStarter.player && KickStarter.player.ID == playerID)
 			{
@@ -59,7 +55,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (!settingsManager)
 			{
@@ -111,7 +107,7 @@ namespace AC
 					if (playerNumber == -1)
 					{
 						// Wasn't found (item was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen Player no longer exists!");
+						if (playerID > 0) LogWarning ("Previously chosen Player no longer exists!");
 						
 						playerNumber = 0;
 						playerID = 0;
@@ -129,7 +125,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (playerIDParameterID >= 0) return string.Empty;
 
@@ -149,7 +145,14 @@ namespace AC
 			
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (_playerID < 0 || playerIDParameterID >= 0) return false;
+			return (playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -160,7 +163,7 @@ namespace AC
 		 */
 		public static ActionPlayerCheck CreateNew (int playerIDToCheck)
 		{
-			ActionPlayerCheck newAction = (ActionPlayerCheck) CreateInstance <ActionPlayerCheck>();
+			ActionPlayerCheck newAction = CreateNew<ActionPlayerCheck> ();
 			newAction.playerID = playerIDToCheck;
 			return newAction;
 		}

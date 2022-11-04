@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMenuJournal.cs"
  * 
@@ -20,7 +20,7 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionMenuJournal : Action
+	public class ActionMenuJournal : Action, IMenuReferencer
 	{
 
 		public string menuToChange = "";
@@ -35,16 +35,12 @@ namespace AC
 		public int pageNumberParameterID = -1;
 
 		
-		public ActionMenuJournal ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Menu;
-			title = "Set Journal page";
-			description = "Set which page of a Journal is currently open.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Menu; }}
+		public override string Title { get { return "Set Journal page"; }}
+		public override string Description { get { return "Set which page of a Journal is currently open."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuToChange = AssignString (parameters, menuToChangeParameterID, menuToChange);
 			elementToChange = AssignString (parameters, elementToChangeParameterID, elementToChange);
@@ -52,7 +48,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			MenuElement _element = PlayerMenus.GetElementWithName (menuToChange, elementToChange);
 			if (_element != null)
@@ -93,15 +89,15 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			menuToChangeParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToChangeParameterID, ParameterType.String);
+			menuToChangeParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToChangeParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (menuToChangeParameterID < 0)
 			{
 				menuToChange = EditorGUILayout.TextField ("Menu containing element:", menuToChange);
 			}
 			
-			elementToChangeParameterID = Action.ChooseParameterGUI ("Journal element:", parameters, elementToChangeParameterID, ParameterType.String);
+			elementToChangeParameterID = Action.ChooseParameterGUI ("Journal element:", parameters, elementToChangeParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (elementToChangeParameterID < 0)
 			{
 				elementToChange = EditorGUILayout.TextField ("Journal element:", elementToChange);
@@ -116,14 +112,31 @@ namespace AC
 					pageNumber = EditorGUILayout.IntField ("Page #:", pageNumber);
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 		
 		
 		public override string SetLabel ()
 		{
 			return setJournalPage.ToString ();
+		}
+
+
+		public int GetNumMenuReferences (string _menuName, string _elementName = "")
+		{
+			if (menuToChangeParameterID < 0 && menuToChange == _menuName)
+			{
+				if (string.IsNullOrEmpty (elementToChange))
+				{
+					return 1;
+				}
+
+				if (elementToChangeParameterID < 0 && _elementName == elementToChange)
+				{
+					return 1;
+				}
+			}
+
+			return 0;
 		}
 		
 		#endif
@@ -138,7 +151,7 @@ namespace AC
 		 */
 		public static ActionMenuJournal CreateNew (string menuName, string journalElementName, int pageIndexNumber)
 		{
-			ActionMenuJournal newAction = (ActionMenuJournal) CreateInstance <ActionMenuJournal>();
+			ActionMenuJournal newAction = CreateNew<ActionMenuJournal> ();
 			newAction.menuToChange = menuName;
 			newAction.elementToChange = journalElementName;
 			newAction.pageNumber = pageIndexNumber;

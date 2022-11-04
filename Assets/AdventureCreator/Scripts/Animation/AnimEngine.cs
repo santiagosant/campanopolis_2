@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AnimEngine.cs"
  * 
@@ -55,7 +55,31 @@ namespace AC
 		public virtual void CharSettingsGUI ()
 		{}
 
+		public virtual bool IKEnabled
+		{
+			get
+			{
+				return false;
+			}
+		}
+
 		public virtual void CharExpressionsGUI ()
+		{}
+
+		public virtual PlayerData SavePlayerData (PlayerData playerData, Player player)
+		{
+			return playerData;
+		}
+
+		public virtual void LoadPlayerData (PlayerData playerData, Player player)
+		{}
+
+		public virtual NPCData SaveNPCData (NPCData npcData, NPC npc)
+		{
+			return npcData;
+		}
+
+		public virtual void LoadNPCData (NPCData npcData, NPC npc)
 		{}
 
 		public virtual void ActionCharAnimGUI (ActionCharAnim action, List<ActionParameter> parameters = null)

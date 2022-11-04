@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"UltimateFPSIntegration.cs"
  * 
@@ -42,9 +42,7 @@ namespace AC
 	 */
 	[RequireComponent (typeof (Player))]
 	[AddComponentMenu("Adventure Creator/3rd-party/UFPS integration")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_ultimate_f_p_s_integration.html")]
-	#endif
 	public class UltimateFPSIntegration : MonoBehaviour
 	{
 
@@ -59,26 +57,25 @@ namespace AC
 		/** If True, then weapons will be disabled */
 		public bool disableWeapons = false;
 
-		private vp_FPCamera fpCamera;
-		private vp_FPController fpController;
-		private vp_FPInput fpInput;
-		private vp_FPPlayerEventHandler fpPlayerEventHandler;
-		private vp_SimpleHUD simpleHUD;
-		private vp_SimpleCrosshair simpleCrosshair;
+		protected vp_FPCamera fpCamera;
+		protected vp_FPController fpController;
+		protected vp_FPInput fpInput;
+		protected vp_FPPlayerEventHandler fpPlayerEventHandler;
+		protected vp_SimpleHUD simpleHUD;
+		protected vp_SimpleCrosshair simpleCrosshair;
 
-		private AudioListener _audioListener;
-		private Player player;
-		private bool isClimbing;
+		protected AudioListener _audioListener;
+		protected Player player;
+		protected bool isClimbing;
 		
 		#endif
 		
 		
-		private void Awake ()
+		protected void Awake ()
 		{
 			#if UltimateFPSIsPresent
 
 			// Tag the GameObject as 'Player' if it is not already
-			gameObject.tag = Tags.player;
 			player = GetComponent <Player>();
 			
 			// Assign the UFPS components, and report warnings if they are not present
@@ -111,7 +108,7 @@ namespace AC
 		}
 		
 		
-		private void Start ()
+		protected void Start ()
 		{
 			#if !UltimateFPSIsPresent
 			
@@ -124,12 +121,6 @@ namespace AC
 			player.FirstPersonCamera = fpCamera.transform;
 			player.SetAnimEngine (AnimationEngine.Custom);
 			player.motionControl = MotionControl.Manual;
-
-			// Assign a short delay whenever we load a saved game, to prevent firing when click
-			if (KickStarter.saveSystem)
-			{
-				KickStarter.saveSystem.SetGameplayReturnTime (0.1f);
-			}
 
 			// Fixes gun sounds from not always playing
 			AudioListener.pause = false;
@@ -147,7 +138,7 @@ namespace AC
 		
 		#if UltimateFPSIsPresent
 		
-		private void Update ()
+		protected void Update ()
 		{
 			// If AC is disabled or not present in the scene, ignore this script
 			if (!CanOperate ())
@@ -225,7 +216,7 @@ namespace AC
 		/*
 		 * Any function named 'OnTeleport' present on a character's root object will be called after they are teleported.
 		 */
-		private void OnTeleport ()
+		protected void OnTeleport ()
 		{
 			Vector3 movePosition = player.GetTargetPosition ();
 
@@ -237,7 +228,7 @@ namespace AC
 		}
 		
 		
-		private void OverrideMovement ()
+		protected void OverrideMovement ()
 		{
 			// Calculate AC's intended player position 
 			Vector3 movePosition = (player.GetTargetPosition () - transform.position).normalized * Time.deltaTime;
@@ -253,7 +244,7 @@ namespace AC
 		}
 		
 		
-		private float GetTiltAngle ()
+		protected float GetTiltAngle ()
 		{
 			// Get AC's head-tilt angle, if appropriate
 
@@ -265,7 +256,7 @@ namespace AC
 		}
 		
 		
-		private void Teleport (Vector3 position, Vector3 eulerAngles)
+		protected void Teleport (Vector3 position, Vector3 eulerAngles)
 		{
 			// Set the controller's position, and camera's rotation
 
@@ -280,7 +271,7 @@ namespace AC
 		}
 		
 		
-		private void SetCameraEnabled (bool state, bool force = false)
+		protected void SetCameraEnabled (bool state, bool force = false)
 		{
 			/*
 			 * Both AC and UFPS like to have their camera tagged as 'MainCamera', which causes conflict.
@@ -292,7 +283,7 @@ namespace AC
 			{
 				if (state)
 				{
-					KickStarter.mainCamera.attachedCamera = null;
+					//KickStarter.mainCamera.attachedCamera = null;
 				}
 				
 				if (KickStarter.mainCamera.attachedCamera == null && !state && !force)
@@ -331,7 +322,7 @@ namespace AC
 		}
 		
 		
-		private void SetMovementState (bool state)
+		protected void SetMovementState (bool state)
 		{
 			if (fpController)
 			{
@@ -343,7 +334,7 @@ namespace AC
 		}
 		
 		
-		private void SetInputState (bool state)
+		protected void SetInputState (bool state)
 		{
 			if (fpInput)
 			{
@@ -352,9 +343,9 @@ namespace AC
 		}
 		
 		
-		private void SetWeaponState (bool state)
+		protected void SetWeaponState (bool state)
 		{
-			if (KickStarter.playerInput.IsFreeAimingLocked ())
+			if (KickStarter.player.freeAimLocked)
 			{
 				state = false;
 			}
@@ -370,7 +361,7 @@ namespace AC
 		}
 
 
-		private void SetCursorState (bool state)
+		protected void SetCursorState (bool state)
 		{
 			if (fpInput)
 			{
@@ -379,7 +370,7 @@ namespace AC
 		}
 
 
-		private void SetHUDState (bool state)
+		protected void SetHUDState (bool state)
 		{
 			if (simpleHUD)
 			{
@@ -393,7 +384,7 @@ namespace AC
 		}
 		
 		
-		private bool CanOperate ()
+		protected bool CanOperate ()
 		{
 			if (KickStarter.stateHandler == null ||
 			    KickStarter.playerInput == null ||
@@ -406,13 +397,13 @@ namespace AC
 		}
 
 
-		private void OnStartClimb ()
+		protected void OnStartClimb ()
 		{
 			isClimbing = true;
 		}
 
 
-		private void OnStopClimb ()
+		protected void OnStopClimb ()
 		{
 			isClimbing = false;
 		}

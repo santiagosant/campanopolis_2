@@ -1,6 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
 using UnityEditor;
-using System.Collections;
 
 namespace AC
 {
@@ -24,3 +24,5 @@ namespace AC
 	}
 
 }
+
+#endif

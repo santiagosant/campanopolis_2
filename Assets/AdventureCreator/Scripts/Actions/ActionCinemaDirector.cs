@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCinemaDirector.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+ using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -29,17 +30,13 @@ namespace AC
 		public CinemaDirector.Cutscene cdCutscene;
 		#endif
 
-		
-		public ActionCinemaDirector ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ThirdParty;
-			title = "Cinema Director";
-			description = "Runs a Cutscene built with Cinema Director. Note that Cinema Director is a separate Unity Asset, and the 'CinemaDirectorIsPresent' preprocessor must be defined for this to work.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override ActionCategory Category { get { return ActionCategory.ThirdParty; }}
+		public override string Title { get { return "Cinema Director"; }}
+		public override string Description { get { return "Runs a Cutscene built with Cinema Director. Note that Cinema Director is a separate Unity Asset, and the 'CinemaDirectorIsPresent' preprocessor must be defined for this to work."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			#if CinemaDirectorIsPresent
 			cdCutscene = AssignFile <CinemaDirector.Cutscene> (parameters, parameterID, constantID, cdCutscene);
@@ -47,7 +44,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			#if CinemaDirectorIsPresent
 			if (!isRunning)
@@ -83,7 +80,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			#if CinemaDirectorIsPresent
 			if (cdCutscene != null)
@@ -105,7 +102,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			#if CinemaDirectorIsPresent
 			parameterID = Action.ChooseParameterGUI ("Director cutscene:", parameters, parameterID, ParameterType.GameObject);
@@ -128,12 +125,10 @@ namespace AC
 			#if !CinemaDirectorIsPresent
 			EditorGUILayout.HelpBox ("The 'CinemaDirectorIsPresent' Scripting Define Symbol must be listed in the\nPlayer Settings. Please set it from Edit -> Project Settings -> Player", MessageType.Warning);
 			#endif
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			#if CinemaDirectorIsPresent
 			AssignConstantID <CinemaDirector.Cutscene> (cdCutscene, constantID, parameterID);
@@ -151,7 +146,20 @@ namespace AC
 			#endif
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				#if CinemaDirectorIsPresent
+				if (cdCutscene && cdCutscene.gameObject == _gameObject) return true;
+				#endif
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
 		#endif
 
 		#if CinemaDirectorIsPresent
@@ -164,7 +172,7 @@ namespace AC
 		*/
 		public static ActionCinemaDirector CreateNew_ResumeLastTrack (CinemaDirector.Cutscene cutsceneToPlay, bool waitUntilFinish = true)
 		{
-			ActionCinemaDirector newAction = (ActionCinemaDirector) CreateInstance <ActionCinemaDirector>();
+			ActionCinemaDirector newAction = CreateNew<ActionCinemaDirector> ();
 			newAction.cdCutscene = cutsceneToPlay;
 			newAction.willWait = waitUntilFinish;
 		}

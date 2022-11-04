@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionInventoryCheck.cs"
  * 
@@ -21,15 +21,15 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionInventoryCheck : ActionCheck
+	public class ActionInventoryCheck : ActionCheck, IItemReferencerAction
 	{
 
 		public int parameterID = -1;
 		public int invID;
-		private int invNumber;
+		protected int invNumber;
 
-		[SerializeField] private InvCheckType invCheckType = InvCheckType.CarryingSpecificItem;
-		private enum InvCheckType { CarryingSpecificItem, NumberOfItemsCarrying };
+		[SerializeField] protected InvCheckType invCheckType = InvCheckType.CarryingSpecificItem;
+		protected enum InvCheckType { CarryingSpecificItem, NumberOfItemsCarrying };
 
 		public bool checkNumberInCategory;
 		public int categoryIDToCheck;
@@ -43,104 +43,119 @@ namespace AC
 		public bool setPlayer = false;
 		public int playerID;
 
+		public PlayerToCheck playerToCheck;
+		public enum PlayerToCheck { Active, Specific, Any };
+
 		#if UNITY_EDITOR
 		private InventoryManager inventoryManager;
 		private SettingsManager settingsManager;
 		#endif
 
 		
-		public ActionInventoryCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Inventory;
-			title = "Check";
-			description = "Queries whether or not the player is carrying an item. If the player can carry multiple amounts of the item, more options will show.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Inventory; }}
+		public override string Title { get { return "Check"; }}
+		public override string Description { get { return "Queries whether or not the player is carrying an item. If the player can carry multiple amounts of the item, more options will show."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			invID = AssignInvItemID (parameters, parameterID, invID);
 			intValue = AssignInteger (parameters, intValueParameterID, intValue);
 		}
 
-		
-		override public bool CheckCondition ()
+
+		public override void Upgrade ()
+		{
+			if (setPlayer)
+			{
+				setPlayer = false;
+				playerToCheck = PlayerToCheck.Specific;
+			}
+			base.Upgrade ();
+		}
+
+
+		public override bool CheckCondition ()
 		{
 			int count = 0;
 
-			if (invCheckType == InvCheckType.CarryingSpecificItem)
+			switch (invCheckType)
 			{
-				if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && setPlayer)
-				{
-					count = KickStarter.runtimeInventory.GetCount (invID, playerID);
-				}
-				else
-				{
-					count = KickStarter.runtimeInventory.GetCount (invID);
-				}
-			}
-			else if (invCheckType == InvCheckType.NumberOfItemsCarrying)
-			{
-				if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && setPlayer)
-				{
-					if (checkNumberInCategory)
+				case InvCheckType.CarryingSpecificItem:
+					if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && playerToCheck == PlayerToCheck.Specific)
 					{
-						count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedInCategory (playerID, categoryIDToCheck);
+						count = KickStarter.runtimeInventory.GetCount (invID, playerID);
+					}
+					else if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && playerToCheck == PlayerToCheck.Any)
+					{
+						count = KickStarter.runtimeInventory.GetCountFromAllPlayers (invID);
 					}
 					else
 					{
-						count = KickStarter.runtimeInventory.GetNumberOfItemsCarried (playerID);
+						count = KickStarter.runtimeInventory.GetCount (invID);
 					}
-				}
-				else
-				{
-					if (checkNumberInCategory)
+					break;
+
+				case InvCheckType.NumberOfItemsCarrying:
+					if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && playerToCheck == PlayerToCheck.Specific)
 					{
-						count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedInCategory (categoryIDToCheck);
+						if (checkNumberInCategory)
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedInCategory (categoryIDToCheck, playerID);
+						}
+						else
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarried (playerID);
+						}
+					}
+					else if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && !KickStarter.settingsManager.shareInventory && playerToCheck == PlayerToCheck.Any)
+					{
+						if (checkNumberInCategory)
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedInCategoryByAllPlayers (categoryIDToCheck);
+						}
+						else
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedByAllPlayers ();
+						}
 					}
 					else
 					{
-						count = KickStarter.runtimeInventory.GetNumberOfItemsCarried ();
+						if (checkNumberInCategory)
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarriedInCategory (categoryIDToCheck);
+						}
+						else
+						{
+							count = KickStarter.runtimeInventory.GetNumberOfItemsCarried ();
+						}
 					}
-				}
+					break;
+
+				default:
+					break;
 			}
 			
 			if (doCount || invCheckType == InvCheckType.NumberOfItemsCarrying)
 			{
-				if (intCondition == IntCondition.EqualTo)
+				switch (intCondition)
 				{
-					if (count == intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.NotEqualTo)
-				{
-					if (count != intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.LessThan)
-				{
-					if (count < intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.MoreThan)
-				{
-					if (count > intValue)
-					{
-						return true;
-					}
+					case IntCondition.EqualTo:
+						return (count == intValue);
+
+					case IntCondition.NotEqualTo:
+						return (count != intValue);
+
+					case IntCondition.LessThan:
+						return (count < intValue);
+
+					case IntCondition.MoreThan:
+						return (count > intValue);
+
+					default:
+						return false;
 				}
 			}
-			
 			else if (count > 0)
 			{
 				return true;
@@ -148,11 +163,11 @@ namespace AC
 			
 			return false;	
 		}
-		
+
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (inventoryManager == null && AdvGame.GetReferences ().inventoryManager)
 			{
@@ -228,7 +243,7 @@ namespace AC
 					if (invNumber == -1)
 					{
 						// Wasn't found (item was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen item no longer exists!");
+						if (invID > 0) LogWarning ("Previously chosen item no longer exists!");
 						
 						invNumber = 0;
 						invID = 0;
@@ -293,21 +308,21 @@ namespace AC
 			if (settingsManager != null && settingsManager.playerSwitching == PlayerSwitching.Allow && !settingsManager.shareInventory)
 			{
 				EditorGUILayout.Space ();
-				
-				setPlayer = EditorGUILayout.Toggle ("Check specific player?", setPlayer);
-				if (setPlayer)
+
+				playerToCheck = (PlayerToCheck) EditorGUILayout.EnumPopup ("Player to check:", playerToCheck);
+				if (playerToCheck == PlayerToCheck.Specific)
 				{
 					ChoosePlayerGUI ();
 				}
 			}
 			else
 			{
-				setPlayer = false;
+				playerToCheck = PlayerToCheck.Active;
 			}
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (!inventoryManager)
 			{
@@ -358,7 +373,7 @@ namespace AC
 				if (playerNumber == -1)
 				{
 					// Wasn't found (item was possibly deleted), so revert to zero
-					ACDebug.LogWarning ("Previously chosen Player no longer exists!");
+					if (playerID > 0) LogWarning ("Previously chosen Player no longer exists!");
 					
 					playerNumber = 0;
 					playerID = 0;
@@ -370,10 +385,21 @@ namespace AC
 		}
 
 
-		public override int GetInventoryReferences (List<ActionParameter> parameters, int _invID)
+		public int GetNumItemReferences (int _itemID, List<ActionParameter> parameters)
 		{
-			if (invCheckType == InvCheckType.CarryingSpecificItem && invID == _invID)
+			if (invCheckType == InvCheckType.CarryingSpecificItem && invID == _itemID)
 			{
+				return 1;
+			}
+			return 0;
+		}
+
+
+		public int UpdateItemReferences (int oldItemID, int newItemID, List<ActionParameter> parameters)
+		{
+			if (invCheckType == InvCheckType.CarryingSpecificItem && invID == oldItemID)
+			{
+				invID = newItemID;
 				return 1;
 			}
 			return 0;
@@ -389,7 +415,7 @@ namespace AC
 		 */
 		public static ActionInventoryCheck CreateNew_CarryingSpecificItem (int itemID)
 		{
-			ActionInventoryCheck newAction = (ActionInventoryCheck) CreateInstance <ActionInventoryCheck>();
+			ActionInventoryCheck newAction = CreateNew<ActionInventoryCheck> ();
 			newAction.invCheckType = InvCheckType.CarryingSpecificItem;
 			newAction.invID = itemID;
 
@@ -405,7 +431,7 @@ namespace AC
 		 */
 		public static ActionInventoryCheck CreateNew_NumberOfItemsCarrying (int numItems, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionInventoryCheck newAction = (ActionInventoryCheck) CreateInstance <ActionInventoryCheck>();
+			ActionInventoryCheck newAction = CreateNew<ActionInventoryCheck> ();
 			newAction.invCheckType = InvCheckType.NumberOfItemsCarrying;
 			newAction.intValue = numItems;
 			newAction.intCondition = condition;

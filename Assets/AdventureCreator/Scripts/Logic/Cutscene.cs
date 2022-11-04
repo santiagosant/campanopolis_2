@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Cutscene.cs"
  * 
@@ -23,9 +23,7 @@ namespace AC
 	 */
 	[AddComponentMenu("Adventure Creator/Logic/Cutscene")]
 	[System.Serializable]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_cutscene.html")]
-	#endif
 	public class Cutscene : ActionList
 	{
 
@@ -40,16 +38,34 @@ namespace AC
 			// Copy parameters
 			parameters = new List<ActionParameter>();
 			parameters.Clear ();
-			foreach (ActionParameter parameter in actionListAsset.parameters)
+			foreach (ActionParameter parameter in actionListAsset.DefaultParameters)
 			{
-				parameters.Add (new ActionParameter (parameter));
+				parameters.Add (new ActionParameter (parameter, true));
 			}
 
 			// Actions
+			
+			#if AC_ActionListPrefabs
+
+			JsonAction.ToCopyBuffer (actionListAsset.actions);
+			actions = JsonAction.CreatePasteBuffer ();
+			JsonAction.ClearCopyBuffer ();
+			
+			foreach (Action action in actions)
+			{
+				action.ClearIDs ();
+				action.isMarked = false;
+				action.isAssetFile = false;
+				action.parentActionListInEditor = this;
+			}
+
+			#else
+
 			actions = new List<Action>();
 			actions.Clear ();
 
 			Vector2 firstPosition = new Vector2 (14f, 14f);
+
 			foreach (Action originalAction in actionListAsset.actions)
 			{
 				if (originalAction == null)
@@ -57,24 +73,29 @@ namespace AC
 					continue;
 				}
 
-				AC.Action duplicatedAction = Object.Instantiate (originalAction) as AC.Action;
+
+				Action duplicatedAction = Instantiate (originalAction);
 				
 				if (actionListAsset.actions.IndexOf (originalAction) == 0)
 				{
-					duplicatedAction.nodeRect.x = firstPosition.x;
-					duplicatedAction.nodeRect.y = firstPosition.y;
+					Rect newRect = new Rect (firstPosition, duplicatedAction.NodeRect.size);
+					duplicatedAction.NodeRect = newRect;
 				}
 				else
 				{
-					duplicatedAction.nodeRect.x = firstPosition.x + (originalAction.nodeRect.x - firstPosition.x);
-					duplicatedAction.nodeRect.y = firstPosition.y + (originalAction.nodeRect.y - firstPosition.y);
+					Rect newRect = new Rect (originalAction.NodeRect.position, duplicatedAction.NodeRect.size);
+					duplicatedAction.NodeRect = newRect;
 				}
 
 				duplicatedAction.ClearIDs ();
 				duplicatedAction.isMarked = false;
 				duplicatedAction.isAssetFile = false;
+				duplicatedAction.parentActionListInEditor = this;
 				actions.Add (duplicatedAction);
+
 			}
+
+			#endif
 		}
 
 		#endif

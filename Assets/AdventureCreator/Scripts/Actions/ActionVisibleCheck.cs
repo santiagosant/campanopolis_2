@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVisibleCheck.cs"
  * 
@@ -30,34 +30,30 @@ namespace AC
 
 		public CheckVisState checkVisState = CheckVisState.InScene;
 
-		
-		public ActionVisibleCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Check visibility";
-			description = "Checks the visibility of a GameObject.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Check visibility"; }}
+		public override string Description { get { return "Checks the visibility of a GameObject."; }}
 		
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeObToAffect = AssignFile (parameters, parameterID, constantID, obToAffect);
 		}
 
 
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (runtimeObToAffect)
 			{
-				SpriteFader _spriteFader = runtimeObToAffect.GetComponent <SpriteFader>();
-				if (_spriteFader != null && _spriteFader.GetAlpha () <= 0f)
+				SpriteFader _spriteFader = runtimeObToAffect.GetComponent<SpriteFader> ();
+				if (_spriteFader && _spriteFader.GetAlpha () <= 0f)
 				{
 					return false;
 				}
 
-				Renderer _renderer = runtimeObToAffect.GetComponent <Renderer>();
-				if (_renderer != null)
+				Renderer _renderer = runtimeObToAffect.GetComponent<Renderer> ();
+				if (_renderer)
 				{
 					switch (checkVisState)
 					{
@@ -66,8 +62,26 @@ namespace AC
 
 						case CheckVisState.InScene:
 							return _renderer.enabled;
+
+						default:
+							break;
 					}
 				}
+
+				Canvas _canvas = runtimeObToAffect.GetComponent<Canvas> ();
+				if (_canvas)
+				{
+					return _canvas.enabled;
+				}
+
+				#if UNITY_2019_4_OR_NEWER
+				CanvasGroup canvasGroup = runtimeObToAffect.GetComponent<CanvasGroup> ();
+				if (canvasGroup)
+				{
+					return !(canvasGroup.enabled && canvasGroup.alpha <= 0f);
+				}
+				#endif
+
 				ACDebug.LogWarning ("Cannot check visibility of " + runtimeObToAffect.name + " as it has no renderer component", runtimeObToAffect);
 			}
 			return false;
@@ -76,7 +90,7 @@ namespace AC
 			
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Object to check:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -96,19 +110,30 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (obToAffect, constantID, parameterID);
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (obToAffect != null)
 			{
 				return obToAffect.name;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (obToAffect && obToAffect == gameObject) return true;
+				return (constantID == id && id != 0);
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 		
 		#endif
@@ -122,7 +147,7 @@ namespace AC
 		 */
 		public static ActionVisibleCheck CreateNew (GameObject objectToCheck, CheckVisState visibilityToCheck)
 		{
-			ActionVisibleCheck newAction = (ActionVisibleCheck) CreateInstance <ActionVisibleCheck>();
+			ActionVisibleCheck newAction = CreateNew<ActionVisibleCheck> ();
 			newAction.obToAffect = objectToCheck;
 			newAction.checkVisState = visibilityToCheck;
 			return newAction;

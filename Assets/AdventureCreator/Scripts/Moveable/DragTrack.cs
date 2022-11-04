@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"DragTrack.cs"
  * 
@@ -19,11 +19,11 @@ namespace AC
 	/**
 	 * The base class for "tracks", which are used to contrain Moveable_Drag objects along a pre-determined path
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_drag_track.html")]
-	#endif
-	public class DragTrack : MonoBehaviour
+	public abstract class DragTrack : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The Physics Material to give the track's end colliders */
 		public PhysicMaterial colliderMaterial;
@@ -43,33 +43,19 @@ namespace AC
 		public bool onlySnapOnPlayerRelease;
 		/** If True, and the track doesn't loop, then the dragged object will be prevented from jumping from one end to the other without first moving somewhere in between */
 		public bool preventEndToEndJumping = false;
+		/** Where to locate interactions */
+		public ActionListSource actionListSource = ActionListSource.InScene;
+		private Transform _transform;
+
+		#endregion
 
 
-		/**
-		 * <summary>Initialises two end colliders for an object that prevent it from moving beyond the track.</summary>
-		 * <param name = "draggable">The Moveable_Drag object to create colliders for</param>
-		 */
-		public virtual void AssignColliders (Moveable_Drag draggable)
+		#region PublicFunctions
+
+		/** Returns true if this type of track supports connections with other tracks via snapping */
+		public virtual bool TypeSupportsSnapConnections ()
 		{
-			if (UsesEndColliders && draggable.minCollider != null && draggable.maxCollider != null)
-			{
-				draggable.maxCollider.transform.rotation = Quaternion.AngleAxis (90f, draggable.maxCollider.transform.right) * draggable.maxCollider.transform.rotation;
-				draggable.minCollider.transform.rotation = Quaternion.AngleAxis (90f, draggable.minCollider.transform.right) * draggable.minCollider.transform.rotation;
-
-				if (colliderMaterial)
-				{
-					draggable.maxCollider.material = colliderMaterial;
-					draggable.minCollider.material = colliderMaterial;
-				}
-
-				draggable.maxCollider.transform.parent = this.transform;
-				draggable.minCollider.transform.parent = this.transform;
-
-				draggable.maxCollider.name = draggable.name + "_UpperLimit";
-				draggable.minCollider.name = draggable.name + "_LowerLimit";
-			}
-
-			LimitCollisions (draggable);
+			return false;
 		}
 
 
@@ -104,6 +90,24 @@ namespace AC
 
 
 		/**
+		 * <summary>Called when an object attached to the track is disconnected from it.</summary>
+		 * <param name = "draggable">The Moveable_Drag object being disconnected from the track</param>
+		 */
+		public void OnDisconnect (Moveable_Drag draggable)
+		{
+			if (draggable.maxCollider)
+			{
+				Destroy (draggable.maxCollider.gameObject);
+			}
+
+			if (draggable.minCollider)
+			{
+				Destroy (draggable.minCollider.gameObject);
+			}
+		}
+
+
+		/**
 		 * <summary>Applies a force to an object connected to the track.</summary>
 		 * <param name = "force">The drag force vector input by the player</param>
 		 * <param name = "draggable">The Moveable_Drag object to apply the force to</param>
@@ -115,11 +119,28 @@ namespace AC
 		/**
 		 * <summary>Gets the proportion along the track closest to a given position in screen-space</summary>
 		 * <param name = "point">The position in screen-space</param>
+		 * <param name = "grabRelativePosition">The grab position relative to the draggable's centre</param>
+		 * <param name = "dragm">The object being dragged</param>
 		 * <returns>The proportion along the track closest to a given position in screen-space</returns>
 		 */
-		public virtual float GetScreenPointProportionAlong (Vector2 point)
+		public virtual float GetScreenPointProportionAlong (Vector2 point, Vector3 grabRelativePosition, Moveable_Drag drag)
 		{
 			return 0f;
+		}
+
+
+		/**
+		 * <summary>Gets the smallest distance, in screen-space, between a given position in screen space, and the point on the track that it is closest to.</summary>
+		 * <param name="point">The point, in screen space</param>
+		 * <returns>The smallest distance, in screen-space, between a given position in screen space, and the point on the track that it is closest to.</returns>
+		 */
+		public float GetMinDistanceToScreenPoint (Vector2 point)
+		{
+			float proportionAlong = GetScreenPointProportionAlong (point, Vector3.zero, null);
+			Vector3 trackPointWorldPosition = GetGizmoPosition(proportionAlong);
+			Vector2 trackPointScreenPosition = KickStarter.CameraMain.WorldToScreenPoint(trackPointWorldPosition);
+
+			return Vector2.Distance(point, trackPointScreenPosition);
 		}
 
 
@@ -128,8 +149,9 @@ namespace AC
 		 * <param name = "_position">The proportion along which to place the Moveable_Drag object (0 to 1)</param>
 		 * <param name = "_speed">The speed to move by</param>
 		 * <param name = "draggable">The draggable object to move</param>
+		 * <param name = "ignoreMaxSpeed">If False, the object's maxSpeed will limit the speed</param>
 		 */
-		public virtual void ApplyAutoForce (float _position, float _speed, Moveable_Drag draggable)
+		public virtual void ApplyAutoForce (float _position, float _speed, Moveable_Drag draggable, bool ignoreMaxSpeed)
 		{}
 
 
@@ -140,11 +162,13 @@ namespace AC
 		public virtual void UpdateDraggable (Moveable_Drag draggable)
 		{
 			draggable.trackValue = GetDecimalAlong (draggable);
-
+			
+			DoRegionAudioCheck (draggable);
 			if (!onlySnapOnPlayerRelease)
 			{
 				DoSnapCheck (draggable);
 			}
+			DoConnectionCheck (draggable);
 		}
 
 
@@ -158,16 +182,212 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Corrects the position of an object so that it is placed along the track.</summary>
+		 * <param name = "draggable">The Moveable_Drag object to snap onto the track</param>
+		 * <param name = "onStart">Is True if the game has just begun (i.e. this function is being run for the first time)</param>
+		 */
+		public virtual void SnapToTrack (Moveable_Drag draggable, bool onStart)
+		{}
+
+
+		/**
+		 * <summary>Checks if the icon that can display when an object is moved along the track remains in the same place as the object moves.</summary>
+		 * <returns>True if the icon remains in the same place (always False unless overridden by subclasses)</returns>
+		 */
+		public virtual bool IconIsStationary ()
+		{
+			return false;
+		}
+
+
+		/**
+		 * <summary>Gets the position of gizmos at a certain position along the track</summary>
+		 * <param name = "proportionAlong">The proportio along the track to get the gizmo position of</param>
+		 * <returns>The position of the gizmo</returns>
+		 */
+		public virtual Vector3 GetGizmoPosition (float proportionAlong)
+		{
+			return Transform.position;
+		}
+
+
+		/**
+		 * <summary>Calculates a force to get a draggable object to a given point along the track</summary>
+		 * <param name = "draggable">The draggable object</param>
+		 * <param name = "targetProportionAlong">How far along the track to calculate a force for</param>
+		 * <returns>The force vector, in world space</returns>
+		 */
+		public virtual Vector3 GetForceToPosition (Moveable_Drag draggable, float targetProportionAlong)
+		{
+			return Vector3.zero;
+		}
+
+
+
+		/*
+		 * <summary>Gets the current intensity of a draggable object's movement sound</summary>
+		 * <param name = "deltaTrackPosition">The change in the draggable object's track position in the last frame</param>
+		 * <returns>The current intensity of a draggable object's movement sound</summary>
+		 */
+		public virtual float GetMoveSoundIntensity (float deltaTrackPosition)
+		{
+			return 0f;
+		}
+
+
+		/**
+		 * <summary>Gets TrackSnapData for a snap point</summary>
+		 * <param name="regionID">The ID of the region to get data for</param>
+		 * <returns>The TrackSnapData associated with the given ID</returns>
+		 */
+		public TrackSnapData GetSnapData (int regionID)
+		{
+			foreach (TrackSnapData trackSnapData in allTrackSnapData)
+			{
+				if (trackSnapData.ID == regionID)
+				{
+					return trackSnapData;
+				}
+			}
+			return null;
+		}
+
+
+		/**
+		 * <summary>Gets the position along the track for the centre of a given region</summary>
+		 * <param name="regionID">The ID of the region to get the position of</param>
+		 * <returns>The centre-point position along the track of the region</returns>
+		 */
+		public float GetRegionPositionAlong (int regionID)
+		{
+			if (allTrackSnapData != null)
+			{
+				foreach (TrackSnapData trackSnapData in allTrackSnapData)
+				{
+					if (trackSnapData.ID == regionID)
+					{
+						return trackSnapData.PositionAlong;
+					}
+				}
+			}
+
+			ACDebug.LogWarning ("Could not find snap point with ID " + regionID + " on Track " + this, this);
+			return 0f;
+		}
+
+
+		/**
+		 * <summary>Checks if a position along the track is within a given track region</summary>
+		 * <param name = "trackValue">The distance along the track, as a decimal of its total length</param>
+		 * <param name = "snapID">The ID number of the snap region</param>
+		 * <returns>True if the position along the track is within the region</region>
+		 */
+		public bool IsWithinTrackRegion (float trackValue, int regionID)
+		{
+			foreach (TrackSnapData trackSnapData in allTrackSnapData)
+			{
+				if (trackSnapData.ID == regionID)
+				{
+					return trackSnapData.IsWithinRegion (trackValue);
+				}
+			}
+			return false;
+		}
+
+
+		public virtual float GetForceDotProduct (Vector3 force, Moveable_Drag draggable)
+		{
+			return 0f;
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void DoRegionAudioCheck (Moveable_Drag draggable)
+		{
+			TrackSnapData trackSnapData = null;
+			for (int i = 0; i < allTrackSnapData.Count; i++)
+			{
+				if (IsWithinTrackRegion (draggable.trackValue, allTrackSnapData[i].ID))
+				{
+					trackSnapData = allTrackSnapData[i];
+					break;
+				}
+			}
+
+			if (trackSnapData != null)
+			{
+				if (draggable.regionID != trackSnapData.ID)
+				{
+					if (trackSnapData.SoundOnEnter)
+					{
+						AudioSource.PlayClipAtPoint (trackSnapData.SoundOnEnter, trackSnapData.GetWorldPosition (this));
+					}
+					draggable.regionID = trackSnapData.ID;
+				}
+			}
+			else
+			{
+				draggable.regionID = -1;
+			}
+		}
+
+
+		protected virtual void AssignColliders (Moveable_Drag draggable)
+		{
+			if (UsesEndColliders && draggable.minCollider && draggable.maxCollider)
+			{
+				draggable.maxCollider.transform.rotation = Quaternion.AngleAxis (90f, draggable.maxCollider.transform.right) * draggable.maxCollider.transform.rotation;
+				draggable.minCollider.transform.rotation = Quaternion.AngleAxis (90f, draggable.minCollider.transform.right) * draggable.minCollider.transform.rotation;
+
+				if (colliderMaterial)
+				{
+					draggable.maxCollider.material = colliderMaterial;
+					draggable.minCollider.material = colliderMaterial;
+				}
+
+				draggable.maxCollider.transform.parent = Transform;
+				draggable.minCollider.transform.parent = Transform;
+
+				draggable.maxCollider.name = draggable.name + "_UpperLimit";
+				draggable.minCollider.name = draggable.name + "_LowerLimit";
+			}
+
+			LimitCollisions (draggable);
+		}
+
+
 		protected void DoSnapCheck (Moveable_Drag draggable)
 		{
-			if (doSnapping && !draggable.IsAutoMoving () && !draggable.IsHeld)
+			if (doSnapping && (!draggable.UsesRigidbody || !draggable.IsAutoMoving ()) && !draggable.IsHeld)
 			{
 				SnapToNearest (draggable);
 			}
 		}
 
 
-		private void SnapToNearest (Moveable_Drag draggable)
+		protected void DoConnectionCheck (Moveable_Drag draggable)
+		{
+			if (!TypeSupportsSnapConnections ())
+			{
+				return;
+			}
+
+			foreach (TrackSnapData trackSnapData in allTrackSnapData)
+			{
+				float dist = trackSnapData.GetDistanceFrom (draggable.GetPositionAlong ());
+				if (Mathf.Abs (dist) < 0.01f)
+				{
+					trackSnapData.EvaluateConnectionPoints (this, draggable, KickStarter.playerInput.GetDragForce (draggable));
+				}
+			}
+		}
+
+
+		protected void SnapToNearest (Moveable_Drag draggable)
 		{
 			int bestIndex = -1;
 			float minDistanceFrom = Mathf.Infinity;
@@ -189,30 +409,13 @@ namespace AC
 		}
 
 
-		protected float SignedAngle (Vector2 from, Vector2 to)
-        {
-            float unsigned_angle = Vector2.Angle (from, to);
-            float sign = Mathf.Sign(from.x * to.y - from.y * to.x);
-            return unsigned_angle * sign;
-        }
-
-
-		/**
-		 * <summary>Corrects the position of an object so that it is placed along the track.</summary>
-		 * <param name = "draggable">The Moveable_Drag object to snap onto the track</param>
-		 * <param name = "onStart">Is True if the game has just begun (i.e. this function is being run for the first time)</param>
-		 */
-		public virtual void SnapToTrack (Moveable_Drag draggable, bool onStart)
-		{}
-
-
 		protected void LimitCollisions (Moveable_Drag draggable)
 		{
 			Collider[] allColliders = FindObjectsOfType (typeof(Collider)) as Collider[];
 			Collider[] dragColliders = draggable.GetComponentsInChildren <Collider>();
 
 			// Disable all collisions on max/min colliders
-			if (draggable.minCollider != null && draggable.maxCollider != null)
+			if (draggable.minCollider && draggable.maxCollider)
 			{
 				foreach (Collider _collider in allColliders)
 				{
@@ -233,7 +436,7 @@ namespace AC
 			// Set collisions on draggable's colliders
 			foreach (Collider _collider in allColliders)
 			{
-				if (_collider.GetComponent <AC_Trigger>() != null) continue;
+				if (_collider.GetComponent <AC_Trigger>()) continue;
 
 				foreach (Collider dragCollider in dragColliders)
 				{
@@ -244,11 +447,11 @@ namespace AC
 
 					bool result = true;
 
-					if ((draggable.minCollider != null && draggable.minCollider == _collider) || (draggable.maxCollider != null && draggable.maxCollider == _collider))
+					if ((draggable.minCollider && draggable.minCollider == _collider) || (draggable.maxCollider && draggable.maxCollider == _collider))
 					{
 						result = false;
 					}
-					else if (_collider.gameObject.tag == Tags.player)
+					else if (KickStarter.player && _collider.gameObject == KickStarter.player.gameObject)
 					{
 						result = draggable.ignorePlayerCollider;
 					}
@@ -272,7 +475,7 @@ namespace AC
 			}
 
 			// Enable collisions between max/min collisions and draggable's colliders
-			if (draggable.minCollider != null && draggable.maxCollider != null)
+			if (draggable.minCollider && draggable.maxCollider)
 			{
 				foreach (Collider _collider in dragColliders)
 				{
@@ -289,15 +492,15 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Checks if the icon that can display when an object is moved along the track remains in the same place as the object moves.</summary>
-		 * <returns>True if the icon remains in the same place (always False unless overridden by subclasses)</returns>
-		 */
-		public virtual bool IconIsStationary ()
+		protected Vector3 RotatePointAroundPivot (Vector3 point, Vector3 pivot, Quaternion rotation)
 		{
-			return false;
+			return rotation * (point - pivot) + pivot;
 		}
 
+		#endregion
+
+
+		#region GetSet		
 
 		/** Checks if the track is on a loop */
 		public virtual bool Loops
@@ -306,35 +509,6 @@ namespace AC
 			{
 				return false;
 			}
-		}
-
-
-		/**
-		 * <summary>Gets the position of gizmos at a certain position along the track</summary>
-		 * <param name = "proportionAlong">The proportio along the track to get the gizmo position of</param>
-		 * <returns>The position of the gizmo</returns>
-		 */
-		public virtual Vector3 GetGizmoPosition (float proportionAlong)
-		{
-			return transform.position;
-		}
-
-
-		protected Vector3 RotatePointAroundPivot (Vector3 point, Vector3 pivot, Quaternion rotation)
-		{
-			return rotation * (point - pivot) + pivot;
-		}
-
-
-		/**
-		 * <summary>Calculates a force to get a draggable object to a given point along the track</summary>
-		 * <param name = "draggable">The draggable object</param>
-		 * <param name = "targetProportionAlong">How far along the track to calculate a force for</param>
-		 * <returns>The force vector, in world space</returns>
-		 */
-		public virtual Vector3 GetForceToPosition (Moveable_Drag draggable, float targetProportionAlong)
-		{
-			return Vector3.zero;
 		}
 
 
@@ -350,47 +524,17 @@ namespace AC
 		}
 
 
-		/*
-		 * <summary>Gets the current intensity of a draggable object's movement sound</summary>
-		 * <param name = "draggable">The draggable object</param>
-		 * <returns>The current intensity of a draggable object's movement sound</summary>
-		 */
-		public virtual float GetMoveSoundIntensity (Moveable_Drag draggable)
+		/** A cache of the tracks's transform component */
+		public Transform Transform
 		{
-			return draggable._rigidbody.velocity.magnitude;
-		}
-
-
-		public TrackSnapData GetSnapData (int ID)
-		{
-			foreach (TrackSnapData trackSnapData in allTrackSnapData)
+			get
 			{
-				if (trackSnapData.ID == ID)
-				{
-					return trackSnapData;
-				}
+				if (_transform == null) _transform = transform;
+				return _transform;
 			}
-			return null;
 		}
 
-
-		/**
-		 * <summary>Checks if a region along the track is within a given snap region</summary>
-		 * <param name = "trackValue">The distance along the track, as a decimal of its total length</param>
-		 * <param name = "snapID">The ID number of the snap region</param>
-		 * <returns>True if a region along the track is within the snap's region</region>
-		 */
-		public bool IsWithinSnapRegion (float trackValue, int snapID)
-		{
-			foreach (TrackSnapData trackSnapData in allTrackSnapData)
-			{
-				if (trackSnapData.ID == snapID)
-				{
-					return trackSnapData.IsWithinRegion (trackValue);
-				}
-			}
-			return false;
-		}
+		#endregion
 
 	}
 

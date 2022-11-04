@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberContainer.cs"
  * 
@@ -15,13 +15,9 @@ using System.Collections.Generic;
 namespace AC
 {
 
-	/**
-	 * This script is attached to Container objects in the scene you wish to save.
-	 */
+	/** This script is attached to Container objects in the scene you wish to save. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Container")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_container.html")]
-	#endif
 	public class RememberContainer : Remember
 	{
 
@@ -35,22 +31,13 @@ namespace AC
 			containerData.objectID = constantID;
 			containerData.savePrevented = savePrevented;
 			
-			if (_Container != null)
+			if (_Container)
 			{
-				List<int> linkedIDs = new List<int>();
-				List<int> counts = new List<int>();
-				List<int> IDs = new List<int>();
+				containerData.collectionData = _Container.InvCollection.GetSaveData ();
 
-				for (int i=0; i<_Container.items.Count; i++)
-				{
-					linkedIDs.Add (_Container.items[i].linkedID);
-					counts.Add (_Container.items[i].count);
-					IDs.Add (_Container.items[i].id);
-				}
-
-				containerData._linkedIDs = ArrayToString <int> (linkedIDs.ToArray ());
-				containerData._counts = ArrayToString <int> (counts.ToArray ());
-				containerData._IDs = ArrayToString <int> (IDs.ToArray ());
+				containerData._linkedIDs = string.Empty; // Now deprecated
+				containerData._counts = string.Empty; // Now deprecated
+				containerData._IDs = string.Empty; // Now deprecated
 			}
 			
 			return Serializer.SaveScriptData <ContainerData> (containerData);
@@ -64,25 +51,34 @@ namespace AC
 		public override void LoadData (string stringData)
 		{
 			ContainerData data = Serializer.LoadScriptData <ContainerData> (stringData);
-
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (_Container != null)
+			if (_Container)
 			{
-				_Container.items.Clear ();
-
-				int[] linkedIDs = StringToIntArray (data._linkedIDs);
-				int[] counts = StringToIntArray (data._counts);
-				int[] IDs = StringToIntArray (data._IDs);
-
-				if (IDs != null)
+				if (!string.IsNullOrEmpty (data._linkedIDs))
 				{
-					for (int i=0; i<IDs.Length; i++)
+					List<InvInstance> invInstances = new List<InvInstance> ();
+					int[] linkedIDs = StringToIntArray (data._linkedIDs);
+					int[] counts = StringToIntArray (data._counts);
+				
+					if (linkedIDs != null)
 					{
-						ContainerItem newItem = new ContainerItem (linkedIDs[i], counts[i], IDs[i]);
-						_Container.items.Add (newItem);
+						for (int i=0; i<linkedIDs.Length; i++)
+						{
+							invInstances.Add (new InvInstance (linkedIDs[i], counts[i]));
+						}
 					}
+
+					_Container.InvCollection = new InvCollection (invInstances);
+				}
+				else if (!string.IsNullOrEmpty (data.collectionData))
+				{
+					_Container.InvCollection = InvCollection.LoadData (data.collectionData);
+				}
+				else
+				{
+					_Container.InvCollection = new InvCollection ();
 				}
 			}
 		}
@@ -104,23 +100,21 @@ namespace AC
 	}
 	
 
-	/**
-	 * A data container used by the RememberContainer script.
-	 */
+	/** A data container used by the RememberContainer script. */
 	[System.Serializable]
 	public class ContainerData : RememberData
 	{
 
-		/** The ID numbers of the Inventory Items stored in the Container */
+		/** (Deprecated) */
 		public string _linkedIDs;
-		/** The numbers of each Inventory Item stored in the Container */
+		/** (Deprecated) */
 		public string _counts;
-		/** The unique ID of each ContainerItem stored within the Container */
+		/** (Deprecated) */
 		public string _IDs;
+		/** The contents of the container's InvCollection. */
+		public string collectionData;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public ContainerData () { }
 
 	}

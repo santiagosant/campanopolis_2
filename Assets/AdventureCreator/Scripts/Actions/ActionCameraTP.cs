@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCameraTP.cs"
  * 
@@ -18,214 +18,174 @@ using UnityEditor;
 
 namespace AC
 {
-	
+
 	[System.Serializable]
 	public class ActionCameraTP : Action
 	{
-		
-		public int constantID = 0;
-		public int parameterID = -1;
-		public GameCameraThirdPerson linkedCamera;
-		protected GameCameraThirdPerson runtimeLinkedCamera;
-		
-		public float transitionTime;
-		public int transitionTimeParameterID = -1;
 
-		public bool controlPitch = false;
-		public bool controlSpin = false;
-
-		public bool isRelativeToTarget = false;
 		public float newPitchAngle = 0f;
 		public float newSpinAngle = 0f;
-		
-		public AnimationCurve timeCurve = new AnimationCurve (new Keyframe(0, 0), new Keyframe(1, 1));
-		public MoveMethod moveMethod;
+		public int newRotationParameterID = -1;
+		private Vector3 newRotation;
 
-		
-		
-		public ActionCameraTP ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Camera;
-			title = "Rotate third-person";
-			description = "Rotates a Game Camera Third-person to face a certain direction, either fixed or relative to its target.";
-		}
-		
-		
+		public GameCameraThirdPerson thirdPersonCamera = null;
+		public int thirdPersonCameraConstantID = 0;
+		public int thirdPersonCameraParameterID = -1;
+
+		public enum NewTPCamMethod { SetLookAtOverride, ClearLookAtOverride, MoveToRotation, SnapToMainCamera };
+		public NewTPCamMethod method = NewTPCamMethod.MoveToRotation;
+		public Transform lookAtOverride = null;
+
+		public int lookAtOverrideConstantID = 0;
+		public int lookAtOverrideParameterID = -1;
+
+		public float transitionTime = 0f;
+		public int transitionTimeParameterID = -1;
+		public bool isRelativeToTarget = false;
+
+
+		public override ActionCategory Category { get { return ActionCategory.Camera; } }
+		public override string Title { get { return "Rotate third-person"; } }
+		public override string Description { get { return "Manipulates the new third-person camera"; } }
+
+
 		override public void AssignValues (List<ActionParameter> parameters)
 		{
-			runtimeLinkedCamera = AssignFile <GameCameraThirdPerson> (parameters, parameterID, constantID, linkedCamera);
+			thirdPersonCamera = AssignFile (parameters, thirdPersonCameraParameterID, thirdPersonCameraConstantID, thirdPersonCamera);
+			lookAtOverride = AssignFile (parameters, lookAtOverrideParameterID, lookAtOverrideConstantID, lookAtOverride);
 			transitionTime = AssignFloat (parameters, transitionTimeParameterID, transitionTime);
+
+			newRotation = new Vector3 (newSpinAngle, newPitchAngle, 0f);
+			newRotation = AssignVector3 (parameters, newRotationParameterID, newRotation);
 		}
-		
-		
+
+
 		override public float Run ()
 		{
-			if (!isRunning)
+			if (thirdPersonCamera)
 			{
-				isRunning = true;
-
-				if (DoRotation (transitionTime) && transitionTime > 0f && willWait)
+				if (!isRunning)
 				{
-					return transitionTime;
-				}
-			}
-			else
-			{
-				isRunning = false;
-				return 0f;
-			}
-
-			return 0f;
-		}
-		
-		
-		override public void Skip ()
-		{
-			DoRotation (0f);
-		}
-
-
-		private bool DoRotation (float _transitionTime)
-		{
-			if (runtimeLinkedCamera != null && (controlPitch || controlSpin))
-			{
-				float _newPitchAngle = newPitchAngle;
-				float _newSpinAngle = newSpinAngle;
-
-				if (controlSpin)
-				{
-					if (isRelativeToTarget)
+					switch (method)
 					{
-						_newSpinAngle += runtimeLinkedCamera.target.localEulerAngles.y;
-					}
-					else
-					{
-						_newSpinAngle += 180f;
-					}
-				}
+						case NewTPCamMethod.SetLookAtOverride:
+							thirdPersonCamera.SetLookAtOverride (lookAtOverride, transitionTime);
+							break;
 
-				if (_newSpinAngle > 360f)
-				{
-					_newSpinAngle -= 360f;
-				}
+						case NewTPCamMethod.ClearLookAtOverride:
+							thirdPersonCamera.ClearLookAtOverride (transitionTime);
+							break;
 
-				if (_transitionTime > 0f)
-				{
-					runtimeLinkedCamera.ForceRotation (controlPitch, _newPitchAngle, controlSpin, _newSpinAngle, _transitionTime, moveMethod, timeCurve);
+						case NewTPCamMethod.MoveToRotation:
+							thirdPersonCamera.BeginAutoMove (transitionTime, newRotation, isRelativeToTarget);
+							if (transitionTime > 0f && willWait)
+							{
+								isRunning = true;
+								return defaultPauseTime;
+							}
+							break;
+
+						case NewTPCamMethod.SnapToMainCamera:
+							thirdPersonCamera.SnapToDirection (Camera.main.transform.forward, Camera.main.transform.right);
+							break;
+					}
 				}
 				else
 				{
-					runtimeLinkedCamera.ForceRotation (controlPitch, _newPitchAngle, controlSpin, _newSpinAngle);
+					if (thirdPersonCamera.IsAutoMoving ())
+					{
+						return defaultPauseTime;
+					}
+					isRunning = false;
 				}
-
-				return true;
 			}
-			return false;
+			return 0f;
 		}
-		
-		
+
+
 		#if UNITY_EDITOR
-		
+
 		override public void ShowGUI (List<ActionParameter> parameters)
 		{
-			parameterID = Action.ChooseParameterGUI ("Third-person camera:", parameters, parameterID, ParameterType.GameObject);
-			if (parameterID >= 0)
+			thirdPersonCameraParameterID = Action.ChooseParameterGUI ("Third-person camera:", parameters, thirdPersonCameraParameterID, ParameterType.GameObject);
+			if (thirdPersonCameraParameterID >= 0)
 			{
-				constantID = 0;
-				linkedCamera = null;
+				thirdPersonCameraConstantID = 0;
+				thirdPersonCamera = null;
 			}
 			else
 			{
-				linkedCamera = (GameCameraThirdPerson) EditorGUILayout.ObjectField ("Third-person camera:", linkedCamera, typeof (GameCameraThirdPerson), true);
-				
-				constantID = FieldToID <GameCameraThirdPerson> (linkedCamera, constantID);
-				linkedCamera = IDToField <GameCameraThirdPerson> (linkedCamera, constantID, true);
+				thirdPersonCamera = (GameCameraThirdPerson) EditorGUILayout.ObjectField ("Third-person camera:", thirdPersonCamera, typeof (GameCameraThirdPerson), true);
+
+				thirdPersonCameraConstantID = FieldToID (thirdPersonCamera, thirdPersonCameraConstantID);
+				thirdPersonCamera = IDToField (thirdPersonCamera, thirdPersonCameraConstantID, false);
 			}
 
-			controlPitch = EditorGUILayout.Toggle ("Control pitch?", controlPitch);
-			if (controlPitch)
-			{
-				newPitchAngle = EditorGUILayout.FloatField ("New pitch angle:", newPitchAngle);
-			}
+			method = (NewTPCamMethod) EditorGUILayout.EnumPopup ("Method:", method);
 
-			controlSpin = EditorGUILayout.Toggle ("Control spin?", controlSpin);
-			if (controlSpin)
+			if (method == NewTPCamMethod.MoveToRotation)
 			{
-				newSpinAngle = EditorGUILayout.FloatField ("New spin angle:", newSpinAngle);
+				newRotationParameterID = Action.ChooseParameterGUI ("New rotation:", parameters, newRotationParameterID, ParameterType.Vector3);
+				if (newRotationParameterID < 0)
+				{
+					newSpinAngle = EditorGUILayout.Slider ("New spin:", newSpinAngle, -180f, 180f);
+					newPitchAngle = EditorGUILayout.Slider ("New pitch:", newPitchAngle, -80f, 80f);
+				}
+
 				isRelativeToTarget = EditorGUILayout.Toggle ("Spin relative to target?", isRelativeToTarget);
-			}
 
-			if (controlPitch || controlSpin)
-			{
-				transitionTimeParameterID = Action.ChooseParameterGUI ("Transition time (s):", parameters, transitionTimeParameterID, ParameterType.Float);
+				transitionTimeParameterID = Action.ChooseParameterGUI ("Speed:", parameters, transitionTimeParameterID, ParameterType.Float);
 				if (transitionTimeParameterID < 0)
 				{
-					transitionTime = EditorGUILayout.FloatField ("Transition time (s):", transitionTime);
+					transitionTime = EditorGUILayout.Slider ("Speed:", transitionTime, 0f, 10f);
 				}
-				
-				if (transitionTime > 0f)
+				if (transitionTimeParameterID < 0 || transitionTime > 0f)
 				{
-					moveMethod = (MoveMethod) EditorGUILayout.EnumPopup ("Move method:", moveMethod);
-
-					if (moveMethod == MoveMethod.CustomCurve)
-					{
-						timeCurve = EditorGUILayout.CurveField ("Time curve:", timeCurve);
-					}
-
 					willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 				}
 			}
-			
-			AfterRunningOption ();
-		}
-
-
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
-		{
-			if (saveScriptsToo)
+			else if (method == NewTPCamMethod.SetLookAtOverride || method == NewTPCamMethod.ClearLookAtOverride)
 			{
-				AddSaveScript <ConstantID> (linkedCamera);
+				if (method == NewTPCamMethod.SetLookAtOverride)
+				{
+					lookAtOverrideParameterID = Action.ChooseParameterGUI ("Look-at Transform:", parameters, lookAtOverrideParameterID, ParameterType.GameObject);
+					if (lookAtOverrideParameterID >= 0)
+					{
+						lookAtOverrideConstantID = 0;
+						lookAtOverride = null;
+					}
+					else
+					{
+						lookAtOverride = (Transform) EditorGUILayout.ObjectField ("Look-at Transform:", lookAtOverride, typeof (Transform), true);
+
+						lookAtOverrideConstantID = FieldToID (lookAtOverride, lookAtOverrideConstantID);
+						lookAtOverride = IDToField (lookAtOverride, lookAtOverrideConstantID, false);
+					}
+				}
+
+				transitionTimeParameterID = Action.ChooseParameterGUI ("Speed:", parameters, transitionTimeParameterID, ParameterType.Float);
+				if (transitionTimeParameterID < 0)
+				{
+					transitionTime = EditorGUILayout.Slider ("Transition time (s):", transitionTime, 0f, 10f);
+				}
 			}
-			AssignConstantID <GameCameraThirdPerson> (linkedCamera, constantID, parameterID);
 		}
-		
-		
+
+
+		override public void AssignConstantIDs (bool saveScriptsToo = false, bool fromAssetFile = false)
+		{
+			AssignConstantID (lookAtOverride, lookAtOverrideConstantID, lookAtOverrideParameterID);
+			AssignConstantID<GameCameraThirdPerson> (thirdPersonCamera, thirdPersonCameraConstantID, thirdPersonCameraParameterID);
+		}
+
+
 		override public string SetLabel ()
 		{
-			if (linkedCamera)
-			{
-				return linkedCamera.name;
-			}
-			return string.Empty;
+			return method.ToString ();
 		}
-		
+
 		#endif
 
-
-		/**
-		 * <summary>Creates a new instance of the 'Camera: Third-person' Action</summary>
-		 * <param name = "newPitchAngle">The camera's new pitch angle</param>
-		 * <param name = "newSpinAngle">The camera's new spin angle</param>
-		 * <param name = "spinAngleIsRelativeToTarget">If True, the spin angle is relative to the target</param>
-		 * <param name = "transitionTime">The time, in seconds, to take</param>
-		 * <param name = "waitUntilFinish">If True, then the Action will wait until the transition is complete<param>
-		 * <returns>The generated Action</returns>
-		 */
-		public static ActionCameraTP CreateNew (float newPitchAngle, float newSpinAngle, bool spinAngleIsRelativeToTarget = false, float transitionTime = 1f, bool waitUntilFinish = false)
-		{
-			ActionCameraTP newAction = (ActionCameraTP) CreateInstance <ActionCameraTP>();
-			newAction.controlPitch = true;
-			newAction.newPitchAngle = newPitchAngle;
-			newAction.controlSpin = true;
-			newAction.newSpinAngle = newSpinAngle;
-			newAction.isRelativeToTarget = spinAngleIsRelativeToTarget;
-			newAction.transitionTime = transitionTime;
-			newAction.willWait = waitUntilFinish;
-			newAction.moveMethod = MoveMethod.Smooth;
-			return newAction;
-		}
-
 	}
-	
+
 }

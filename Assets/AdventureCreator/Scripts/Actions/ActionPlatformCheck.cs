@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPlatformCheck.cs"
  * 
@@ -24,75 +24,74 @@ namespace AC
 		public PlatformType platformType = PlatformType.Desktop;
 
 
-		public ActionPlatformCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "Check platform";
-			description = "Queries either the plaform the game is running on.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Check platform"; }}
+		public override string Description { get { return "Queries either the plaform the game is running on."; }}
 
-		
-		override public bool CheckCondition ()
+
+		public override bool CheckCondition ()
 		{
 			switch (platformType)
 			{
 
-			case PlatformType.Desktop:
-				#if UNITY_STANDALONE
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.Desktop:
+					#if UNITY_STANDALONE
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.TouchScreen:
-				#if UNITY_ANDROID || UNITY_IOS
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.TouchScreen:
+					#if UNITY_ANDROID || UNITY_IOS
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.WebPlayer:
-				#if UNITY_WEBPLAYER
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.WebGL:
+					#if UNITY_WEBGL
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.Windows:
-				#if UNITY_STANDALONE_WIN
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.Windows:
+					#if UNITY_STANDALONE_WIN
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.Mac:
-				#if UNITY_STANDALONE_OSX
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.Mac:
+					#if UNITY_STANDALONE_OSX
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.Linux:
-				#if UNITY_STANDALONE_LINUX
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.Linux:
+					#if UNITY_STANDALONE_LINUX
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.iOS:
-				#if UNITY_IOS
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.iOS:
+					#if UNITY_IOS
+					return true;
+					#else
+					return false;
+					#endif
 
-			case PlatformType.Android:
-				#if UNITY_ANDROID
-				return true;
-				#else
-				return false;
-				#endif
+				case PlatformType.Android:
+					#if UNITY_ANDROID
+					return true;
+					#else
+					return false;
+					#endif
+
+				default:
+					break;
 			}
 
 			return false;
@@ -101,7 +100,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			platformType = (PlatformType) EditorGUILayout.EnumPopup ("Platform is:", platformType);
 		}
@@ -122,7 +121,7 @@ namespace AC
 		 */
 		public static ActionPlatformCheck CreateNew (PlatformType platformToCheck)
 		{
-			ActionPlatformCheck newAction = (ActionPlatformCheck) CreateInstance <ActionPlatformCheck>();
+			ActionPlatformCheck newAction = CreateNew<ActionPlatformCheck> ();
 			newAction.platformType = platformToCheck;
 			return newAction;
 		}

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionEndGame.cs"
  * 
@@ -30,80 +30,59 @@ namespace AC
 		public int sceneNumber;
 		public string sceneName;
 		public bool resetMenus;
+		public bool killActionLists;
 		
 		
-		public ActionEndGame ()
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "End game"; }}
+		public override string Description { get { return "Ends the current game, either by loading an autosave, restarting or quitting the game executable."; }}
+		public override int NumSockets { get { return 0; }}
+
+
+		public override float Run ()
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "End game";
-			description = "Ends the current game, either by loading an autosave, restarting or quitting the game executable.";
-			numSockets = 0;
-		}
-		
-		
-		override public float Run ()
-		{
-			if (endGameType == AC_EndGameType.QuitGame)
+			switch (endGameType)
 			{
-				#if UNITY_EDITOR
-					UnityEditor.EditorApplication.isPlaying = false;
-				#else
+				case AC_EndGameType.QuitGame:
+					#if UNITY_EDITOR
+					EditorApplication.isPlaying = false;
+					#else
 					Application.Quit ();
-				#endif
-			}
-			else if (endGameType == AC_EndGameType.LoadAutosave)
-			{
-				SaveSystem.LoadAutoSave ();
-			}
-			else
-			{
-				KickStarter.runtimeInventory.SetNull ();
-				KickStarter.runtimeInventory.RemoveRecipes ();
+					#endif
+					break;
 
-				DestroyImmediate (GameObject.FindWithTag (Tags.player));
+				case AC_EndGameType.LoadAutosave:
+					SaveSystem.LoadAutoSave ();
+					break;
 
-				if (endGameType == AC_EndGameType.RestartGame)
-				{
-					KickStarter.ResetPlayer (KickStarter.settingsManager.GetDefaultPlayer (), KickStarter.settingsManager.GetDefaultPlayerID (), false, Quaternion.identity);
-
-					KickStarter.saveSystem.ClearAllData ();
-					KickStarter.levelStorage.ClearAllLevelData ();
-					KickStarter.runtimeInventory.OnStart ();
-					KickStarter.runtimeDocuments.OnStart ();
-					KickStarter.runtimeVariables.OnStart ();
-
-					if (resetMenus)
+				case AC_EndGameType.RestartGame:
+					if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name)
 					{
-						KickStarter.playerMenus.RebuildMenus ();
+						string _sceneName = (chooseSceneBy == ChooseSceneBy.Name) ? sceneName : KickStarter.sceneChanger.IndexToName (sceneNumber);
+						KickStarter.RestartGame (resetMenus, _sceneName, killActionLists);
 					}
+					else if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Number)
+					{
+						int _sceneIndex = (chooseSceneBy == ChooseSceneBy.Name) ? KickStarter.sceneChanger.NameToIndex (sceneName) : sceneNumber;
+						KickStarter.RestartGame (resetMenus, _sceneIndex, killActionLists);
+					}
+					break;
 
-					KickStarter.eventManager.Call_OnRestartGame ();
+				case AC_EndGameType.ResetScene:
+					KickStarter.sceneChanger.ResetCurrentScene ();
+					break;
 
-					KickStarter.stateHandler.CanGlobalOnStart ();
-					KickStarter.sceneChanger.ChangeScene (new SceneInfo (chooseSceneBy, sceneName, sceneNumber), false, true);
-				}
-				else if (endGameType == AC_EndGameType.ResetScene)
-				{
-					sceneNumber = UnityVersionHandler.GetCurrentSceneNumber ();
-					KickStarter.levelStorage.ClearCurrentLevelData ();
-					KickStarter.sceneChanger.ChangeScene (new SceneInfo ("", sceneNumber), false, true);
-				}
+				default:
+					break;
 			}
 
 			return 0f;
 		}
 		
 		
-		override public ActionEnd End (List<Action> actions)
-		{
-			return GenerateStopActionEnd ();
-		}
-		
-		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			endGameType = (AC_EndGameType) EditorGUILayout.EnumPopup ("Command:", endGameType);
 
@@ -119,7 +98,8 @@ namespace AC
 					sceneNumber = EditorGUILayout.IntField ("Scene to restart to:", sceneNumber);
 				}
 
-				resetMenus = EditorGUILayout.Toggle ("Reset Menus too?", resetMenus);
+				resetMenus = EditorGUILayout.Toggle ("Reset all Menus?", resetMenus);
+				killActionLists = EditorGUILayout.Toggle ("End all ActionLists?", killActionLists);
 			}
 		}
 		
@@ -138,7 +118,7 @@ namespace AC
 		 */
 		public static ActionEndGame CreateNew_QuitGame ()
 		{
-			ActionEndGame newAction = (ActionEndGame) CreateInstance <ActionEndGame>();
+			ActionEndGame newAction = CreateNew<ActionEndGame> ();
 			newAction.endGameType = AC_EndGameType.QuitGame;
 			return newAction;
 		}
@@ -150,7 +130,7 @@ namespace AC
 		 */
 		public static ActionEndGame CreateNew_ResetScene ()
 		{
-			ActionEndGame newAction = (ActionEndGame) CreateInstance <ActionEndGame>();
+			ActionEndGame newAction = CreateNew<ActionEndGame> ();
 			newAction.endGameType = AC_EndGameType.ResetScene;
 			return newAction;
 		}
@@ -162,7 +142,7 @@ namespace AC
 		 */
 		public static ActionEndGame CreateNew_LoadAutosave ()
 		{
-			ActionEndGame newAction = (ActionEndGame) CreateInstance <ActionEndGame>();
+			ActionEndGame newAction = CreateNew<ActionEndGame> ();
 			newAction.endGameType = AC_EndGameType.LoadAutosave;
 			return newAction;
 		}
@@ -176,7 +156,7 @@ namespace AC
 		 */
 		public static ActionEndGame CreateNew_RestartGame (int newSceneBuildIndex, bool resetMenus = true)
 		{
-			ActionEndGame newAction = (ActionEndGame) CreateInstance <ActionEndGame>();
+			ActionEndGame newAction = CreateNew<ActionEndGame> ();
 			newAction.endGameType = AC_EndGameType.RestartGame;
 			newAction.chooseSceneBy = ChooseSceneBy.Number;
 			newAction.resetMenus = resetMenus;

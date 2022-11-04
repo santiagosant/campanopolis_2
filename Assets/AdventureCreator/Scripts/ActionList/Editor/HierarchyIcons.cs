@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -9,62 +11,117 @@ namespace AC
 	public class HierarchyIcons
 	{
 
-		private static List<int> actionListIDs;
-		private static List<int> rememberIDs;
+		private static HashSet<int> actionListIDs;
+		private static HashSet<int> rememberIDs;
 
 		private static ActionList[] actionLists;
 		private static ConstantID[] constantIDs;
+
+		#if UNITY_EDITOR_OSX
+			#if UNITY_2019_1_OR_NEWER
+			private static float defaultOffset = 20;
+			#else
+			private static float defaultOffset = -10;
+			#endif
+		#else
+			#if UNITY_2019_1_OR_NEWER
+			private static float defaultOffset = 25;
+			#else
+			private static float defaultOffset = 0;
+			#endif
+		#endif
+
+		private static float rememberOffset = 25;
+		private static float iconWidth = 18;
 
 
 		static HierarchyIcons ()
 		{
 			EditorApplication.update += UpdateCB;
 			EditorApplication.hierarchyWindowItemOnGUI += HierarchyItemCB;
+			EditorApplication.playModeStateChanged += LogPlayModeState;
+			UnityEngine.SceneManagement.SceneManager.activeSceneChanged += ActiveSceneChanged;
+			UnityEngine.SceneManagement.SceneManager.sceneLoaded += SceneManager_sceneLoaded;
+			UnityEngine.SceneManagement.SceneManager.sceneUnloaded += SceneManager_sceneUnloaded;
+		}
+
+		private static void SceneManager_sceneUnloaded (UnityEngine.SceneManagement.Scene arg0)
+		{
+			GatherIDs ();
+		}
+
+		private static void SceneManager_sceneLoaded (UnityEngine.SceneManagement.Scene arg0, UnityEngine.SceneManagement.LoadSceneMode arg1)
+		{
+			GatherIDs ();
+		}
+
+
+		private static void ActiveSceneChanged (UnityEngine.SceneManagement.Scene arg0, UnityEngine.SceneManagement.Scene arg1)
+		{
+			GatherIDs ();
 		}
 
 
 		private static void UpdateCB ()
 		{
-			if (AdvGame.GetReferences () && AdvGame.GetReferences ().settingsManager && !AdvGame.GetReferences ().settingsManager.showHierarchyIcons)
+			if (!Application.isPlaying)
+			{
+				GatherIDs ();
+			}
+		}
+
+
+		private static void GatherIDs ()
+		{
+			if (!ACEditorPrefs.ShowHierarchyIcons)
 			{
 				return;
 			}
 
 			actionLists = Object.FindObjectsOfType (typeof (ActionList)) as ActionList[];
 
-			actionListIDs = new List<int>();
+			actionListIDs = new HashSet<int>();
 			foreach (ActionList actionList in actionLists)
 			{
 				actionListIDs.Add (actionList.gameObject.GetInstanceID ());
 			}
-
+			
 			constantIDs = Object.FindObjectsOfType (typeof (ConstantID)) as ConstantID[];
-
-			rememberIDs = new List<int>();
+			rememberIDs = new HashSet<int>();
 			foreach (ConstantID constantID in constantIDs)
 			{
+				if (constantID == null || !constantID.isActiveAndEnabled) continue;
+
 				rememberIDs.Add (constantID.gameObject.GetInstanceID());
 			}
 		}
 
 
+		private static void LogPlayModeState (PlayModeStateChange state)
+		{
+			GatherIDs ();
+		}
+
+
 		private static void HierarchyItemCB (int instanceID, Rect selectionRect)
 		{
-			if (AdvGame.GetReferences () && AdvGame.GetReferences ().settingsManager && !AdvGame.GetReferences ().settingsManager.showHierarchyIcons)
+			if (!ACEditorPrefs.ShowHierarchyIcons)
 			{
 				return;
 			}
 
 			// place the icon to the right of the list:
 			Rect r = new Rect (selectionRect);
-			r.x = r.width - 20;
-			r.width = 18;
+			r.x = r.width + defaultOffset + ACEditorPrefs.HierarchyIconOffset;
+			r.width = iconWidth;
 
 			if (actionListIDs != null && actionListIDs.Contains (instanceID))
 			{
 				foreach (ActionList actionList in actionLists)
 				{
-					if (actionList != null && actionList.gameObject.GetInstanceID () == instanceID)
+					if (actionList == null || !actionList.isActiveAndEnabled) continue;
+
+					if (actionList.gameObject.GetInstanceID () == instanceID)
 					{
 						if (GUI.Button (r, string.Empty, CustomStyles.IconNodes))
 						{
@@ -80,12 +137,14 @@ namespace AC
 				}
 			}
 
-			r.x -= 40;
+			r.x -= rememberOffset;
 			if (rememberIDs != null && rememberIDs.Contains (instanceID))
 			{
 				foreach (ConstantID constantID in constantIDs)
 				{
-					if (constantID != null && constantID.gameObject.GetInstanceID () == instanceID)
+					if (constantID == null || !constantID.isActiveAndEnabled) continue;
+
+					if (constantID.gameObject.GetInstanceID () == instanceID)
 					{
 						GUI.Label (r, string.Empty, CustomStyles.IconSave);
 						return;
@@ -374,6 +433,7 @@ namespace AC
 
 		#endregion
 
+
 		private static void CreateObjectFromHierarchy (MenuCommand menuCommand, string folderName, string prefabName)
 		{
 			if (KickStarter.sceneSettings == null)
@@ -397,3 +457,5 @@ namespace AC
 	}
 
 }
+
+#endif

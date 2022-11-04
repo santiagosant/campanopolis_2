@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMixerSnapshot.cs"
  * 
@@ -9,9 +9,7 @@
  * 
  */
 
-#if UNITY_5 || UNITY_2017_1_OR_NEWER
 using UnityEngine.Audio;
-#endif
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -25,26 +23,20 @@ namespace AC
 	public class ActionMixerSnapshot : Action
 	{
 
-		#if UNITY_5 || UNITY_2017_1_OR_NEWER
 		public int numSnapshots = 1;
 		public AudioMixer audioMixer = null;
 		public AudioMixerSnapshot snapshot = null;
 		public List<SnapshotMix> snapshotMixes = new List<SnapshotMix>();
 		public float changeTime = 0.1f;
-		#endif
-		
-		public ActionMixerSnapshot ()
+
+
+		public override ActionCategory Category { get { return ActionCategory.Sound; }}
+		public override string Title { get { return "Set Mixer snapshot"; }}
+		public override string Description { get { return "Transitions to a single or multiple Audio Mixer snapshots."; }}
+
+
+		public override float Run ()
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Sound;
-			title = "Set Mixer snapshot";
-			description = "Transitions to a single or multiple Audio Mixer snapshots.";
-		}
-		
-		
-		override public float Run ()
-		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			if (!isRunning)
 			{
 				isRunning = true;
@@ -88,17 +80,13 @@ namespace AC
 				isRunning = false;
 				return 0f;
 			}
-			#else
-			return 0f;
-			#endif
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			numSnapshots = EditorGUILayout.IntSlider ("Number of snapshots:", numSnapshots, 1, 10);
 			if (numSnapshots == 1)
 			{
@@ -136,17 +124,11 @@ namespace AC
 			{
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 			}
-			#else
-			EditorGUILayout.HelpBox ("This Action is only available for Unity 5", MessageType.Info);
-			#endif
-			
-			AfterRunningOption ();
 		}
 		
 		
 		public override string SetLabel ()
 		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			if (numSnapshots == 1 && snapshot != null)
 			{
 				return snapshot.name;
@@ -155,14 +137,11 @@ namespace AC
 			{
 				return audioMixer.name;
 			}
-			#endif
 			return string.Empty;
 		}
 		
 		#endif
 
-
-		#if UNITY_5 || UNITY_2017_1_OR_NEWER
 
 		/**
 		 * <summary>Creates a new instance of the 'Sound: Set Mixer snapshot' Action, set to play a single snapshot</summary>
@@ -173,7 +152,7 @@ namespace AC
 		 */
 		public static ActionMixerSnapshot CreateNew_Single (AudioMixerSnapshot snapshot, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionMixerSnapshot newAction = (ActionMixerSnapshot) CreateInstance <ActionMixerSnapshot>();
+			ActionMixerSnapshot newAction = CreateNew<ActionMixerSnapshot> ();
 			newAction.numSnapshots = 1;
 			newAction.snapshot = snapshot;
 			newAction.changeTime = transitionTime;
@@ -192,7 +171,7 @@ namespace AC
 		 */
 		public static ActionMixerSnapshot CreateNew_Mix (List<SnapshotMix> snapshotMixData, AudioMixer audioMixer, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionMixerSnapshot newAction = (ActionMixerSnapshot) CreateInstance <ActionMixerSnapshot>();
+			ActionMixerSnapshot newAction = CreateNew<ActionMixerSnapshot> ();
 			newAction.numSnapshots = 0;
 			newAction.audioMixer = audioMixer;
 			newAction.snapshotMixes = snapshotMixData;
@@ -200,19 +179,15 @@ namespace AC
 			newAction.willWait = waitUntilFinish;
 			return newAction;
 		}
-
-		#endif
 		
 	}
 
 
-	#if UNITY_5 || UNITY_2017_1_OR_NEWER
 	[System.Serializable]
 	public class SnapshotMix
 	{
 		public AudioMixerSnapshot snapshot;
 		public float weight;
 	}
-	#endif
-	
+
 }

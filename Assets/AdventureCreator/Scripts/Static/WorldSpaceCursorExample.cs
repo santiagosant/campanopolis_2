@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"WorldSpaceCursorExample.cs"
  * 
@@ -19,18 +19,16 @@ using UnityEngine;
 namespace AC
 {
 
-	/*
-	 * <summary>This script serves as an example of how you can override AC's input system to allow an object's position in world space to dictate the cursor position.
+	/**
+	 * This script serves as an example of how you can override AC's input system to allow an object's position in world space to dictate the cursor position.
 	 * To use it, add it to a mesh object you wish to act as the cursor, and place it on the 'Ignore Raycast' layer.
 	 *
 	 * The mesh object will be controlled by the mouse, but will move in 3D space.
 	 *
-	 * If you wish to instead move the mesh object by an other means (for example, by use of a VR-wand), you can duplicated this script and amend it to suit your needs.</summary>
+	 * If you wish to instead move the mesh object by an other means (for example, by use of a VR-wand), you can duplicated this script and amend it to suit your needs.
 	 */
 	[AddComponentMenu("Adventure Creator/3rd-party/World-space cursor example")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_world_space_cursor_example.html")]
-	#endif
 	public class WorldSpaceCursorExample : MonoBehaviour
 	{
 
@@ -40,6 +38,8 @@ namespace AC
 		public float minDistance = 1f;
 		/** The maximum distance that the cursor can be from the camera */
 		public float maxDistance = 30f;
+		/** If True, the AC cursor position will be used instead of the raw mouse position */
+		public bool useACCursor = false;
 
 		private RaycastHit hit;
 		private Ray ray;
@@ -65,13 +65,20 @@ namespace AC
 			 * depending on whether the cursor is in it's 'Locked' state or not.
 			 */
 
-			if (cursorIsLocked)
+			if (useACCursor)
 			{
-				ray = KickStarter.CameraMain.ViewportPointToRay (new Vector2 (0.5f, 0.5f));
+				ray = KickStarter.CameraMain.ScreenPointToRay (KickStarter.playerInput.GetMousePosition ());
 			}
 			else
 			{
-				ray = KickStarter.CameraMain.ScreenPointToRay (Input.mousePosition);
+				if (cursorIsLocked)
+				{
+					ray = KickStarter.CameraMain.ViewportPointToRay (new Vector2 (0.5f, 0.5f));
+				}
+				else
+				{
+					ray = KickStarter.CameraMain.ScreenPointToRay (Input.mousePosition);
+				}
 			}
 
 			/**
@@ -105,10 +112,10 @@ namespace AC
 			 * This function positions the GameObject as close to a target as it can within the boundaries we've defined.
 			 */
 
-			float distanceFromCamera = (targetPosition - KickStarter.CameraMain.transform.position).magnitude;
+			float distanceFromCamera = (targetPosition - KickStarter.CameraMainTransform.position).magnitude;
 			distanceFromCamera = Mathf.Clamp (distanceFromCamera, minDistance, maxDistance);
 			
-			transform.position = KickStarter.CameraMain.transform.position + (ray.direction.normalized * distanceFromCamera);
+			transform.position = KickStarter.CameraMainTransform.position + (ray.direction.normalized * distanceFromCamera);
 		}
 
 	}

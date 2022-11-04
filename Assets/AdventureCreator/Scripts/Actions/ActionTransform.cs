@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTransform.cs"
  * 
@@ -24,11 +24,14 @@ namespace AC
 	{
 
 		public bool isPlayer;
+		public int playerID = -1;
 
 		public int markerParameterID = -1;
 		public int markerID = 0;
 		public Marker marker;
 		protected Marker runtimeMarker;
+
+		public bool scaleDuration = false;
 
 		public bool doEulerRotation = false;
 		public bool clearExisting = true;
@@ -60,36 +63,26 @@ namespace AC
 		public enum ToBy { To, By };
 		public ToBy toBy;
 
-		private Vector3 nonSkipTargetVector = Vector3.zero;
+		protected Vector3 nonSkipTargetVector = Vector3.zero;
 
 		public Variables variables;
 		public int variablesConstantID = 0;
 
-		private GVar runtimeVariable;
-		private LocalVariables localVariables;
+		protected GVar runtimeVariable;
+		protected LocalVariables localVariables;
 
-		
-		public ActionTransform ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Transform";
-			description = "Transforms a GameObject over time, by or to a given amount, or towards a Marker in the scene. The GameObject must have a Moveable script attached.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Transform"; }}
+		public override string Description { get { return "Transforms a GameObject over time, by or to a given amount, or towards a Marker in the scene. The GameObject must have a Moveable script attached."; }}
 		
 		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player != null)
-				{
-					runtimeLinkedProp = KickStarter.player.GetComponent <Moveable>();
-				}
-				else
-				{
-					runtimeLinkedProp = null;
-				}
+				Player player = AssignPlayer (playerID, parameters, parameterID);
+				runtimeLinkedProp = (player != null) ? player.GetComponent<Moveable> () : null;
 			}
 			else
 			{
@@ -138,7 +131,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -153,7 +146,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()	
+		public override float Run ()	
 		{
 			if (!isRunning)
 			{
@@ -166,7 +159,7 @@ namespace AC
 					
 					if (willWait && _transitionTime > 0f)
 					{
-						return (defaultPauseTime);
+						return defaultPauseTime;
 					}
 				}
 				else
@@ -196,20 +189,20 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()	
+		public override void Skip ()	
 		{
-			if (runtimeLinkedProp != null)
+			if (runtimeLinkedProp)
 			{
 				RunToTime (0f, true);
 			}
 		}
 		
 
-		private void RunToTime (float _time, bool isSkipping)
+		protected void RunToTime (float _time, bool isSkipping)
 		{
 			if (transformType == TransformType.CopyMarker)
 			{
-				if (runtimeMarker != null)
+				if (runtimeMarker)
 				{
 					runtimeLinkedProp.Move (runtimeMarker, moveMethod, inWorldSpace, _time, timeCurve);
 				}
@@ -217,6 +210,7 @@ namespace AC
 			else
 			{
 				Vector3 targetVector = Vector3.zero;
+				float speedScaler = 1f;
 
 				if (setVectorMethod == SetVectorMethod.FromVector3Variable)
 				{
@@ -235,6 +229,16 @@ namespace AC
 					if (toBy == ToBy.By)
 					{
 						targetVector = SetRelativeTarget (targetVector, isSkipping, runtimeLinkedProp.transform.localPosition);
+						speedScaler = targetVector.magnitude;
+					}
+					else
+					{
+						speedScaler = Vector3.Distance (runtimeLinkedProp.transform.localPosition, targetVector);
+					}
+
+					if (scaleDuration)
+					{
+						_time *= speedScaler * 0.2f;
 					}
 				}
 				else if (transformType == TransformType.Rotate)
@@ -257,6 +261,17 @@ namespace AC
 							targetVector = runtimeLinkedProp.transform.localEulerAngles;
 							runtimeLinkedProp.transform.localRotation = currentRotation;
 						}
+
+						speedScaler = targetVector.magnitude;
+					}
+					else
+					{
+						speedScaler = Vector3.Distance (runtimeLinkedProp.transform.eulerAngles, targetVector);
+					}
+
+					if (scaleDuration)
+					{
+						_time *= speedScaler * 0.01f;
 					}
 				}
 				else if (transformType == TransformType.Scale)
@@ -264,6 +279,16 @@ namespace AC
 					if (toBy == ToBy.By)
 					{
 						targetVector = SetRelativeTarget (targetVector, isSkipping, runtimeLinkedProp.transform.localScale);
+						speedScaler = targetVector.magnitude;
+					}
+					else
+					{
+						speedScaler = Vector3.Distance (runtimeLinkedProp.transform.localScale, targetVector);
+					}
+
+					if (scaleDuration)
+					{
+						_time *= speedScaler * 0.2f;
 					}
 				}
 				
@@ -279,7 +304,7 @@ namespace AC
 		}
 
 
-		private Vector3 SetRelativeTarget (Vector3 _targetVector, bool isSkipping, Vector3 normalAddition)
+		protected Vector3 SetRelativeTarget (Vector3 _targetVector, bool isSkipping, Vector3 normalAddition)
 		{
 			if (isSkipping && nonSkipTargetVector != Vector3.zero)
 			{
@@ -296,10 +321,19 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Move Player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				parameterID = Action.ChooseParameterGUI ("Moveable object:", parameters, parameterID, ParameterType.GameObject);
 				if (parameterID >= 0)
@@ -425,6 +459,11 @@ namespace AC
 			
 			if (transitionTime > 0f)
 			{
+				if (transformType != TransformType.CopyMarker)
+				{
+					scaleDuration = EditorGUILayout.Toggle ("Scale time with distance?", scaleDuration);
+				}
+
 				if (transformType == TransformType.Rotate)
 				{
 					doEulerRotation = EditorGUILayout.Toggle ("Euler rotation?", doEulerRotation);
@@ -436,16 +475,17 @@ namespace AC
 				}
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
-				AddSaveScript <RememberMoveable> (linkedProp);
+				if (!isPlayer)
+				{
+					AddSaveScript<RememberMoveable> (linkedProp);
+				}
 			}
 			AssignConstantID <Moveable> (linkedProp, constantID, parameterID);
 			AssignConstantID <Marker> (marker, markerID, markerParameterID);
@@ -459,7 +499,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (linkedProp != null)
 			{
@@ -467,7 +507,33 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (linkedProp && linkedProp.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			if (isPlayer && gameObject && gameObject.GetComponent <Player>()) return true;
+			if (transformType != TransformType.CopyMarker && setVectorMethod == SetVectorMethod.FromVector3Variable && variableLocation == VariableLocation.Component && vectorVarParameterID < 0)
+			{
+				if (variables && variables.gameObject == gameObject) return true;
+				if (variablesConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -482,7 +548,7 @@ namespace AC
 		 */
 		public static ActionTransform CreateNew (Moveable objectToMove, Marker markerToMoveTo, bool inWorldSpace = true, float transitionTime = 1f, MoveMethod moveMethod = MoveMethod.Smooth, AnimationCurve timeCurve = null, bool waitUntilFinish = false)
 		{
-			ActionTransform newAction = (ActionTransform) CreateInstance <ActionTransform>();
+			ActionTransform newAction = CreateNew<ActionTransform> ();
 			newAction.linkedProp = objectToMove;
 			newAction.transformType = TransformType.CopyMarker;
 			newAction.inWorldSpace = inWorldSpace;

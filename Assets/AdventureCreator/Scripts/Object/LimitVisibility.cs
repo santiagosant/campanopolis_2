@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"LimitVisibility.cs"
  * 
@@ -10,15 +10,12 @@
  * 
  */
 
-#if !UNITY_2017_2_OR_NEWER
-#define ALLOW_LEGACY_UI
-#endif
-
-#if UNITY_5_6_OR_NEWER && !UNITY_SWITCH
+//#if !UNITY_SWITCH
 #define ALLOW_VIDEO
-#endif
+//#endif
 
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
 
 #if ALLOW_VIDEO
@@ -32,11 +29,11 @@ namespace AC
 	 * This component limits the visibility of a GameObject so that it can only be viewed through a specific _Camera.
 	 */
 	[AddComponentMenu("Adventure Creator/Camera/Limit visibility to camera")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_limit_visibility.html")]
-	#endif
 	public class LimitVisibility : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The _Camera to limit the GameObject's visibility to (deprecated) */
 		[HideInInspector] public _Camera limitToCamera;
@@ -44,60 +41,63 @@ namespace AC
 		public List<_Camera> limitToCameras = new List<_Camera>();
 		/** If True, then child GameObjects will be affected in the same way */
 		public bool affectChildren = false;
-		/** If True, then the object will not be visible even if the correct _Camera is active */
-		[HideInInspector] public bool isLockedOff = false;
+		/** If True, then the GameObject will only be visible when the Cameras defined in limitToCameras are not active */
+		public bool negateEffect = false;
 
-		private bool isVisible = false;
-		private _Camera activeCamera = null;
-		private _Camera transitionCamera = null;
+		protected bool isLockedOff = false;
+		protected bool isVisible = false;
+
+		protected Renderer _renderer;
+		protected SpriteRenderer spriteRenderer;
+		protected Renderer[] childRenderers;
+		protected SpriteRenderer[] childSprites;
+		#if ALLOW_VIDEO
+		protected VideoPlayer videoPlayer;
+		#endif
+
+		#endregion
+
+
+		#region UnityStandards
+
+		protected void Awake ()
+		{
+			_renderer = GetComponent <Renderer>();
+			if (_renderer == null)
+			{
+				spriteRenderer = GetComponent <SpriteRenderer>();
+			}
+
+			if (affectChildren)
+			{
+				childRenderers = GetComponentsInChildren <Renderer>();
+				childSprites = GetComponentsInChildren <SpriteRenderer>();
+			}
+
+			#if ALLOW_VIDEO
+			videoPlayer = GetComponent <VideoPlayer>();
+			#endif
+		}
 		
 
-		private void OnEnable ()
+		protected void OnEnable ()
 		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-		}
-
-
-		private void OnDisable ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
-		}
-
-
-		private void Start ()
-		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
-
 			Upgrade ();
-
-			if (limitToCameras.Count == 0 || KickStarter.mainCamera == null)
-			{
-				return;
-			}
-
-			activeCamera = KickStarter.mainCamera.attachedCamera;
-
-			if (activeCamera != null && !isLockedOff)
-			{
-				if (limitToCameras.Contains (activeCamera))
-				{
-					SetVisibility (true);
-				}
-				else
-				{
-					SetVisibility (false);
-				}
-			}
-			else
-			{
-				SetVisibility (false);
-			}
+			EventManager.OnSwitchCamera += OnSwitchCamera;
 		}
 
 
-		/**
-		 * <summary>Upgrades the component to make use of the limitToCameras List, rather than the singular limitToCamera variable.</summary>
-		 */
+		protected void OnDisable ()
+		{
+			EventManager.OnSwitchCamera -= OnSwitchCamera;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Upgrades the component to make use of the limitToCameras List, rather than the singular limitToCamera variable. */
 		public void Upgrade ()
 		{
 			if (limitToCameras == null)
@@ -105,7 +105,7 @@ namespace AC
 				limitToCameras = new List<_Camera>();
 			}
 
-			if (limitToCamera != null)
+			if (limitToCamera)
 			{
 				if (!limitToCameras.Contains (limitToCamera))
 				{
@@ -127,109 +127,39 @@ namespace AC
 			}
 		}
 
+		#endregion
 
-		/**
-		 * Updates the visibility based on the attached camera. This is public so that it can be called by StateHandler.
-		 */
-		public void _Update ()
+
+		#region ProtectedFunctions
+
+		protected void SetVisibility (bool state)
 		{
-			if (limitToCameras.Count == 0 || KickStarter.mainCamera == null)
-			{
-				return;
-			}
+			StopAllCoroutines ();
 
-			activeCamera = KickStarter.mainCamera.attachedCamera;
-			transitionCamera = KickStarter.mainCamera.GetTransitionFromCamera ();
-
-			if (!isLockedOff)
-			{
-				if (activeCamera != null && limitToCameras.Contains (activeCamera))
-				{
-					SetVisibility (true);
-				}
-				else if (transitionCamera != null && limitToCameras.Contains (transitionCamera))
-				{
-					SetVisibility (true);
-				}
-				else
-				{
-					SetVisibility (false);
-				}
-			}
-			else if (isVisible)
-			{
-				SetVisibility (false);
-			}
-
-			/*
-			if (activeCamera != null && !isLockedOff)
-			{
-				if (limitToCameras.Contains (activeCamera) && !isVisible)
-				{
-					SetVisibility (true);
-				}
-				else if (!limitToCameras.Contains (activeCamera) && isVisible)
-				{
-					SetVisibility (false);
-				}
-			}
-			else if (isVisible)
-			{
-				SetVisibility (false);
-			}*/
-		}
-
-
-
-		private void SetVisibility (bool state)
-		{
-			Renderer _renderer = GetComponent <Renderer>();
-			if (_renderer != null)
+			if (_renderer)
 			{
 				_renderer.enabled = state;
 			}
-			else
+			else if (spriteRenderer)
 			{
-				SpriteRenderer spriteRenderer = gameObject.GetComponent <SpriteRenderer>();
-				if (spriteRenderer != null)
-				{
-					spriteRenderer.enabled = state;
-				}
+				spriteRenderer.enabled = state;
 			}
-			#if ALLOW_LEGACY_UI
-			GUITexture guiTexture = gameObject.GetComponent <GUITexture>();
-			if (guiTexture != null)
-			{
-				guiTexture.enabled = state;
-			}
-			#endif
 
 			if (affectChildren)
 			{
-				Renderer[] _children = GetComponentsInChildren <Renderer>();
-				foreach (Renderer child in _children)
+				foreach (Renderer child in childRenderers)
 				{
 					child.enabled = state;
 				}
 
-				SpriteRenderer[] spriteChildren = GetComponentsInChildren <SpriteRenderer>();
-				foreach (SpriteRenderer child in spriteChildren)
+				foreach (SpriteRenderer child in childSprites)
 				{
 					child.enabled = state;
 				}
-
-				#if ALLOW_LEGACY_UI
-				GUITexture[] textureChildren = GetComponentsInChildren <GUITexture>();
-				foreach (GUITexture child in textureChildren)
-				{
-					child.enabled = state;
-				}
-				#endif
 			}
 
 			#if ALLOW_VIDEO
-			VideoPlayer videoPlayer = GetComponent <VideoPlayer>();
-			if (videoPlayer != null)
+			if (videoPlayer)
 			{
 				videoPlayer.targetCameraAlpha = (state) ? 1f : 0f;
 			}
@@ -237,6 +167,64 @@ namespace AC
 
 			isVisible = state;
 		}
+		
+		
+		protected IEnumerator SetVisibilityAfterDelay (bool state, float delayDuration)
+		{
+			yield return new WaitForSeconds (delayDuration);
+			SetVisibility (state);
+		}
+
+		#endregion
+
+
+		#region CustomEvents
+
+		private void OnSwitchCamera (_Camera fromCamera, _Camera toCamera, float transitionTime)
+		{
+			if (IsLockedOff)
+			{
+				return;
+			}
+
+			if (toCamera && limitToCameras.Contains (toCamera))
+			{
+				SetVisibility (!negateEffect);
+			}
+			else if (fromCamera && limitToCameras.Contains (fromCamera))
+			{
+				StartCoroutine (SetVisibilityAfterDelay (negateEffect, transitionTime));
+			}
+			else
+			{
+				SetVisibility (negateEffect);
+			}
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** If True, then the object will not be visible even if the correct _Camera is active */
+		public bool IsLockedOff
+		{
+			get
+			{
+				return isLockedOff;
+			}
+			set
+			{
+				isLockedOff = value;
+
+				if (isLockedOff && isVisible)
+				{
+					SetVisibility (false);
+				}
+			}
+		}
+
+		#endregion
 
 	}
 

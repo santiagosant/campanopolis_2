@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCameraCrossfade.cs"
  * 
@@ -10,6 +10,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -30,20 +31,17 @@ namespace AC
 
 		public float transitionTime;
 		public int transitionTimeParameterID = -1;
+		public AnimationCurve fadeCurve = new AnimationCurve (new Keyframe(0, 0, 1, 1), new Keyframe(1, 1, 1, 1));
 
 		public bool returnToLast;
 
-		
-		public ActionCameraCrossfade ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Camera;
-			title = "Crossfade";
-			description = "Crossfades the camera from its current GameCamera to a new one, over a specified time.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Camera; }}
+		public override string Title { get { return "Crossfade"; }}
+		public override string Description { get { return "Crossfades the camera from its current GameCamera to a new one, over a specified time."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeLinkedCamera = AssignFile <_Camera> (parameters, parameterID, constantID, linkedCamera);
 			transitionTime = AssignFloat (parameters, transitionTimeParameterID, transitionTime);
@@ -55,28 +53,23 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
 				isRunning = true;
 				MainCamera mainCam = KickStarter.mainCamera;
 
-				if (runtimeLinkedCamera != null && mainCam.attachedCamera != runtimeLinkedCamera)
+				if (runtimeLinkedCamera && mainCam.attachedCamera != runtimeLinkedCamera)
 				{
-					if (runtimeLinkedCamera is GameCameraThirdPerson)
-					{
-						GameCameraThirdPerson tpCam = (GameCameraThirdPerson) runtimeLinkedCamera;
-						tpCam.ResetRotation ();
-					}
-					else if (runtimeLinkedCamera is GameCameraAnimated)
+					if (runtimeLinkedCamera is GameCameraAnimated)
 					{
 						GameCameraAnimated animCam = (GameCameraAnimated) runtimeLinkedCamera;
 						animCam.PlayClip ();
 					}
 					
 					runtimeLinkedCamera.MoveCameraInstant ();
-					mainCam.Crossfade (transitionTime, runtimeLinkedCamera);
+					mainCam.Crossfade (transitionTime, runtimeLinkedCamera, fadeCurve);
 						
 					if (transitionTime > 0f && willWait)
 					{
@@ -93,18 +86,13 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			MainCamera mainCam = KickStarter.mainCamera;
 
-			if (runtimeLinkedCamera != null && mainCam.attachedCamera != runtimeLinkedCamera)
+			if (runtimeLinkedCamera && mainCam.attachedCamera != runtimeLinkedCamera)
 			{
-				if (runtimeLinkedCamera is GameCameraThirdPerson)
-				{
-					GameCameraThirdPerson tpCam = (GameCameraThirdPerson) runtimeLinkedCamera;
-					tpCam.ResetRotation ();
-				}
-				else if (runtimeLinkedCamera is GameCameraAnimated)
+				if (runtimeLinkedCamera is GameCameraAnimated)
 				{
 					GameCameraAnimated animCam = (GameCameraAnimated) runtimeLinkedCamera;
 					animCam.PlayClip ();
@@ -118,7 +106,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			returnToLast = EditorGUILayout.Toggle ("Return to last gameplay?", returnToLast);
 			if (!returnToLast)
@@ -143,13 +131,13 @@ namespace AC
 			{
 				transitionTime = EditorGUILayout.FloatField ("Transition time (s):", transitionTime);
 			}
-			willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 
-			AfterRunningOption ();
+			fadeCurve = (AnimationCurve)EditorGUILayout.CurveField ("Transition curve:", fadeCurve);
+			willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -159,13 +147,24 @@ namespace AC
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (linkedCamera != null)
 			{
 				return linkedCamera.name;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!returnToLast && parameterID < 0)
+			{
+				if (linkedCamera && linkedCamera.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 		
 		#endif
@@ -180,7 +179,7 @@ namespace AC
 		 */
 		public static ActionCameraCrossfade CreateNew (_Camera newCamera, float transitionTime = 1f, bool waitUntilFinish = false)
 		{
-			ActionCameraCrossfade newAction = (ActionCameraCrossfade) CreateInstance <ActionCameraCrossfade>();
+			ActionCameraCrossfade newAction = CreateNew<ActionCameraCrossfade> ();
 			newAction.linkedCamera = newCamera;
 			newAction.transitionTime = transitionTime;
 			newAction.willWait = waitUntilFinish;

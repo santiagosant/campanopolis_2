@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SetInventoryInteractionParameters.cs"
  * 
@@ -21,34 +21,32 @@ namespace AC
 
 	/** A component used to set all of an Inventory interaction's parameters at the moment it is interacted with by the player. */
 	[AddComponentMenu("Adventure Creator/Logic/Set Inventory Interaction parameters")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_set_inventory_interaction_parameters.html")]
-	#endif
 	public class SetInventoryInteractionParameters : SetParametersBase
 	{
 
-
 		#region Variables
 
-		[SerializeField] private int itemID = 0;
-		[SerializeField] private int cursorIndex = 0;
-		[SerializeField] private InteractionType interactionType = InteractionType.Use;
-		private enum InteractionType { Use, Examine };
+		[SerializeField] protected int itemID = 0;
+		[SerializeField] protected int cursorIndex = 0;
+		[SerializeField] protected InteractionType interactionType = InteractionType.Use;
+
+		protected enum InteractionType { Use, Examine };
 
 		#endregion
 
 
 		#region UnityStandards
 
-		private void OnEnable ()
+		protected void OnEnable ()
 		{
-			EventManager.OnInventoryInteract += OnInventoryInteract;
+			EventManager.OnInventoryInteract_Alt += OnInventoryInteract;
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
-			EventManager.OnInventoryInteract -= OnInventoryInteract;
+			EventManager.OnInventoryInteract_Alt -= OnInventoryInteract;
 		}
 
 		#endregion
@@ -56,15 +54,15 @@ namespace AC
 
 		#region CustomEvents
 
-		private void OnInventoryInteract (InvItem invItem, int iconID)
+		protected void OnInventoryInteract (InvInstance invInstance, int iconID)
 		{
-			if (invItem.id == itemID)
+			if (invInstance.ItemID == itemID)
 			{
 				if (KickStarter.settingsManager.interactionMethod != AC_InteractionMethod.ContextSensitive && KickStarter.settingsManager.inventoryInteractions == InventoryInteractions.Multiple)
 				{
-					if (cursorIndex < invItem.interactions.Count && invItem.interactions[cursorIndex].icon.id == iconID)
+					if (cursorIndex < invInstance.Interactions.Length && invInstance.Interactions[cursorIndex].icon.id == iconID)
 					{
-						AssignParameterValues (invItem.interactions[cursorIndex].actionList);
+						AssignParameterValues (invInstance.Interactions[cursorIndex].actionList);
 					}
 					return;
 				}
@@ -74,14 +72,14 @@ namespace AC
 					case InteractionType.Use:
 						if (iconID == 0)
 						{
-							AssignParameterValues (invItem.useActionList);
+							AssignParameterValues (invInstance.InvItem.useActionList);
 						}
 						break;
 
 					case InteractionType.Examine:
 						if (iconID == KickStarter.cursorManager.lookCursor_ID)
 						{
-							AssignParameterValues (invItem.lookActionList);
+							AssignParameterValues (invInstance.InvItem.lookActionList);
 						}
 						break;
 
@@ -198,7 +196,7 @@ namespace AC
 		}
 
 
-		private int GetIconSlot (int _id, CursorIcon[] cursorIcons)
+		protected int GetIconSlot (int _id, CursorIcon[] cursorIcons)
 		{
 			int i = 0;
 			foreach (CursorIcon icon in cursorIcons)
@@ -214,7 +212,7 @@ namespace AC
 		}
 
 
-		private void ShowParametersGUI (ActionListAsset actionListAsset)
+		protected void ShowParametersGUI (ActionListAsset actionListAsset)
 		{
 			if (actionListAsset == null)
 			{
@@ -222,10 +220,10 @@ namespace AC
 				return;
 			}
 
-			if (actionListAsset.useParameters && actionListAsset.parameters != null && actionListAsset.parameters.Count > 0)
+			if (actionListAsset.NumParameters > 0)
 			{
 				ShowActionListReference (actionListAsset);
-				ShowParametersGUI (actionListAsset.parameters, true);
+				ShowParametersGUI (actionListAsset.DefaultParameters, true);
 			}
 			else
 			{
@@ -234,9 +232,9 @@ namespace AC
 		}
 
 
-		private void ShowActionListReference (ActionListAsset actionListAsset)
+		protected void ShowActionListReference (ActionListAsset actionListAsset)
 		{
-			if (actionListAsset != null)
+			if (actionListAsset)
 			{
 				EditorGUILayout.BeginHorizontal ();
 				EditorGUILayout.LabelField ("Asset file: " + actionListAsset);

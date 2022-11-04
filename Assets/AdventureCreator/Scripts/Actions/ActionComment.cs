@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionComment.cs"
  * 
@@ -24,41 +24,43 @@ namespace AC
 		
 		public string commentText = "";
 
-		private enum ACLogType { No, AsInfo, AsWarning, AsError };
-		[SerializeField] private ACLogType acLogType = ACLogType.AsInfo;
-		private string convertedText;
+		protected enum ACLogType { No, AsInfo, AsWarning, AsError };
+		[SerializeField] protected ACLogType acLogType = ACLogType.AsInfo;
+		protected string convertedText;
 		
 		
-		public ActionComment ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Comment";
-			description = "Prints a comment for debug purposes.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Comment"; }}
+		public override string Description { get { return "Prints a comment for debug purposes."; }}
 
 
-		public override void AssignValues (System.Collections.Generic.List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			convertedText = AdvGame.ConvertTokens (commentText, 0, null, parameters);
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
-			if (acLogType != ACLogType.No && !string.IsNullOrEmpty (convertedText))
+			if (!string.IsNullOrEmpty (convertedText))
 			{
-				if (acLogType == ACLogType.AsInfo)
+				switch (acLogType)
 				{
-					Log (convertedText);
-				}
-				else if (acLogType == ACLogType.AsWarning)
-				{
-					LogWarning (convertedText);
-				}
-				else if (acLogType == ACLogType.AsError)
-				{
-					LogError (convertedText);
+					case ACLogType.No:
+					default:
+						break;
+
+					case ACLogType.AsInfo:
+						Log (convertedText);
+						break;
+
+					case ACLogType.AsWarning:
+						LogWarning (convertedText);
+						break;
+
+					case ACLogType.AsError:
+						LogError (convertedText);
+						break;
 				}
 			}
 			return 0f;
@@ -67,14 +69,20 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			EditorStyles.textField.wordWrap = true;
-			commentText = EditorGUILayout.TextArea (commentText, GUILayout.MaxWidth (280f));
+			commentText = CustomGUILayout.TextArea ("Comment:", commentText);
 
 			acLogType = (ACLogType) EditorGUILayout.EnumPopup ("Display in Console?", acLogType);
 
-			AfterRunningOption ();
+			if (!string.IsNullOrEmpty (commentText) && acLogType != ACLogType.No)
+			{
+				if (KickStarter.settingsManager.showDebugLogs == ShowDebugLogs.Never || (KickStarter.settingsManager.showDebugLogs == ShowDebugLogs.OnlyWarningsOrErrors && acLogType == ACLogType.AsInfo))
+				{
+					EditorGUILayout.HelpBox ("To enable comment-logging, configure the Settings Manager's 'Show logs in Console' field.", MessageType.Warning);
+				}
+			}
 		}
 		
 		
@@ -124,16 +132,32 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
-			string tokenText = AdvGame.GetVariableTokenText (location, varID);
+			string tokenText = AdvGame.GetVariableTokenText (location, varID, _variablesConstantID);
 
 			if (!string.IsNullOrEmpty (tokenText) && commentText.Contains (tokenText))
 			{
 				thisCount ++;
 			}
-			thisCount += base.GetVariableReferences (parameters, location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (location, varID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+			string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, _variablesConstantID);
+
+			if (!string.IsNullOrEmpty (oldTokenText) && commentText.Contains (oldTokenText))
+			{
+				string newTokenText = AdvGame.GetVariableTokenText (location, newVarID, _variablesConstantID);
+				commentText = commentText.Replace (oldTokenText, newTokenText);
+				thisCount++;
+			}
+			thisCount += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
@@ -148,7 +172,7 @@ namespace AC
 		 */
 		public static ActionComment CreateNew (string text, bool displayAsWarning = false)
 		{
-			ActionComment newAction = (ActionComment) CreateInstance <ActionComment>();
+			ActionComment newAction = CreateNew<ActionComment> ();
 			newAction.commentText = text;
 			newAction.acLogType = (displayAsWarning) ? ACLogType.AsWarning : ACLogType.AsInfo;
 			return newAction;

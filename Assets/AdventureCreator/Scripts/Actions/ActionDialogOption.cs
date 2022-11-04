@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDialogOption.cs"
  * 
@@ -9,6 +9,7 @@
  * 
 */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -31,22 +32,18 @@ namespace AC
 		protected Conversation runtimeLinkedConversation;
 		
 		
-		public ActionDialogOption ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Dialogue;
-			title = "Toggle option";
-			description = "Sets the display of a dialogue option. Can hide, show, and lock options.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Dialogue; }}
+		public override string Title { get { return "Toggle option"; }}
+		public override string Description { get { return "Sets the display of a dialogue option. Can hide, show, and lock options."; }}
 
 
-		override public void AssignValues ()
+		public override void AssignValues ()
 		{
 			runtimeLinkedConversation = AssignFile <Conversation> (constantID, linkedConversation);
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeLinkedConversation)
 			{
@@ -75,11 +72,6 @@ namespace AC
 		{
 			linkedConversation = (Conversation) EditorGUILayout.ObjectField ("Conversation:", linkedConversation, typeof (Conversation), true);
 
-			if (linkedConversation)
-			{
-				linkedConversation.Upgrade ();
-			}
-
 			constantID = FieldToID <Conversation> (linkedConversation, constantID);
 			linkedConversation = IDToField <Conversation> (linkedConversation, constantID, true);
 
@@ -91,8 +83,6 @@ namespace AC
 			{
 				switchType = (SwitchType) EditorGUILayout.EnumPopup ("Set to:", switchType);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
@@ -126,7 +116,7 @@ namespace AC
 				if (tempNumber == -1)
 				{
 					// Wasn't found (variable was deleted?), so revert to zero
-					ACDebug.LogWarning ("Previously chosen option no longer exists!");
+					if (optionID > 0) LogWarning ("Previously chosen option no longer exists!");
 					tempNumber = 0;
 					optionID = 0;
 				}
@@ -145,7 +135,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -155,7 +145,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (linkedConversation != null)
 			{
@@ -163,7 +153,15 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (linkedConversation && linkedConversation.gameObject == _gameObject) return true;
+			if (constantID == id) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
 		#endif
 
 
@@ -176,7 +174,7 @@ namespace AC
 		 */
 		public static ActionDialogOption CreateNew (Conversation conversationToModify, int dialogueOptionID, SwitchType optionSwitchType)
 		{
-			ActionDialogOption newAction = (ActionDialogOption) CreateInstance <ActionDialogOption>();
+			ActionDialogOption newAction = CreateNew<ActionDialogOption> ();
 			newAction.linkedConversation = conversationToModify;
 			newAction.optionNumber = dialogueOptionID-1;
 			newAction.switchType = optionSwitchType;

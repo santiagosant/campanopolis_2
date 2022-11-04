@@ -1,4 +1,5 @@
-﻿
+﻿#if UNITY_EDITOR
+
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -11,9 +12,7 @@ namespace AC
 	public class ActionListEditor : Editor
 	{
 
-		private int typeNumber;
 		private AC.Action actionToAffect = null;
-		
 		private ActionsManager actionsManager;
 
 
@@ -26,14 +25,6 @@ namespace AC
 					actionsManager = AdvGame.GetReferences ().actionsManager;
 					AdventureCreator.RefreshActions ();
 				}
-				else
-				{
-					ACDebug.LogError ("An Actions Manager is required - please use the Game Editor window to create one.");
-				}
-			}
-			else
-			{
-				ACDebug.LogError ("A References file is required - please use the Game Editor window to create one.");
 			}
 		}
 		
@@ -42,10 +33,96 @@ namespace AC
 		{
 			ActionList _target = (ActionList) target;
 
+			ShowPropertiesGUI (_target);
 			DrawSharedElements (_target);
 
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
+
+
+		private void ShowPropertiesGUI (ActionList _target)
+		{
+			CustomGUILayout.BeginVertical ();
+			EditorGUILayout.LabelField ("ActionList properties", EditorStyles.boldLabel);
+			_target.source = (ActionListSource) CustomGUILayout.EnumPopup ("Actions source:", _target.source, "", "Where the Actions are stored");
+			if (_target.source == ActionListSource.AssetFile)
+			{
+				_target.assetFile = (ActionListAsset) CustomGUILayout.ObjectField <ActionListAsset> ("ActionList asset:", _target.assetFile, false, "", "The ActionList asset that stores the Actions");
+				if (_target.assetFile && _target.assetFile.NumParameters > 0)
+				{
+					_target.syncParamValues = CustomGUILayout.Toggle ("Sync parameter values?", _target.syncParamValues, "", "If True, the ActionList asset's parameter values will be shared amongst all linked ActionLists");
+				}
+			}
+			_target.actionListType = (ActionListType) CustomGUILayout.EnumPopup ("When running:", _target.actionListType, "", "The effect that running the Actions has on the rest of the game");
+			if (_target.actionListType == ActionListType.PauseGameplay)
+			{
+				_target.isSkippable = CustomGUILayout.Toggle ("Is skippable?", _target.isSkippable, "", "If True, the Actions will be skipped when the user presses the 'EndCutscene' Input button");
+			}
+			_target.tagID = ShowTagUI (_target.actions.ToArray (), _target.tagID);
+			if (_target.source == ActionListSource.InScene)
+			{
+				_target.useParameters = CustomGUILayout.Toggle ("Use parameters?", _target.useParameters, "", "If True, ActionParameters can be used to override values within the Action objects");
+			}
+			else if (_target.source == ActionListSource.AssetFile && _target.assetFile && !_target.syncParamValues && _target.assetFile.useParameters && !Application.isPlaying)
+			{
+				_target.useParameters = CustomGUILayout.Toggle ("Set local parameter values?", _target.useParameters, "", "If True, parameter values set here will be assigned locally, and not on the ActionList asset");
+			}
+			CustomGUILayout.EndVertical ();
+
+			if (_target.source == ActionListSource.InScene)
+			{
+				EditorGUILayout.Space ();
+				CustomGUILayout.BeginVertical ();
+
+				EditorGUILayout.LabelField ("Parameters", EditorStyles.boldLabel);
+				ShowParametersGUI (_target, null, _target.parameters);
+
+				CustomGUILayout.EndVertical ();
+			}
+			else if (_target.source == ActionListSource.AssetFile && _target.assetFile && _target.assetFile.useParameters)
+			{
+				if (_target.syncParamValues)
+				{
+					EditorGUILayout.Space ();
+					CustomGUILayout.BeginVertical ();
+					EditorGUILayout.LabelField ("Parameters", EditorStyles.boldLabel);
+					ShowParametersGUI (null, _target.assetFile, _target.assetFile.GetParameters (), !Application.isPlaying);
+					CustomGUILayout.EndVertical ();
+				}
+				else
+				{
+					if (_target.useParameters)
+					{
+						bool isAsset = UnityVersionHandler.IsPrefabFile (_target.gameObject);
+
+						EditorGUILayout.Space ();
+						CustomGUILayout.BeginVertical ();
+
+						EditorGUILayout.LabelField ("Local parameters", EditorStyles.boldLabel);
+						ShowLocalParametersGUI (_target.parameters, _target.assetFile.GetParameters (), isAsset);
+
+						CustomGUILayout.EndVertical ();
+					}
+					else
+					{
+						// Use default from asset initially
+
+						EditorGUILayout.Space ();
+						CustomGUILayout.BeginVertical ();
+						EditorGUILayout.LabelField ("Parameters", EditorStyles.boldLabel);
+						if (Application.isPlaying)
+						{
+							ShowParametersGUI (_target, null, _target.parameters);
+						}
+						else
+						{
+							ShowParametersGUI (null, _target.assetFile, _target.assetFile.DefaultParameters, true);
+						}
+						CustomGUILayout.EndVertical ();
+					}
+				}
+			}
+	    }
 
 
 		public static bool IsActionListPrefab (ActionList _target)
@@ -60,11 +137,13 @@ namespace AC
 		
 		protected void DrawSharedElements (ActionList _target)
 		{
+#if !AC_ActionListPrefabs
 			if (IsActionListPrefab (_target))
 			{
 				EditorGUILayout.HelpBox ("Scene-based Actions can not live in prefabs - use ActionList assets instead.", MessageType.Info);
 				return;
 			}
+#endif
 
 			int numActions = 0;
 			if (_target.source != ActionListSource.AssetFile)
@@ -78,64 +157,11 @@ namespace AC
 			}
 
 			EditorGUILayout.Space ();
-			EditorGUILayout.BeginHorizontal ();
 
-			if (_target.source == ActionListSource.AssetFile)
+			if (_target.source == ActionListSource.InScene)
 			{
-				GUI.enabled = false;
+				ResetList (_target);
 			}
-
-			if (GUILayout.Button ("Expand all", EditorStyles.miniButtonLeft))
-			{
-				Undo.RecordObject (_target, "Expand actions");
-				foreach (AC.Action action in _target.actions)
-				{
-					action.isDisplayed = true;
-				}
-			}
-			if (GUILayout.Button ("Collapse all", EditorStyles.miniButtonMid))
-			{
-				Undo.RecordObject (_target, "Collapse actions");
-				foreach (AC.Action action in _target.actions)
-				{
-					action.isDisplayed = false;
-				}
-			}
-
-			GUI.enabled = true;
-
-			if (GUILayout.Button ("Action List Editor", EditorStyles.miniButtonMid))
-			{
-				if (_target.source == ActionListSource.AssetFile)
-				{
-					if (_target.assetFile != null)
-					{
-						ActionListEditorWindow.Init (_target.assetFile);
-					}
-				}
-				else
-				{
-					ActionListEditorWindow.Init (_target);
-				}
-			}
-			if (!Application.isPlaying)
-			{
-				GUI.enabled = false;
-			}
-			if (GUILayout.Button ("Run now", EditorStyles.miniButtonRight))
-			{
-				_target.Interact ();
-			}
-			GUI.enabled = true;
-			EditorGUILayout.EndHorizontal ();
-			EditorGUILayout.Space ();
-
-			if (_target.source == ActionListSource.AssetFile)
-			{
-				return;
-			}
-
-			ActionListEditor.ResetList (_target);
 
 			actionsManager = AdvGame.GetReferences ().actionsManager;
 			if (actionsManager == null)
@@ -145,10 +171,87 @@ namespace AC
 				return;
 			}
 
-			if (!actionsManager.displayActionsInInspector)
+			if (!actionsManager.displayActionsInInspector || _target.source == ActionListSource.AssetFile)
 			{
-				EditorGUILayout.HelpBox ("As set by the Actions Manager, Actions are only displayed in the ActionList Editor window.", MessageType.Info);
+				if (Application.isPlaying)
+				{
+					EditorGUILayout.BeginHorizontal ();
+					if (GUILayout.Button ("Edit Actions", GUILayout.Height (40f)))
+					{
+						ActionListEditorWindow.OpenForActionList (_target);
+					}
+
+					bool isRunning = false;
+					if (Application.isPlaying)
+					{
+						if (KickStarter.actionListManager != null)
+						{
+							isRunning = KickStarter.actionListManager.IsListRunning(_target);
+						}
+					}
+
+					if (isRunning)
+					{
+						if (GUILayout.Button ("Stop", GUILayout.Height (40f)))
+						{
+							_target.Kill ();
+						}
+					}
+					else
+					{
+						if (GUILayout.Button ("Run now", GUILayout.Height (40f)))
+						{
+							_target.Interact ();
+						}
+					}
+					EditorGUILayout.EndHorizontal ();
+				}
+				else
+				{
+					if (GUILayout.Button ("Edit Actions", GUILayout.Height (40f)))
+					{
+						ActionListEditorWindow.OpenForActionList (_target);
+					}
+				}
 				return;
+			}
+			else
+			{
+				EditorGUILayout.BeginHorizontal ();
+
+				GUI.enabled = (_target.source == ActionListSource.InScene);
+
+				if (GUILayout.Button ("Expand all", EditorStyles.miniButtonLeft))
+				{
+					Undo.RecordObject (_target, "Expand actions");
+					foreach (AC.Action action in _target.actions)
+					{
+						action.isDisplayed = true;
+					}
+				}
+				if (GUILayout.Button ("Collapse all", EditorStyles.miniButtonMid))
+				{
+					Undo.RecordObject (_target, "Collapse actions");
+					foreach (AC.Action action in _target.actions)
+					{
+						action.isDisplayed = false;
+					}
+				}
+
+				GUI.enabled = true;
+
+				if (GUILayout.Button ("Action List Editor", EditorStyles.miniButtonMid))
+				{
+					ActionListEditorWindow.OpenForActionList (_target);
+				}
+				GUI.enabled = Application.isPlaying;
+				if (GUILayout.Button ("Run now", EditorStyles.miniButtonRight))
+				{
+					_target.Interact ();
+				}
+				GUI.enabled = true;
+				EditorGUILayout.EndHorizontal ();
+				EditorGUILayout.Space ();
 			}
 
 			for (int i=0; i<_target.actions.Count; i++)
@@ -161,9 +264,10 @@ namespace AC
 					continue;
 				}
 
+				_target.actions[i].Upgrade ();
 				_target.actions[i].AssignParentList (_target);
 
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.BeginHorizontal ();
 				int typeIndex = actionsManager.GetActionTypeIndex (_target.actions[i]);
 
@@ -176,13 +280,15 @@ namespace AC
 					actionLabel = actionLabel.Substring (0, 40) + "..)";
 				}
 
+				GUILayout.Label (" ", GUILayout.MaxWidth (10f));
+				
 				_target.actions[i].isDisplayed = EditorGUILayout.Foldout (_target.actions[i].isDisplayed, actionLabel);
 				if (!_target.actions[i].isEnabled)
 				{
 					EditorGUILayout.LabelField ("DISABLED", EditorStyles.boldLabel, GUILayout.MaxWidth (100f));
 				}
 
-				if (GUILayout.Button ("", CustomStyles.IconCog))
+				if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
 				{
 					ActionSideMenu (i);
 				}
@@ -206,21 +312,17 @@ namespace AC
 					}
 					else
 					{
-						int newTypeIndex = ActionListEditor.ShowTypePopup (_target.actions[i], typeIndex);
+						int newTypeIndex = ShowTypePopup (_target.actions[i], typeIndex);
 						if (newTypeIndex >= 0)
 						{
 							// Rebuild constructor if Subclass and type string do not match
-							ActionEnd _end = new ActionEnd ();
-							_end.resultAction = _target.actions[i].endAction;
-							_end.skipAction = _target.actions[i].skipAction;
-							_end.linkedAsset = _target.actions[i].linkedAsset;
-							_end.linkedCutscene = _target.actions[i].linkedCutscene;
+							ActionEnd _end = (_target.actions[i].endings.Count > 0) ? new ActionEnd (_target.actions[i].endings[0]) : new ActionEnd ();
 
 							Undo.RecordObject (_target, "Change Action type");
 							_target.actions[i] = RebuildAction (_target.actions[i], newTypeIndex, _target, -1, _end);
 						}
 
-						if (_target.useParameters && _target.parameters != null && _target.parameters.Count > 0)
+						if (_target.NumParameters > 0)
 						{
 							_target.actions[i].ShowGUI (_target.parameters);
 						}
@@ -231,14 +333,11 @@ namespace AC
 					}
 				}
 
-				if (_target.actions[i].endAction == AC.ResultAction.Skip || _target.actions[i].numSockets == 2 || _target.actions[i] is ActionCheckMultiple || _target.actions[i] is ActionParallel)
-				{
-					_target.actions[i].SkipActionGUI (_target.actions, _target.actions[i].isDisplayed);
-				}
-
+				_target.actions[i].SkipActionGUI (_target.actions, _target.actions[i].isDisplayed);
+				
 				GUI.enabled = true;
 				
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 				EditorGUILayout.Space ();
 			}
 
@@ -248,7 +347,8 @@ namespace AC
 				numActions += 1;
 			}
 			
-			_target = ActionListEditor.ResizeList (_target, numActions);
+			_target = ResizeList (_target, numActions);
+
 		}
 
 
@@ -285,7 +385,7 @@ namespace AC
 				
 				if (tagNumber == -1)
 				{
-					ACDebug.LogWarning ("Previously chosen speech tag no longer exists!");
+					if (tagID > 0) ACDebug.LogWarning ("Previously chosen speech tag no longer exists!");
 					tagNumber = 0;
 				}
 				
@@ -330,13 +430,15 @@ namespace AC
 				}
 			}
 
+			string[] subCategories = KickStarter.actionsManager.GetActionSubCategories (category);
+
 			if (category != oldCategory)
 			{
-				subcategory = 0;
-				enabledSubcategory = 0;
+				enabledSubcategory = KickStarter.actionsManager.GetDefaultActionInCategory (category);
+				if (enabledSubcategory >= subCategories.Length) enabledSubcategory = 0;
 			}
 
-			enabledSubcategory = EditorGUILayout.Popup (enabledSubcategory, KickStarter.actionsManager.GetActionSubCategories (category));
+			enabledSubcategory = EditorGUILayout.Popup (enabledSubcategory, subCategories);
 			int newTypeIndex = KickStarter.actionsManager.GetEnabledActionTypeIndex (category, enabledSubcategory);
 
 			EditorGUILayout.EndHorizontal ();
@@ -363,21 +465,28 @@ namespace AC
 					bool _showComment = existingAction.showComment;
 					bool _showOutputSockets = existingAction.showOutputSockets;
 					string _comment = existingAction.comment;
+					ActionList _parentActionListInEditor = existingAction.parentActionListInEditor;
 
-					AC.Action newAction = (AC.Action) CreateInstance (className);
-					newAction.name = className;
+					Action newAction = Action.CreateNew (className);;
 
+					if (newAction == null && !className.StartsWith ("AC."))
+					{
+						newAction = Action.CreateNew ("AC." + className);
+					}
+					if (newAction == null)
+					{
+						newAction = Action.CreateNew (ActionsManager.GetDefaultAction ());
+					}
+					
 					if (_end != null)
 					{
-						newAction.endAction = _end.resultAction;
-						newAction.skipAction = _end.skipAction;
-						newAction.linkedAsset = _end.linkedAsset;
-						newAction.linkedCutscene = _end.linkedCutscene;
+						newAction.endings.Add (new ActionEnd (_end));
 					}
 
 					newAction.showComment = _showComment;
 					newAction.showOutputSockets = _showOutputSockets;
 					newAction.comment = _comment;
+					newAction.parentActionListInEditor = _parentActionListInEditor;
 
 					if (insertIndex >= 0)
 					{
@@ -508,7 +617,7 @@ namespace AC
 			{
 				menu.AddItem (new GUIContent ("Enable"), false, Callback, "Enable");
 			}
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 			if (!Application.isPlaying)
 			{
 				if (_target.actions.Count > 1)
@@ -517,11 +626,11 @@ namespace AC
 				}
 				menu.AddItem (new GUIContent ("Copy"), false, Callback, "Copy");
 			}
-			if (AdvGame.copiedActions.Count > 0)
+			if (JsonAction.HasCopyBuffer ())
 			{
 				menu.AddItem (new GUIContent ("Paste after"), false, Callback, "Paste after");
 			}
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 			menu.AddItem (new GUIContent ("Insert after"), false, Callback, "Insert after");
 			if (_target.actions.Count > 1)
 			{
@@ -529,7 +638,7 @@ namespace AC
 			}
 			if (i > 0 || i < _target.actions.Count-1)
 			{
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 			}
 			if (i > 0)
 			{
@@ -542,8 +651,11 @@ namespace AC
 				menu.AddItem (new GUIContent ("Re-arrange/Move to bottom"), false, Callback, "Move to bottom");
 			}
 
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 			menu.AddItem (new GUIContent ("Toggle breakpoint"), false, Callback, "Toggle breakpoint");
+
+			menu.AddSeparator (string.Empty);
+			menu.AddItem (new GUIContent ("Edit Script"), false, Callback, "EditSource");
 			
 			menu.ShowAsContext ();
 		}
@@ -570,92 +682,108 @@ namespace AC
 			if (doUndo)
 			{
 				Undo.SetCurrentGroupName (callback);
-				Undo.RecordObjects (new UnityEngine.Object [] { _target }, callback);
-				Undo.RecordObjects (_target.actions.ToArray (), callback);
+				Undo.RecordObjects (new Object [] { _target }, callback);
+				#if !AC_ActionListPrefabs
+				if (_target.actions != null) Undo.RecordObjects (_target.actions.ToArray (), callback);
+				#endif
 			}
 			
 			switch (callback)
 			{
-			case "Enable":
-				_action.isEnabled = true;
-				break;
+				case "Enable":
+					_action.isEnabled = true;
+					break;
 				
-			case "Disable":
-				_action.isEnabled = false;
-				break;
-				
-			case "Cut":
-				List<AC.Action> cutList = new List<AC.Action>();
-				AC.Action cutAction = Object.Instantiate (_action) as AC.Action;
-				cutAction.name = cutAction.name.Replace ("(Clone)", "");
-				cutList.Add (cutAction);
-				AdvGame.copiedActions = cutList;
-				DeleteAction (_action, _target);
-				break;
-				
-			case "Copy":
-				List<AC.Action> copyList = new List<AC.Action>();
-				AC.Action copyAction = Object.Instantiate (_action) as AC.Action;
-				copyAction.name = copyAction.name.Replace ("(Clone)", "");
-				copyAction.ClearIDs ();
-				copyAction.nodeRect = new Rect (0,0,300,60);
-				copyList.Add (copyAction);
-				AdvGame.copiedActions = copyList;
-				break;
-				
-			case "Paste after":
-				List<AC.Action> pasteList = AdvGame.copiedActions;
-				_target.actions.InsertRange (i+1, pasteList);
-				AdvGame.DuplicateActionsBuffer ();
-				break;
+				case "Disable":
+					_action.isEnabled = false;
+					break;
 
-			case "Insert end":
-				AddAction (ActionsManager.GetDefaultAction (), -1, _target);
-				break;
-				
-			case "Insert after":
-				Action insertAfterAction = AddAction (ActionsManager.GetDefaultAction (), i+1, _target);
-				insertAfterAction.endAction = _action.endAction;
-				insertAfterAction.skipAction = -1;
-				insertAfterAction.skipActionActual = _action.skipActionActual;
-				break;
-				
-			case "Delete":
-				Undo.RecordObject (_target, "Delete action");
-				DeleteAction (_action, _target);
-				break;
-				
-			case "Move to top":
-				_target.actions[0].nodeRect.x += 30f;
-				_target.actions[0].nodeRect.y += 30f;
-				_target.actions.Remove (_action);
-				_target.actions.Insert (0, _action);
-				break;
-				
-			case "Move up":
-				_target.actions.Remove (_action);
-				_target.actions.Insert (i-1, _action);
-				break;
-				
-			case "Move to bottom":
-				_target.actions.Remove (_action);
-				_target.actions.Insert (_target.actions.Count, _action);
-				break;
-				
-			case "Move down":
-				_target.actions.Remove (_action);
-				_target.actions.Insert (i+1, _action);
-				break;
+				case "Cut":
+					List<Action> actionsToCut = new List<Action>();
+					actionsToCut.Add (_action);
+					JsonAction.ToCopyBuffer (actionsToCut, false);
+					DeleteAction (_action, _target);
+					break;
 
-			case "Toggle breakpoint":
-				_action.isBreakPoint = !_action.isBreakPoint;
-				break;
+				case "Copy":
+					List<Action> actionsToCopy = new List<Action> ();
+					actionsToCopy.Add (_action);
+					JsonAction.ToCopyBuffer (actionsToCopy);
+					break;
+
+				case "Paste after":
+					List<Action> pasteList = JsonAction.CreatePasteBuffer (false);
+					_target.actions.InsertRange (i + 1, pasteList);
+					break;
+
+				case "Insert end":
+					Action insertEndAction = AddAction (ActionsManager.GetDefaultAction (), -1, _target);
+					if (insertEndAction.NumSockets == 1)
+					{
+						if (insertEndAction.endings.Count == 0)
+						{
+							insertEndAction.endings.Add (Action.GenerateStopActionEnd ());
+						}
+						else
+						{
+							insertEndAction.endings[0] = Action.GenerateStopActionEnd ();
+						}
+					}
+					break;
+				
+				case "Insert after":
+					Action insertAfterAction = AddAction (ActionsManager.GetDefaultAction (), i+1, _target);
+					if (_action.endings.Count > 0)
+					{
+						insertAfterAction.endings.Add (new ActionEnd (_action.endings[0]));
+					}
+					break;
+				
+				case "Delete":
+					Undo.RecordObject (_target, "Delete action");
+					DeleteAction (_action, _target);
+					break;
+				
+				case "Move to top":
+					Vector2 newPosition = _target.actions[0].NodeRect.position + new Vector2 (30, 30);
+					_target.actions[0].NodeRect = new Rect (newPosition, _target.actions[0].NodeRect.size);
+					_target.actions.Remove (_action);
+					_target.actions.Insert (0, _action);
+					break;
+				
+				case "Move up":
+					_target.actions.Remove (_action);
+					_target.actions.Insert (i-1, _action);
+					break;
+				
+				case "Move to bottom":
+					_target.actions.Remove (_action);
+					_target.actions.Insert (_target.actions.Count, _action);
+					break;
+				
+				case "Move down":
+					_target.actions.Remove (_action);
+					_target.actions.Insert (i+1, _action);
+					break;
+
+				case "Toggle breakpoint":
+					_action.isBreakPoint = !_action.isBreakPoint;
+					break;
+
+				case "EditSource":
+					Action.EditSource (_action);
+					break;
+
+				default:
+					break;
 			}
 
 			if (doUndo)
 			{
-				Undo.RecordObjects (new UnityEngine.Object [] { _target }, callback);
-				Undo.RecordObjects (_target.actions.ToArray (), callback);
+				Undo.RecordObjects (new Object [] { _target }, callback);
+#if !AC_ActionListPrefabs
+				if (_target.actions != null) Undo.RecordObjects (_target.actions.ToArray (), callback);
+#endif
 				Undo.CollapseUndoOperations (Undo.GetCurrentGroup ());
 				EditorUtility.SetDirty (_target);
 			}
@@ -668,7 +796,9 @@ namespace AC
 			{
 				_target.actions.Remove (action);
 
+#if !AC_ActionListPrefabs
 				Undo.DestroyObjectImmediate (action);
+#endif
 				//SyncAssetObjects (_target);
 			}
 		}
@@ -684,21 +814,19 @@ namespace AC
 			List<int> idArray = new List<int>();
 			foreach (AC.Action _action in _target.actions)
 			{
+				if (_action == null) continue;
 				idArray.Add (_action.id);
 			}
 			idArray.Sort ();
 			
-			AC.Action newAction = (AC.Action) CreateInstance (className);
-			newAction.name = className;
-
+			Action newAction = Action.CreateNew (className);
+			
 			// Update id based on array
 			foreach (int _id in idArray.ToArray())
 			{
 				if (newAction.id == _id)
 					newAction.id ++;
 			}
-			
-			newAction.name = newAction.title;
 
 			return AddAction (newAction, i, _target);
 		}
@@ -725,9 +853,10 @@ namespace AC
 		{
 			foreach (AC.Action action in list)
 			{
-				if (action.nodeRect.x > xPoint)
+				if (action.NodeRect.x > xPoint)
 				{
-					action.nodeRect.x += 350 * count;
+					Vector2 newPosition = new Vector2 (action.NodeRect.x + (350 * count), action.NodeRect.y);
+					action.NodeRect = new Rect (newPosition, action.NodeRect.size);
 				}
 			}
 		}
@@ -791,45 +920,62 @@ namespace AC
 		}
 
 
-		public static void ShowParametersGUI (ActionList actionList, ActionListAsset actionListAsset, List<ActionParameter> parameters)
+		public static void ShowParametersGUI (ActionList actionList, ActionListAsset actionListAsset, List<ActionParameter> parameters, bool readOnly = false)
 		{
-			foreach (ActionParameter _parameter in parameters)
+			if (parameters.Count > 0)
 			{
-				EditorGUILayout.BeginHorizontal ();
+				for (int i=0; i<parameters.Count; i++)
+				{
+					EditorGUILayout.BeginHorizontal ();
 
-				if (Application.isPlaying)
-				{
-					EditorGUILayout.LabelField (_parameter.ID.ToString () + ": " + _parameter.parameterType.ToString () + " '" + _parameter.label + "'");
-					EditorGUILayout.LabelField ("Current value: '" + _parameter.GetLabel () + "'");
-				}
-				else
-				{
-					EditorGUILayout.LabelField (_parameter.ID.ToString (), GUILayout.MaxWidth (10f));
-					_parameter.label = EditorGUILayout.TextField (_parameter.label);
-					_parameter.parameterType = (ParameterType) EditorGUILayout.EnumPopup (_parameter.parameterType);
-					
-					if (GUILayout.Button ("", CustomStyles.IconCog))
+					string buttonLabel = parameters[i].label;
+					if (string.IsNullOrEmpty (buttonLabel))
 					{
-						ParameterSideMenu (actionList, actionListAsset, parameters.Count, parameters.IndexOf (_parameter));
+						buttonLabel = "(Untitled)";
+					}
+
+					bool isDisplayed = parameters[i].isDisplayed;
+					isDisplayed = GUILayout.Toggle (isDisplayed, parameters[i].ID.ToString () + ": " + buttonLabel, "Button");
+					if (parameters[i].isDisplayed != isDisplayed)
+					{
+						parameters[i].isDisplayed = isDisplayed;
+						EditorGUIUtility.editingTextField = false;
+					}
+
+					if (GUILayout.Button (string.Empty, CustomStyles.IconCog))
+					{
+						ParameterSideMenu (actionList, actionListAsset, parameters.Count, i);
+					}
+
+					EditorGUILayout.EndHorizontal ();
+
+					if (parameters[i].isDisplayed)
+					{
+						if (Application.isPlaying)
+						{
+							parameters[i].ShowGUI (actionListAsset != null);
+						}
+						else
+						{
+							parameters[i].ShowGUI (actionListAsset != null, false, readOnly);
+						}
+						EditorGUILayout.Space ();
 					}
 				}
-
-				EditorGUILayout.EndHorizontal ();
 			}
 
-			if (!Application.isPlaying)
+			if (!Application.isPlaying && !readOnly)
 			{
-				if (parameters.Count > 0)
-				{
-					EditorGUILayout.Space ();
-				}
+				EditorGUILayout.Space ();
 
 				if (GUILayout.Button ("Create new parameter", EditorStyles.miniButton))
 				{
-					ActionParameter newParameter = new ActionParameter (ActionListEditor.GetParameterIDArray (parameters));
+					ActionParameter newParameter = new ActionParameter (GetParameterIDArray (parameters));
+					newParameter.parameterType = ParameterType.Integer;
 					parameters.Add (newParameter);
 				}
 			}
+
 		}
 
 
@@ -856,7 +1002,7 @@ namespace AC
 
 			if (i > 0 || i < numParameters-1)
 			{
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 
 				if (i > 0)
 				{
@@ -868,6 +1014,10 @@ namespace AC
 					menu.AddItem (new GUIContent ("Re-arrange/Move down"), false, ParameterCallback, "Move down");
 					menu.AddItem (new GUIContent ("Re-arrange/Move to bottom"), false, ParameterCallback, "Move to bottom");
 				}
+
+				menu.AddSeparator (string.Empty);
+				menu.AddItem (new GUIContent ("All/Collapse"), false, ParameterCallback, "Collapse all");
+				menu.AddItem (new GUIContent ("All/Expand"), false, ParameterCallback, "Expand all");
 			}
 
 			menu.ShowAsContext ();
@@ -898,85 +1048,102 @@ namespace AC
 				
 			switch (callback)
 			{
-			case "Insert":
-				Undo.RecordObject (_target, "Create parameter");
-				ActionParameter newParameter = new ActionParameter (ActionListEditor.GetParameterIDArray (_target.parameters));
-				_target.parameters.Insert (i+1, newParameter);
-				break;
+				case "Insert":
+					Undo.RecordObject (_target, "Create parameter");
+					ActionParameter newParameter = new ActionParameter (ActionListEditor.GetParameterIDArray (_target.parameters));
+					_target.parameters.Insert (i+1, newParameter);
+					break;
 				
-			case "Delete":
-				Undo.RecordObject (_target, "Delete parameter");
-				_target.parameters.RemoveAt (i);
-				break;
+				case "Delete":
+					Undo.RecordObject (_target, "Delete parameter");
+					_target.parameters.RemoveAt (i);
+					break;
 
-			case "Move to top":
-				Undo.RecordObject (_target, "Move parameter to top");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (0, moveParameter);
-				break;
+				case "Move to top":
+					Undo.RecordObject (_target, "Move parameter to top");
+					_target.parameters.Remove (moveParameter);
+					_target.parameters.Insert (0, moveParameter);
+					break;
 				
-			case "Move up":
-				Undo.RecordObject (_target, "Move parameter up");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (i-1, moveParameter);
-				break;
+				case "Move up":
+					Undo.RecordObject (_target, "Move parameter up");
+					_target.parameters.Remove (moveParameter);
+					_target.parameters.Insert (i-1, moveParameter);
+					break;
 				
-			case "Move to bottom":
-				Undo.RecordObject (_target, "Move parameter to bottom");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (_target.parameters.Count, moveParameter);
-				break;
+				case "Move to bottom":
+					Undo.RecordObject (_target, "Move parameter to bottom");
+					_target.parameters.Remove (moveParameter);
+					_target.parameters.Insert (_target.NumParameters, moveParameter);
+					break;
 				
-			case "Move down":
-				Undo.RecordObject (_target, "Move parameter down");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (i+1, moveParameter);
-				break;
+				case "Move down":
+					Undo.RecordObject (_target, "Move parameter down");
+					_target.parameters.Remove (moveParameter);
+					_target.parameters.Insert (i+1, moveParameter);
+					break;
+
+				case "Collapse all":
+					foreach (ActionParameter actionParameter in _target.parameters)
+					{
+						actionParameter.isDisplayed = false;
+					}
+					break;
+
+				case "Expand all":
+					foreach (ActionParameter actionParameter in _target.parameters)
+					{
+						actionParameter.isDisplayed = true;
+					}
+					break;
+
+				default:
+					break;
 			}
 		}
 
 
 		private static void ModifyParameter (ActionListAsset _target, int i, string callback)
 		{
-			if (_target == null || _target.parameters == null) return;
+			if (_target == null || _target.NumParameters == 0) return;
 
-			ActionParameter moveParameter = _target.parameters[i];
+			ActionParameter moveParameter = _target.DefaultParameters[i];
 				
 			switch (callback)
 			{
 			case "Insert":
 				Undo.RecordObject (_target, "Create parameter");
-				ActionParameter newParameter = new ActionParameter (ActionListEditor.GetParameterIDArray (_target.parameters));
-				_target.parameters.Insert (i+1, newParameter);
+				ActionParameter newParameter = new ActionParameter (ActionListEditor.GetParameterIDArray (_target.DefaultParameters));
+				_target.DefaultParameters.Insert (i+1, newParameter);
 				break;
 				
 			case "Delete":
 				Undo.RecordObject (_target, "Delete parameter");
-				_target.parameters.RemoveAt (i);
+				_target.DefaultParameters.RemoveAt (i);
 				break;
 
 			case "Move to top":
 				Undo.RecordObject (_target, "Move parameter to top");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (0, moveParameter);
+				_target.DefaultParameters.Remove (moveParameter);
+				_target.DefaultParameters.Insert (0, moveParameter);
 				break;
 				
 			case "Move up":
 				Undo.RecordObject (_target, "Move parameter up");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (i-1, moveParameter);
+				_target.DefaultParameters.Remove (moveParameter);
+				_target.DefaultParameters.Insert (i-1, moveParameter);
 				break;
 				
 			case "Move to bottom":
 				Undo.RecordObject (_target, "Move parameter to bottom");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (_target.parameters.Count, moveParameter);
+				_target.DefaultParameters.Remove (moveParameter);
+				_target.DefaultParameters.Insert (_target.DefaultParameters.Count, moveParameter);
 				break;
 				
 			case "Move down":
 				Undo.RecordObject (_target, "Move parameter down");
-				_target.parameters.Remove (moveParameter);
-				_target.parameters.Insert (i+1, moveParameter);
+				_target.DefaultParameters.Remove (moveParameter);
+				_target.DefaultParameters.Insert (i+1, moveParameter);
 				break;
 			}
 		}
@@ -1005,118 +1172,11 @@ namespace AC
 
 			for (int i=0; i<numParameters; i++)
 			{
-				string label = assetParameters[i].label;
+				localParameters[i].label = assetParameters[i].label;
 				localParameters[i].parameterType = assetParameters[i].parameterType;
 
-				if (Application.isPlaying)
-				{
-					EditorGUILayout.LabelField (assetParameters[i].ID.ToString () + ": " + localParameters[i].parameterType.ToString () + " '" + label + "'");
-					EditorGUILayout.LabelField ("Current value: '" + localParameters[i].GetLabel () + "'");
-				}
-				else
-				{
-					if (assetParameters[i].parameterType == ParameterType.String)
-					{
-						EditorGUILayout.BeginHorizontal ();
-						EditorGUILayout.LabelField (label + ":", GUILayout.Width (145f));
-						EditorStyles.textField.wordWrap = true;
-						localParameters[i].stringValue = EditorGUILayout.TextArea (localParameters[i].stringValue, GUILayout.MaxWidth (400f));
-						EditorGUILayout.EndHorizontal ();
-					}
-					else if (assetParameters[i].parameterType == ParameterType.Float)
-					{
-						localParameters[i].floatValue = EditorGUILayout.FloatField (label + ":", localParameters[i].floatValue);
-					}
-					else if (assetParameters[i].parameterType == ParameterType.Integer)
-					{
-						localParameters[i].intValue = EditorGUILayout.IntField (label + ":", localParameters[i].intValue);
-					}
-					else if (assetParameters[i].parameterType == ParameterType.Boolean)
-					{
-						BoolValue boolValue = BoolValue.False;
-						if (localParameters[i].intValue == 1)
-						{
-							boolValue = BoolValue.True;
-						}
-
-						boolValue = (BoolValue) EditorGUILayout.EnumPopup (label + ":", boolValue);
-
-						if (boolValue == BoolValue.True)
-						{
-							localParameters[i].intValue = 1;
-						}
-						else
-						{
-							localParameters[i].intValue = 0;
-						}
-					}
-					else if (assetParameters[i].parameterType == ParameterType.GlobalVariable)
-					{
-						if (AdvGame.GetReferences () && AdvGame.GetReferences ().variablesManager)
-						{
-							VariablesManager variablesManager = AdvGame.GetReferences ().variablesManager;
-							localParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", variablesManager.vars, localParameters[i].intValue);
-						}
-						else
-						{
-							EditorGUILayout.HelpBox ("A Variables Manager is required to pass Global Variables.", MessageType.Warning);
-						}
-					}
-					else if (assetParameters[i].parameterType == ParameterType.InventoryItem)
-					{
-						if (AdvGame.GetReferences () && AdvGame.GetReferences ().inventoryManager)
-						{
-							InventoryManager inventoryManager = AdvGame.GetReferences ().inventoryManager;
-							localParameters[i].intValue = ActionRunActionList.ShowInvItemSelectorGUI (label + ":", inventoryManager.items, localParameters[i].intValue);
-						}
-						else
-						{
-							EditorGUILayout.HelpBox ("An Inventory Manager is required to pass Inventory items.", MessageType.Warning);
-						}
-					}
-					else if (assetParameters[i].parameterType == ParameterType.LocalVariable)
-					{
-						if (KickStarter.localVariables)
-						{
-							localParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", KickStarter.localVariables.localVars, localParameters[i].intValue);
-						}
-						else
-						{
-							EditorGUILayout.HelpBox ("A GameEngine prefab is required to pass Local Variables.", MessageType.Warning);
-						}
-					}
-					else if (assetParameters[i].parameterType == ParameterType.GameObject)
-					{
-						if (isAssetFile)
-						{
-							// ID
-							localParameters[i].intValue = EditorGUILayout.IntField (label + " (ID):", localParameters[i].intValue);
-							localParameters[i].gameObject = null;
-						}
-						else
-						{
-							// Gameobject
-							localParameters[i].gameObject = (GameObject) EditorGUILayout.ObjectField (label + ":", localParameters[i].gameObject, typeof (GameObject), true);
-							localParameters[i].intValue = 0;
-							if (localParameters[i].gameObject != null && localParameters[i].gameObject.GetComponent <ConstantID>() == null)
-							{
-								UnityVersionHandler.AddConstantIDToGameObject <ConstantID> (localParameters[i].gameObject);
-							}
-						}	
-					}
-					else if (assetParameters[i].parameterType == ParameterType.UnityObject)
-					{
-						localParameters[i].objectValue = (Object) EditorGUILayout.ObjectField (label + ":", localParameters[i].objectValue, typeof (Object), true);
-					}
-					else if (assetParameters[i].parameterType == ParameterType.ComponentVariable)
-					{
-						localParameters[i].variables = (Variables) EditorGUILayout.ObjectField ("'" + label + "' component:", localParameters[i].variables, typeof (Variables), true);
-						if (localParameters[i].variables != null)
-						{
-							localParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", localParameters[i].variables.vars, localParameters[i].intValue);
-						}
-					}
-				}
+				EditorGUILayout.LabelField ("Label " + assetParameters[i].ID + ":", assetParameters[i].label);
+				localParameters[i].ShowGUI (isAssetFile, true);
 
 				if (i < (numParameters-1))
 				{
@@ -1138,3 +1198,5 @@ namespace AC
 	}
 
 }
+
+#endif

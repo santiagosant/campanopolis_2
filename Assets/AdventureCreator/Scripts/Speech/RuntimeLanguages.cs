@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RuntimeLanguage.cs"
  * 
@@ -14,37 +14,42 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+#if LocalizationIsPresent
+using UnityEngine.Localization.Settings;
+#endif
 
 namespace AC
 {
 
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
+	/**
+	 * This script contains all language data for the game at runtime.
+ 	 * It transfers data from the Speech Manaager to itself when the game begins.
+ 	 */
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_runtime_languages.html")]
-	#endif
 	public class RuntimeLanguages : MonoBehaviour
 	{
 
 		#region Variables
 
-		private Dictionary<int, SpeechLine> speechLinesDictionary = new Dictionary<int, SpeechLine>(); 
-		private List<string> languages = new List<string>();
-		private List<bool> languageIsRightToLeft = new List<bool>();
-		private List<string> languageAudioAssetBundles = new List<string>();
-		private List<string> languageLipsyncAssetBundles = new List<string>();
+		protected Dictionary<int, SpeechLine> speechLinesDictionary = null;
+		protected List<Language> languages = new List<Language>();
 
-		private AssetBundle currentAudioAssetBundle = null;
-		private string currentAudioAssetBundleName;
-		private AssetBundle currentLipsyncAssetBundle = null;
-		private string currentLipsyncAssetBundleName;
+		protected AssetBundle currentAudioAssetBundle = null;
+		protected string currentAudioAssetBundleName;
+		protected AssetBundle currentLipsyncAssetBundle = null;
+		protected string currentLipsyncAssetBundleName;
 
-		private bool isLoadingBundle;
+		protected bool isLoadingBundle;
+
+		protected List<int> spokenOnceSpeechLineIDs = new List<int>();
+		private SpeechLine speechLine;
 
 		#endregion
 
 
 		#region PublicFunctions
 
-		public void OnAwake ()
+		public void OnInitPersistentEngine ()
 		{
 			TransferFromManager ();
 		}
@@ -54,21 +59,22 @@ namespace AC
 		 * <summary>Loads in audio and lipsync AssetBundles for a given language</summary>
 		 * <param name = "language">The index number of the language to load AssetBundles for</param>
 		 */
-		public void LoadAssetBundle (int language)
+		public virtual void LoadAssetBundle (int language)
 		{
-			if (!KickStarter.speechManager.autoNameSpeechFiles ||
-				speechLinesDictionary == null ||
-				speechLinesDictionary.Count == 0)
+			if (KickStarter.speechManager.referenceSpeechFiles == ReferenceSpeechFiles.ByDirectReference)
 			{
 				// Only reset if necessary
-				speechLinesDictionary.Clear ();
+				speechLinesDictionary = new Dictionary<int, SpeechLine> ();
 				foreach (SpeechLine speechLine in KickStarter.speechManager.lines)
 				{
-					speechLinesDictionary.Add (speechLine.lineID, new SpeechLine (speechLine, language));
+					if (KickStarter.speechManager.IsTextTypeTranslatable (speechLine.textType))
+					{
+						speechLinesDictionary.Add (speechLine.lineID, new SpeechLine (speechLine, language));
+					}
 				}
 			}
 
-			if (KickStarter.speechManager.useAssetBundles)
+			if (KickStarter.speechManager.referenceSpeechFiles == ReferenceSpeechFiles.ByAssetBundle)
 			{
 				StopAllCoroutines ();
 				StartCoroutine (LoadAssetBundleCoroutine (language));
@@ -82,70 +88,79 @@ namespace AC
 		 * <param name = "_speaker">The character speaking the line</param>
 		 * <returns>Gets the AudioClip associated with a speech line</returns> 
 		 */
-		public AudioClip GetSpeechAudioClip (int lineID, Char _speaker)
+		public virtual AudioClip GetSpeechAudioClip (int lineID, Char _speaker)
 		{
-			AudioClip clipObj = null;
+			if (!KickStarter.speechManager.IsTextTypeTranslatable (AC_TextType.Speech))
+			{
+				return null;
+			}
 
 			int voiceLanguage = Options.GetVoiceLanguage ();
 			string voiceLanguageName = (voiceLanguage > 0) ? Options.GetVoiceLanguageName () : string.Empty;
 
-			if (KickStarter.speechManager.autoNameSpeechFiles)
+			switch (KickStarter.speechManager.referenceSpeechFiles)
 			{
-				string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, false);
-
-				if (currentAudioAssetBundle != null)
-				{
-					// Asset bundles
-
-					if (isLoadingBundle)
+				case ReferenceSpeechFiles.ByNamingConvention:
 					{
-						ACDebug.LogWarning ("Cannot load audio file from AssetBundle as the AssetBundle is still being loaded.");
-						return null;
+						string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, false);
+						AudioClip clipObj = Resources.Load (fullName) as AudioClip;
+
+						if (clipObj == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+						{
+							fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, string.Empty, false);
+							clipObj = Resources.Load (fullName) as AudioClip;
+						}
+
+						if (clipObj == null && !string.IsNullOrEmpty (fullName))
+						{
+							ACDebug.LogWarning ("Audio file 'Resources/" + fullName + "' not found in Resources folder.");
+						}
+						return clipObj;
 					}
-					else
+
+				case ReferenceSpeechFiles.ByAssetBundle:
 					{
+						if (isLoadingBundle)
+						{
+							ACDebug.LogWarning ("Cannot load audio file from AssetBundle as the AssetBundle is still being loaded.");
+							return null;
+						}
+						string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, false);
+
 						int indexOfLastSlash = fullName.LastIndexOf ("/") + 1;
 						if (indexOfLastSlash > 0)
 						{
 							fullName = fullName.Substring (indexOfLastSlash);
 						}
 
-						clipObj = currentAudioAssetBundle.LoadAsset <AudioClip> (fullName);
+						if (currentAudioAssetBundle == null)
+						{
+							ACDebug.LogWarning ("Cannot load audio file '" + fullName + "' from AssetBundle as no AssetBundle is currently loaded.");
+							return null;
+						}
+
+						AudioClip clipObj = currentAudioAssetBundle.LoadAsset<AudioClip> (fullName);
 
 						if (clipObj == null && !string.IsNullOrEmpty (fullName))
 						{
 							ACDebug.LogWarning ("Audio file '" + fullName + "' not found in Asset Bundle '" + currentAudioAssetBundle.name + "'.");
 						}
+						return clipObj;
 					}
-				}
-				else
-				{
-					// Resources
-					clipObj = Resources.Load (fullName) as AudioClip;
-
-					if (clipObj == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+					
+				case ReferenceSpeechFiles.ByDirectReference:
 					{
-						fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, string.Empty, false);
-						clipObj = Resources.Load (fullName) as AudioClip;
+						AudioClip clipObj = GetLineCustomAudioClip (lineID, voiceLanguage);
+
+						if (clipObj == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+						{
+							return GetLineCustomAudioClip (lineID, 0);
+						}
+						return clipObj;
 					}
-
-					if (clipObj == null && !string.IsNullOrEmpty (fullName))
-					{
-						ACDebug.LogWarning ("Audio file 'Resources/" + fullName + "' not found in Resources folder.");
-					}
-				}
 			}
-			else
-			{
-				clipObj = GetLineCustomAudioClip (lineID, voiceLanguage);
-
-				if (clipObj == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
-				{
-					clipObj = GetLineCustomAudioClip (lineID, 0);
-				}
-			}
-
-			return clipObj;
+			
+			return null;
 		}
 
 
@@ -155,72 +170,110 @@ namespace AC
 		 * <param name = "_speaker">The character speaking the line</param>
 		 * <returns>Gets the lipsync file associated with a speech line</returns> 
 		 */
-		public T GetSpeechLipsyncFile <T> (int lineID, Char _speaker) where T : Object
+		public virtual T GetSpeechLipsyncFile <T> (int lineID, Char _speaker) where T : Object
 		{
-			T lipsyncFile = null;
+			if (!KickStarter.speechManager.IsTextTypeTranslatable (AC_TextType.Speech))
+			{
+				return null;
+			}
 
 			int voiceLanguage = Options.GetVoiceLanguage ();
 			string voiceLanguageName = (voiceLanguage > 0) ? Options.GetVoiceLanguageName () : string.Empty;
 
-			if (KickStarter.speechManager.autoNameSpeechFiles)
+			switch (KickStarter.speechManager.referenceSpeechFiles)
 			{
-				string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, true);
-
-				if (currentLipsyncAssetBundle != null)
-				{
-					// Asset bundles
-					if (isLoadingBundle)
+				case ReferenceSpeechFiles.ByNamingConvention:
 					{
-						ACDebug.LogWarning ("Cannot load lipsync file from AssetBundle as the AssetBundle is still being loaded.");
-						return null;
+						string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, true);
+
+						T lipsyncFile = Resources.Load (fullName) as T;
+
+						if (lipsyncFile == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+						{
+							fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, string.Empty, true);
+							lipsyncFile = Resources.Load (fullName) as T;
+						}
+
+						if (lipsyncFile == null)
+						{
+							ACDebug.LogWarning ("Lipsync file 'Resources/" + fullName + "' (" + typeof (T) + ") not found.");
+						}
+						return lipsyncFile;
 					}
 
-					int indexOfLastSlash = fullName.LastIndexOf ("/") + 1;
-					if (indexOfLastSlash > 0)
+				case ReferenceSpeechFiles.ByAssetBundle:
 					{
-						fullName = fullName.Substring (indexOfLastSlash);
+						string fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, voiceLanguageName, true);
+
+						if (isLoadingBundle)
+						{
+							ACDebug.LogWarning ("Cannot load lipsync file from AssetBundle as the AssetBundle is still being loaded.");
+							return null;
+						}
+
+						int indexOfLastSlash = fullName.LastIndexOf ("/") + 1;
+						if (indexOfLastSlash > 0)
+						{
+							fullName = fullName.Substring (indexOfLastSlash);
+						}
+
+						if (currentLipsyncAssetBundle == null)
+						{
+							ACDebug.LogWarning ("Cannot load lipsync file '" + fullName + "' from AssetBundle as no AssetBundle is currently loaded.");
+							return null;
+						}
+
+
+						T lipsyncFile = currentLipsyncAssetBundle.LoadAsset<T> (fullName);
+
+						if (lipsyncFile == null && !string.IsNullOrEmpty (fullName))
+						{
+							ACDebug.LogWarning ("Lipsync file '" + fullName + "' (" + typeof (T) + ") not found in Asset Bundle '" + currentLipsyncAssetBundle.name + "'.");
+						}
+						return lipsyncFile;
 					}
 
-					lipsyncFile = currentLipsyncAssetBundle.LoadAsset <T> (fullName);
-
-					if (lipsyncFile == null && !string.IsNullOrEmpty (fullName))
+				case ReferenceSpeechFiles.ByDirectReference:
 					{
-						ACDebug.LogWarning ("Lipsync file '" + fullName + "' (" + typeof (T) + ") not found in Asset Bundle '" + currentLipsyncAssetBundle.name + "'.");
-					}
-				}
-				else
-				{
-					// Resources
-					lipsyncFile = Resources.Load (fullName) as T;
+						Object _object = KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, voiceLanguage);
 
-					if (lipsyncFile == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
-					{
-						fullName = KickStarter.speechManager.GetAutoAssetPathAndName (lineID, _speaker, string.Empty, true);
-						lipsyncFile = Resources.Load (fullName) as T;
-					}
+						if (_object == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+						{
+							_object = KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, 0);
+						}
 
-					if (lipsyncFile == null)
-					{
-						ACDebug.LogWarning ("Lipsync file 'Resources/" + fullName + "' (" + typeof (T) + ") not found in Resources folder.");
+						if (_object is T)
+						{
+							return (T) KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, voiceLanguage);
+						}
 					}
-				}
+					break;
+
+				default:
+					break;
 			}
-			else
+
+			return null;
+		}
+
+
+		/**
+		 * <summary>Gets the translation of a line of text, based on the game's current language.</summary>
+		 * <param name = "lineID">The ITranslatable instance's line ID.</param>
+		 * <returns>The translatable text.</returns>
+		 */
+		public string GetTranslation (int lineID)
+		{
+			if (lineID >= 0)
 			{
-				UnityEngine.Object _object = KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, voiceLanguage);
-
-				if (_object == null && KickStarter.speechManager.fallbackAudio && voiceLanguage > 0)
+				SpeechLine speechLine;
+				if (SpeechLinesDictionary.TryGetValue (lineID, out speechLine))
 				{
-					_object = KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, 0);
+					return GetTranslation (speechLine.text, lineID, Options.GetLanguage ());
 				}
-
-				if (_object is T)
-				{
-					lipsyncFile = (T) KickStarter.runtimeLanguages.GetLineCustomLipsyncFile (lineID, voiceLanguage);
-				}
+				ACDebug.LogWarning ("No translation for line ID " + lineID + " could be found");
 			}
-
-			return lipsyncFile;
+			return string.Empty;
 		}
 
 
@@ -233,24 +286,54 @@ namespace AC
 		 */
 		public string GetTranslation (string originalText, int _lineID, int language)
 		{
-			if (language == 0 || string.IsNullOrEmpty (originalText))
+			if (string.IsNullOrEmpty (originalText))
+			{
+				return string.Empty;
+			}
+
+			#if !LocalizationIsPresent
+			if (language == 0)
 			{
 				return originalText;
 			}
+			#endif
 			
-			if (_lineID == -1 || language <= 0)
+			if (_lineID == -1 || language < 0)
 			{
 				ACDebug.Log ("Cannot find translation for '" + originalText + "' because the text has not been added to the Speech Manager.");
 				return originalText;
 			}
 			else
 			{
-				SpeechLine speechLine;
-				if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+				if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 				{
-					if (speechLine.translationText.Count > (language-1))
+					#if LocalizationIsPresent
+					if (speechLine.useLocalizedString)
 					{
-						return speechLine.translationText [language-1];
+						return speechLine.localizedString.GetLocalizedString ();
+					}
+					else if (language == 0)
+					{
+						return originalText;
+					}
+					#endif
+
+					if (speechLine.translationText.Count > (language - 1))
+					{
+						string result = speechLine.translationText[language - 1];
+						if (string.IsNullOrEmpty (result))
+						{
+							int fallbackLanguageIndex = Languages[language].fallbackLanguageIndex;
+							if (fallbackLanguageIndex > 0 && fallbackLanguageIndex <= Languages.Count)
+							{
+								result = speechLine.translationText[fallbackLanguageIndex - 1];
+							}
+							else
+							{
+								result = originalText;
+							}
+						}
+							return result;
 					}
 					else
 					{
@@ -259,12 +342,76 @@ namespace AC
 				}
 				else
 				{
-					ACDebug.LogWarning ("Cannot find translation for '" + originalText + "' because it's Line ID (" + _lineID + ") was not found in the Speech Manager.");
-					return originalText;
+					if (KickStarter.settingsManager.showDebugLogs != ShowDebugLogs.Never)
+					{
+						SpeechLine originalLine = KickStarter.speechManager.GetLine (_lineID);
+						if (originalLine == null)
+						{
+							ACDebug.LogWarning ("Cannot find translation for '" + originalText + "' because it's Line ID (" + _lineID + ") was not found in the Speech Manager.");
+						}
+						else
+						{
+							ACDebug.LogWarning ("Cannot find translation for '" + originalText + "' (line ID = " + _lineID + ")");
+						}
+					}
+ 					return originalText;
 				}
 			}
 
 			return string.Empty;
+		}
+
+
+		/**
+		 * <summary>Gets the translation of a line of text.</summary>
+		 * <param name = "originalText">The line in its original language.</param>
+		 * <param name = "_lineID">The translation ID number generated by SpeechManager's PopulateList() function</param>
+		 * <param name = "language">The index number of the language to return the line in, where 0 = the game's original language.</param>
+		 * <param name = "textType">The type of text to translatable.</param>
+		 * <returns>The translation of the line, if it exists. If a translation does not exist, or the given textType is not translatable, then the original line will be returned.</returns>
+		 */
+		public string GetTranslation (string originalText, int _lineID, int language, AC_TextType textType)
+		{
+			if (KickStarter.speechManager == null || KickStarter.speechManager.IsTextTypeTranslatable (textType))
+			{
+				return GetTranslation (originalText, _lineID, language);
+			}
+			return originalText;
+		}
+
+
+		/**
+		 * <summary>Gets the translation data for a line of text.</summary>
+		 * <param name = "originalText">The line in its original language.</param>
+		 * <param name = "_lineID">The translation ID number generated by SpeechManager's PopulateList() function</param>
+		 * <param name = "language">The index number of the language to return the line in, where 0 = the game's original language.</param>
+		 * <param name = "textType">The type of text to translatable.</param>
+		 * <returns>The translation data of the line, if it exists. If a translation does not exist, or the given textType is not translatable, then null will be returned.</returns>
+		 */
+		public SpeechLine GetSpeechLine (string originalText, int _lineID, int language, AC_TextType textType)
+		{
+			if (KickStarter.speechManager == null || KickStarter.speechManager.IsTextTypeTranslatable (textType))
+			{
+				if (language == 0 || string.IsNullOrEmpty (originalText))
+				{
+					return null;
+				}
+
+				if (_lineID == -1 || language <= 0)
+				{
+					ACDebug.Log ("Cannot find translation for '" + originalText + "' because the text has not been added to the Speech Manager.");
+					return null;
+				}
+				else
+				{
+					SpeechLine speechLine;
+					if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
+					{
+						return speechLine;
+					}
+				}
+			}
+			return null;
 		}
 
 
@@ -284,7 +431,7 @@ namespace AC
 			else
 			{
 				SpeechLine speechLine;
-				if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+				if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 				{
 					if (language == 0)
 					{
@@ -324,7 +471,7 @@ namespace AC
 			else
 			{
 				SpeechLine speechLine;
-				if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+				if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 				{
 					return speechLine.translationText.ToArray ();
 				}
@@ -347,7 +494,7 @@ namespace AC
 			}
 
 			SpeechLine speechLine;
-			if (speechLinesDictionary.TryGetValue (lineID, out speechLine))
+			if (SpeechLinesDictionary.TryGetValue (lineID, out speechLine))
 			{
 				speechLine.translationText [languageIndex-1] = translationText;
 			}
@@ -388,23 +535,24 @@ namespace AC
 					return;
 				}
 
-				if (!languages.Contains (languageName))
+				int existingIndex = GetLanguageIndex (languageName);
+				if (existingIndex >= 0)
+				{
+					int i = existingIndex;
+					languages[i].isRightToLeft = isRTL;
+					ProcessTranslationFile (i, textAsset.text, newTextColumn, ignoreEmptyCells);
+					ACDebug.Log ("Updated language " + languageName);
+				}
+				else
 				{
 					CreateLanguage (languageName, isRTL);
 					int i = languages.Count - 1;
 					ProcessTranslationFile (i, textAsset.text, newTextColumn, ignoreEmptyCells);
 					ACDebug.Log ("Created new language " + languageName);
 				}
-				else
-				{
-					int i = languages.IndexOf (languageName);
-					languageIsRightToLeft[i] = isRTL;
-					ProcessTranslationFile (i, textAsset.text, newTextColumn, ignoreEmptyCells);
-					ACDebug.Log ("Updated language " + languageName);
-				}
 			}
 		}
-	
+
 
 		/**
 		 * <summary>Checks if a given language reads right-to-left, Hebrew/Arabic-style</summary>
@@ -413,15 +561,11 @@ namespace AC
 		 */
 		public bool LanguageReadsRightToLeft (int languageIndex)
 		{
-			if (languageIsRightToLeft != null && languageIsRightToLeft.Count > languageIndex)
+			if (languageIndex >= 0 && languageIndex < languages.Count)
 			{
-				return languageIsRightToLeft [languageIndex];
+				return languages[languageIndex].isRightToLeft;
 			}
-			if (languageIsRightToLeft.Count == 0)
-			{
-				languageIsRightToLeft.Add (false);
-			}
-			return languageIsRightToLeft[0];
+			return false;
 		}
 
 
@@ -432,123 +576,302 @@ namespace AC
 		 */
 		public bool LanguageReadsRightToLeft (string languageName)
 		{
-			if (!string.IsNullOrEmpty (languageName))
+			int index = LanguageNameToIndex (languageName);
+			return LanguageReadsRightToLeft (index);
+		}
+
+
+		/**
+		 * <summary>Marks a speech line as having been spoken, so that it cannot be spoken again.  This will only work for speech lines that have 'Can only play once?' checked in their Speech Manager entry.</summary>
+		 * <param name = "lineID">The line being spoken</param>
+		 * <returns>True if the line can be spoken, False if it has already been spoken and cannot be spoken again.</returns>
+		 */
+		public bool MarkLineAsSpoken (int lineID)
+		{
+			if (lineID < 0)
 			{
-				if (languages.Contains (languageName))
+				return true;
+			}
+
+			if (spokenOnceSpeechLineIDs.Contains (lineID))
+			{
+				return false;
+			}
+
+			SpeechLine speechLine;
+			if (SpeechLinesDictionary.TryGetValue (lineID, out speechLine))
+			{
+				if (speechLine.onlyPlaySpeechOnce)
 				{
-					int i = languages.IndexOf (languageName);
-					return languageIsRightToLeft [i];
+					spokenOnceSpeechLineIDs.Add (lineID);
 				}
 			}
 
-			if (languageIsRightToLeft.Count == 0)
+			return true;
+		}
+
+
+		/**
+		 * <summary>Updates a MainData class with its own variables that need saving.</summary>
+		 * <param name = "mainData">The original MainData class</param>
+		 * <returns>The updated MainData class</returns>
+		 */
+		public MainData SaveMainData (MainData mainData)
+		{
+			System.Text.StringBuilder spokenLinesData = new System.Text.StringBuilder ();
+
+			for (int i=0; i<spokenOnceSpeechLineIDs.Count; i++)
 			{
-				languageIsRightToLeft.Add (false);
+				spokenLinesData.Append (spokenOnceSpeechLineIDs[i].ToString ());
+				spokenLinesData.Append (SaveSystem.colon);
 			}
-			return languageIsRightToLeft[0];
+
+			if (spokenOnceSpeechLineIDs.Count > 0)
+			{
+				spokenLinesData.Remove (spokenLinesData.Length-1, 1);
+			}
+
+			mainData.spokenLinesData = spokenLinesData.ToString ();
+			return mainData;
+		}
+
+
+		/**
+		 * <summary>Updates its own variables from a MainData class.</summary>
+		 * <param name = "mainData">The MainData class to load from</param>
+		 */
+		public void LoadMainData (MainData mainData)
+		{
+			spokenOnceSpeechLineIDs.Clear ();
+
+			string spokenLinesData = mainData.spokenLinesData;
+			if (!string.IsNullOrEmpty (spokenLinesData))
+			{
+				string[] linesArray = spokenLinesData.Split (SaveSystem.colon[0]);
+
+				foreach (string chunk in linesArray)
+				{
+					int _id = -1;
+					if (int.TryParse (chunk, out _id) && _id >= 0)
+					{
+						spokenOnceSpeechLineIDs.Add (_id);
+					}
+				}
+			}
+		}
+
+
+		public int TrueLanguageIndexToEnabledIndex (int trueIndex)
+		{
+			int enabledIndex = -1;
+
+			for (int i = 0; i <= trueIndex; i++)
+			{
+				if (!Languages[i].isDisabled)
+				{
+					enabledIndex++;
+				}
+			}
+
+			return enabledIndex;
+		}
+
+
+		public int GetEnabledLanguageIndex (int trueIndex)
+		{
+			if (trueIndex == 0 && Languages[0].isDisabled && Languages.Count > 1)
+			{
+				if (!Languages[1].isDisabled)
+				{
+					return 1;
+				}
+				trueIndex = 1;
+			}
+
+			if (trueIndex > 0 && trueIndex < Languages.Count)
+			{
+				if (Languages[trueIndex].isDisabled)
+				{
+					return Languages[trueIndex].fallbackLanguageIndex;
+				}
+				return trueIndex;
+			}
+			return 0;
+		}
+
+
+		public int EnabledLanguageToTrueIndex (int enabledIndex)
+		{
+			int correctedIndex = -1;
+
+			for (int i = 0; i <= Languages.Count; i++)
+			{
+				if (!Languages[i].isDisabled)
+				{
+					correctedIndex++;
+				}
+
+				if (enabledIndex == correctedIndex)
+				{
+					return i;
+				}
+			}
+
+			ACDebug.LogWarning ("Could not convert enabled language index " + enabledIndex + " to true index");
+			return 0;
+		}
+
+
+		public int GetNumEnabledLanguages ()
+		{
+			int numEnabledLanguages = 0;
+
+			for (int i = 0; i < Languages.Count; i++)
+			{
+				if (!Languages[i].isDisabled)
+				{
+					numEnabledLanguages++;
+				}
+			}
+
+			return numEnabledLanguages;
 		}
 
 		#endregion
 
 
-		#region PrivateFunctions
-		
-		private void TransferFromManager ()
+		#region ProtectedFunctions
+
+		protected int LanguageNameToIndex (string languageName)
+		{
+			if (!string.IsNullOrEmpty (languageName))
+			{
+				for (int i = 0; i < languages.Count; i++)
+				{
+					if (languages[i].name == languageName)
+					{
+						return i;
+					}
+				}
+			}
+			return -1;
+		}
+
+
+		protected void TransferFromManager ()
 		{
 			if (AdvGame.GetReferences () && AdvGame.GetReferences ().speechManager)
 			{
 				SpeechManager speechManager = AdvGame.GetReferences ().speechManager;
-				
+				speechManager.Upgrade ();
+
 				languages.Clear ();
-				foreach (string _language in speechManager.languages)
+				bool anyIsEnabled = false;
+				foreach (Language _language in speechManager.Languages)
 				{
-					languages.Add (_language);
+					Language copiedLanguage = new Language (_language);
+					if (!copiedLanguage.isDisabled)
+					{
+						anyIsEnabled = true;
+					}
+					languages.Add (copiedLanguage);
 				}
 
-				languageIsRightToLeft.Clear ();
-				foreach (bool rtl in speechManager.languageIsRightToLeft)
+				if (!anyIsEnabled && languages.Count > 0)
 				{
-					languageIsRightToLeft.Add (rtl);
-				}
-
-				languageAudioAssetBundles.Clear ();
-				foreach (string languageAudioAssetBundle in speechManager.languageAudioAssetBundles)
-				{
-					languageAudioAssetBundles.Add (languageAudioAssetBundle);
-				}
-
-				languageLipsyncAssetBundles.Clear ();
-				foreach (string languageLipsyncAssetBundle in speechManager.languageLipsyncAssetBundles)
-				{
-					languageLipsyncAssetBundles.Add (languageLipsyncAssetBundle);
+					ACDebug.LogWarning ("At least one language must be enabled - enabling the original");
+					languages[0].isDisabled = false;
 				}
 			}
 		}
 
 
-		private IEnumerator LoadAssetBundleCoroutine (int i)
+		protected IEnumerator LoadAssetBundleCoroutine (int i)
 		{
 			isLoadingBundle = true;
 
-			if (!string.IsNullOrEmpty (languageAudioAssetBundles[i]) &&
-				currentAudioAssetBundleName != languageAudioAssetBundles[i] &&
-				currentLipsyncAssetBundleName != languageAudioAssetBundles[i])
+			if (!KickStarter.speechManager.translateAudio)
 			{
-				string bundlePath = Path.Combine (Application.streamingAssetsPath, languageAudioAssetBundles[i]);
-				var bundleLoadRequest = AssetBundle.LoadFromFileAsync (bundlePath);
+				i = 0;
+			}
 
-        		yield return bundleLoadRequest;
-
-				CurrentAudioAssetBundle = bundleLoadRequest.assetBundle;
-
-				if (currentAudioAssetBundle == null)
+			if (currentAudioAssetBundleName != languages[i].audioAssetBundle &&
+				currentLipsyncAssetBundleName != languages[i].audioAssetBundle)
+			{
+				if (!string.IsNullOrEmpty (languages[i].audioAssetBundle))
 				{
-					ACDebug.LogWarning ("Failed to load AssetBundle '" + bundlePath + "'");
+					string bundlePath = Path.Combine (Application.streamingAssetsPath, languages[i].audioAssetBundle);
+					var bundleLoadRequest = AssetBundle.LoadFromFileAsync (bundlePath);
+
+					yield return bundleLoadRequest;
+
+					CurrentAudioAssetBundle = bundleLoadRequest.assetBundle;
+
+					if (currentAudioAssetBundle == null)
+					{
+						ACDebug.LogWarning("Failed to load AssetBundle '" + bundlePath + "'");
+					}
+					else
+					{
+						currentAudioAssetBundleName = languages[i].audioAssetBundle;
+					}
 				}
 				else
 				{
-					currentAudioAssetBundleName = languageAudioAssetBundles[i];
+					// None found
+					CurrentAudioAssetBundle = null;
+					currentAudioAssetBundleName = string.Empty;
 				}
 			}
 
 			if (KickStarter.speechManager.UseFileBasedLipSyncing ())
 			{
-				if (!string.IsNullOrEmpty (languageLipsyncAssetBundles[i]) &&
-					currentLipsyncAssetBundleName != languageLipsyncAssetBundles[i])
+				if (currentLipsyncAssetBundleName != languages[i].lipsyncAssetBundle)
 				{
-					if (currentAudioAssetBundleName == languageLipsyncAssetBundles[i])
+					if (!string.IsNullOrEmpty (languages[i].lipsyncAssetBundle))
 					{
-						CurrentLipsyncAssetBundle = currentAudioAssetBundle;
-						currentLipsyncAssetBundleName = currentAudioAssetBundleName;
-					}
-					else
-					{
-						string bundlePath = Path.Combine (Application.streamingAssetsPath, languageLipsyncAssetBundles[i]);
-						var bundleLoadRequest = AssetBundle.LoadFromFileAsync (bundlePath);
-						
-		        		yield return bundleLoadRequest;
-
-						CurrentLipsyncAssetBundle = bundleLoadRequest.assetBundle;
-						if (currentLipsyncAssetBundle == null)
+						if (currentAudioAssetBundleName == languages[i].lipsyncAssetBundle)
 						{
-							ACDebug.LogWarning ("Failed to load AssetBundle '" + bundlePath + "'");
+							CurrentLipsyncAssetBundle = currentAudioAssetBundle;
+							currentLipsyncAssetBundleName = currentAudioAssetBundleName;
 						}
 						else
 						{
-							currentLipsyncAssetBundleName = languageLipsyncAssetBundles[i];
+							string bundlePath = Path.Combine (Application.streamingAssetsPath, languages[i].lipsyncAssetBundle);
+							var bundleLoadRequest = AssetBundle.LoadFromFileAsync (bundlePath);
+							
+			        		yield return bundleLoadRequest;
+
+							CurrentLipsyncAssetBundle = bundleLoadRequest.assetBundle;
+							if (currentLipsyncAssetBundle == null)
+							{
+								ACDebug.LogWarning ("Failed to load AssetBundle '" + bundlePath + "'");
+							}
+							else
+							{
+								currentLipsyncAssetBundleName = languages[i].lipsyncAssetBundle;
+							}
 						}
+					}
+					else
+					{
+						// None found
+						CurrentLipsyncAssetBundle = null;
+						currentLipsyncAssetBundleName = string.Empty;
 					}
 				}
 			}
 
 			isLoadingBundle = false;
+
+			KickStarter.eventManager.Call_OnLoadSpeechAssetBundle (i);
 		}
 
 
-		private AudioClip GetLineCustomAudioClip (int _lineID, int _language = 0)
+		protected AudioClip GetLineCustomAudioClip (int _lineID, int _language = 0)
 		{
 			SpeechLine speechLine;
-			if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+			if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 			{
 				if (KickStarter.speechManager.translateAudio && _language > 0)
 				{
@@ -566,10 +889,10 @@ namespace AC
 		}
 
 
-		private UnityEngine.Object GetLineCustomLipsyncFile (int _lineID, int _language = 0)
+		protected UnityEngine.Object GetLineCustomLipsyncFile (int _lineID, int _language = 0)
 		{
 			SpeechLine speechLine;
-			if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+			if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 			{
 				if (KickStarter.speechManager.translateAudio && _language > 0)
 				{
@@ -587,17 +910,16 @@ namespace AC
 		}
 
 
-		private void CreateLanguage (string name, bool isRTL)
+		protected void CreateLanguage (string name, bool isRTL)
 		{
-			languages.Add (name);
-			languageIsRightToLeft.Add (isRTL);
+			languages.Add (new Language (name, isRTL));
 
 			foreach (SpeechLine speechManagerLine in KickStarter.speechManager.lines)
 			{
 				int _lineID = speechManagerLine.lineID;
 
 				SpeechLine speechLine = null;
-				if (speechLinesDictionary.TryGetValue (_lineID, out speechLine))
+				if (SpeechLinesDictionary.TryGetValue (_lineID, out speechLine))
 				{
 					speechLine.translationText.Add (speechLine.text);
 					continue;
@@ -606,7 +928,7 @@ namespace AC
 		}
 		
 		
-		private void ProcessTranslationFile (int i, string csvText, int newTextColumn, bool ignoreEmptyCells)
+		protected void ProcessTranslationFile (int i, string csvText, int newTextColumn, bool ignoreEmptyCells)
 		{
 			string [,] csvOutput = CSVReader.SplitCsvGrid (csvText);
 			
@@ -636,14 +958,14 @@ namespace AC
 					}
 					else
 					{
-						ACDebug.LogWarning ("Error importing translation (ID:" + csvOutput [0,y] + ") - make sure that the CSV file is delimited by a '" + CSVReader.csvDelimiter + "' character.");
+						ACDebug.LogWarning ("Error importing translation (ID:" + csvOutput [0,y] + ") on row #" + y.ToString () + ".");
 					}
 				}
 			}
 		}
 
 
-		private string AddLineBreaks (string text)
+		protected string AddLineBreaks (string text)
 		{
 			if (!string.IsNullOrEmpty (text))
 			{
@@ -652,7 +974,66 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		protected int GetLanguageIndex (string languageName)
+		{
+			for (int i = 0; i < Languages.Count; i++)
+			{
+				if (Languages[i].name == languageName)
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+	
 		#endregion
+
+
+		#if LocalizationIsPresent
+
+		private bool initLocaleSettings;
+
+		private void OnEnable ()
+		{
+			EventManager.OnChangeLanguage += OnChangeLanguage;
+		}
+
+
+		private void OnDisable ()
+		{
+			EventManager.OnChangeLanguage -= OnChangeLanguage;
+		}
+
+
+		private void OnChangeLanguage (int language)
+		{
+			if (KickStarter.speechManager.autoSyncLocaleWithLanguage)
+			{
+				StartCoroutine (SetLocaleCo (language));
+			}
+		}
+
+
+		private IEnumerator SetLocaleCo (int index)
+		{
+			if (!initLocaleSettings)
+			{
+				yield return LocalizationSettings.InitializationOperation;
+				initLocaleSettings = true;
+			}
+
+			if (index <  LocalizationSettings.AvailableLocales.Locales.Count)
+			{
+				LocalizationSettings.SelectedLocale = LocalizationSettings.AvailableLocales.Locales[index];
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot sync AC language with Locale because index " + index + " cannot be found");
+			}
+		}
+
+		#endif
 
 
 		#region GetSet
@@ -666,10 +1047,9 @@ namespace AC
 			}
 			set
 			{
-				if (currentAudioAssetBundle != value && currentAudioAssetBundle != null)
+				if (currentAudioAssetBundle && currentAudioAssetBundle != value)
 				{
 					currentAudioAssetBundle.Unload (true);
-					currentAudioAssetBundle = null;
 				}
 
 				currentAudioAssetBundle = value;
@@ -686,10 +1066,9 @@ namespace AC
 			}
 			set
 			{
-				if (currentLipsyncAssetBundle != value && currentLipsyncAssetBundle != null)
+				if (currentLipsyncAssetBundle && currentLipsyncAssetBundle != value)
 				{
 					currentLipsyncAssetBundle.Unload (true);
-					currentLipsyncAssetBundle = null;
 				}
 
 				currentLipsyncAssetBundle = value;
@@ -697,12 +1076,43 @@ namespace AC
 		}
 
 
-		/** The names of the game's languages. The first is always "Original". */
-		public List<string> Languages
+		/** The game's languages. The first is always "Original". */
+		public List<Language> Languages
 		{
 			get
 			{
 				return languages;
+			}
+		}
+
+
+		/** True if an audio or lipsync asset bundle is currently being loaded into memory */
+		public bool IsLoadingBundle
+		{
+			get
+			{
+				return isLoadingBundle;
+			}
+		}
+
+
+		private Dictionary<int, SpeechLine> SpeechLinesDictionary
+		{
+			get
+			{
+				if (speechLinesDictionary == null)
+				{
+					speechLinesDictionary = new Dictionary<int, SpeechLine> ();
+					speechLinesDictionary.Clear ();
+					foreach (SpeechLine speechLine in KickStarter.speechManager.lines)
+					{
+						if (KickStarter.speechManager.IsTextTypeTranslatable (speechLine.textType))
+						{
+							speechLinesDictionary.Add (speechLine.lineID, new SpeechLine (speechLine, Options.GetVoiceLanguage ()));
+						}
+					}
+				}
+				return speechLinesDictionary;
 			}
 		}
 

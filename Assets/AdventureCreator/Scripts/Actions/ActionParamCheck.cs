@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionParamCheck.cs"
  * 
@@ -21,7 +21,7 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionParamCheck : ActionCheck
+	public class ActionParamCheck : ActionCheck, IDocumentReferencerAction, IItemReferencerAction
 	{
 
 		public ActionListSource actionListSource = ActionListSource.InScene;
@@ -52,23 +52,22 @@ namespace AC
 		public BoolCondition boolCondition;
 
 		public VectorCondition vectorCondition = VectorCondition.EqualTo;
-		private ActionParameter _parameter, _compareParameter;
-		private Variables runtimeCompareVariables;
+		protected ActionParameter _parameter, _compareParameter;
+		protected Variables runtimeCompareVariables;
 		#if UNITY_EDITOR
 		[SerializeField] private string parameterLabel = "";
 		#endif
 
+		[SerializeField] protected GameObjectCompareType gameObjectCompareType = GameObjectCompareType.GameObject;
+		protected enum GameObjectCompareType { GameObject, ConstantID };
 
-		public ActionParamCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Check parameter";
-			description = "Queries the value of parameters defined in the parent ActionList.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Check parameter"; }}
+		public override string Description { get { return "Queries the value of parameters defined in the parent ActionList."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			_compareParameter = null;
 			_parameter = null;
@@ -85,8 +84,8 @@ namespace AC
 						{
 							if (actionList.syncParamValues && actionList.assetFile.useParameters)
 							{
-								_parameter = GetParameterWithID (actionList.assetFile.parameters, parameterID);
-								_compareParameter = GetParameterWithID (actionList.assetFile.parameters, compareParameterID);
+								_parameter = GetParameterWithID (actionList.assetFile.GetParameters (), parameterID);
+								_compareParameter = GetParameterWithID (actionList.assetFile.GetParameters (), compareParameterID);
 							}
 							else
 							{
@@ -105,8 +104,8 @@ namespace AC
 				{
 					if (actionListAsset != null)
 					{
-						_parameter = GetParameterWithID (actionListAsset.parameters, parameterID);
-						_compareParameter = GetParameterWithID (actionListAsset.parameters, compareParameterID);
+						_parameter = GetParameterWithID (actionListAsset.GetParameters (), parameterID);
+						_compareParameter = GetParameterWithID (actionListAsset.GetParameters (), compareParameterID);
 					}
 				}
 			}
@@ -122,59 +121,58 @@ namespace AC
 		}
 		
 		
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (_parameter == null)
 			{
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 
 			GVar compareVar = null;
 			InvItem compareItem = null;
 			Document compareDoc = null;
 
-			if (_parameter.parameterType == ParameterType.GlobalVariable ||
-				_parameter.parameterType == ParameterType.LocalVariable ||
-				_parameter.parameterType == ParameterType.ComponentVariable ||
-				_parameter.parameterType == ParameterType.InventoryItem ||
-				_parameter.parameterType == ParameterType.Document)
+			switch (_parameter.parameterType)
 			{
-				if (compareVariableID == -1)
-				{
-					return GenerateStopActionEnd ();
-				}
-				
-				if (_parameter.parameterType == ParameterType.GlobalVariable)
-				{
+				case ParameterType.GlobalVariable:
+					if (compareVariableID == -1) return -1;
 					compareVar = GlobalVariables.GetVariable (compareVariableID, true);
-				}
-				else if (_parameter.parameterType == ParameterType.LocalVariable && !isAssetFile)
-				{
-					compareVar = LocalVariables.GetVariable (compareVariableID);
-				}
-				else if (_parameter.parameterType == ParameterType.ComponentVariable)
-				{
-					runtimeCompareVariables = AssignFile <Variables> (compareObjectConstantID, compareVariables);
+					break;
+
+				case ParameterType.LocalVariable:
+					if (compareVariableID == -1) return -1;
+					if (!isAssetFile)
+					{
+						compareVar = LocalVariables.GetVariable (compareVariableID);
+					}
+					break;
+
+				case ParameterType.ComponentVariable:
+					if (compareVariableID == -1) return -1;
+					runtimeCompareVariables = AssignFile<Variables> (compareObjectConstantID, compareVariables);
 					if (runtimeCompareVariables != null)
 					{
 						compareVar = runtimeCompareVariables.GetVariable (compareVariableID);
 					}
-				}
-				else if (_parameter.parameterType == ParameterType.InventoryItem)
-				{
+					break;
+
+				case ParameterType.InventoryItem:
+					if (compareVariableID == -1) return -1;
 					compareItem = KickStarter.inventoryManager.GetItem (compareVariableID);
-				}
-				else if (_parameter.parameterType == ParameterType.Document)
-				{
+					break;
+
+				case ParameterType.Document:
+					if (compareVariableID == -1) return -1;
 					compareDoc = KickStarter.inventoryManager.GetDocument (compareVariableID);
-				}
+					break;
 			}
 
-			return ProcessResult (CheckCondition (compareItem, compareVar, compareDoc), actions);
+			bool result = CheckCondition (compareItem, compareVar, compareDoc);
+			return (result) ? 0 : 1;
 		}
 		
 		
-		private bool CheckCondition (InvItem _compareItem, GVar _compareVar, Document _compareDoc)
+		protected bool CheckCondition (InvItem _compareItem, GVar _compareVar, Document _compareDoc)
 		{
 			if (_parameter == null)
 			{
@@ -202,7 +200,7 @@ namespace AC
 				}
 			}
 			
-			else if (_parameter.parameterType == ParameterType.Integer)
+			else if (_parameter.parameterType == ParameterType.Integer || _parameter.parameterType == ParameterType.PopUp)
 			{
 				int fieldValue = _parameter.intValue;
 				int compareValue = intValue;
@@ -296,21 +294,41 @@ namespace AC
 
 			else if (_parameter.parameterType == ParameterType.GameObject)
 			{
-				if (_compareParameter != null && _compareParameter.parameterType == _parameter.parameterType)
+				switch (gameObjectCompareType)
 				{
-					compareObjectConstantID = _compareParameter.intValue;
-					runtimeCompareObject = _compareParameter.gameObject;
+					case GameObjectCompareType.GameObject:
+					{
+						if (_compareParameter != null && _compareParameter.parameterType == _parameter.parameterType)
+						{
+							compareObjectConstantID = _compareParameter.intValue;
+							runtimeCompareObject = _compareParameter.gameObject;
+						}
+
+						if ((runtimeCompareObject != null && _parameter.gameObject == runtimeCompareObject) ||
+							(compareObjectConstantID != 0 && _parameter.intValue == compareObjectConstantID))
+						{
+							return true;
+						}
+						if (runtimeCompareObject == null && _parameter.gameObject == null)
+						{
+							return true;
+						}
+						break;
+					}
+
+					case GameObjectCompareType.ConstantID:
+					{
+						int compareValue = intValue;
+						if (_compareParameter != null && _compareParameter.parameterType == ParameterType.Integer)
+						{
+							compareValue = _compareParameter.intValue;
+						}
+
+						return (_parameter.intValue == compareValue);
+					}
 				}
 
-				if ((runtimeCompareObject != null && _parameter.gameObject == runtimeCompareObject) ||
-					(compareObjectConstantID != 0 && _parameter.intValue == compareObjectConstantID))
-				{
-					return true;
-				}
-				if (runtimeCompareObject == null && _parameter.gameObject == null)
-				{
-					return true;
-				}
+
 			}
 
 			else if (_parameter.parameterType == ParameterType.UnityObject)
@@ -388,13 +406,13 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			checkOwn = EditorGUILayout.Toggle ("Check own?", checkOwn);
 			if (checkOwn)
 			{
 				parameterID = Action.ChooseParameterGUI (parameters, parameterID);
-				ShowVarGUI (parameters, GetParameterWithID (parameters, parameterID));
+				ShowVarGUI (parameters, GetParameterWithID (parameters, parameterID), isAssetFile);
 			}
 			else
 			{
@@ -410,10 +428,10 @@ namespace AC
 					{
 						if (actionList.source == ActionListSource.InScene)
 						{
-							if (actionList.useParameters && actionList.parameters.Count > 0)
+							if (actionList.NumParameters > 0)
 							{
 								parameterID = Action.ChooseParameterGUI (actionList.parameters, parameterID);
-								ShowVarGUI (actionList.parameters, GetParameterWithID (actionList.parameters, parameterID));
+								ShowVarGUI (actionList.parameters, GetParameterWithID (actionList.parameters, parameterID), false);
 							}
 							else
 							{
@@ -422,10 +440,10 @@ namespace AC
 						}
 						else if (actionList.source == ActionListSource.AssetFile && actionList.assetFile != null)
 						{
-							if (actionList.assetFile.useParameters && actionList.assetFile.parameters.Count > 0)
+							if (actionList.assetFile.NumParameters > 0)
 							{
-								parameterID = Action.ChooseParameterGUI (actionList.assetFile.parameters, parameterID);
-								ShowVarGUI (actionList.assetFile.parameters, GetParameterWithID (actionList.assetFile.parameters, parameterID));
+								parameterID = Action.ChooseParameterGUI (actionList.assetFile.DefaultParameters, parameterID);
+								ShowVarGUI (actionList.assetFile.DefaultParameters, GetParameterWithID (actionList.assetFile.DefaultParameters, parameterID), true);
 							}
 							else
 							{
@@ -443,10 +461,10 @@ namespace AC
 					actionListAsset = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList asset:", actionListAsset, typeof (ActionListAsset), true);
 					if (actionListAsset != null)
 					{
-						if (actionListAsset.useParameters && actionListAsset.parameters.Count > 0)
+						if (actionListAsset.NumParameters > 0)
 						{
-							parameterID = Action.ChooseParameterGUI (actionListAsset.parameters, parameterID);
-							ShowVarGUI (actionListAsset.parameters, GetParameterWithID (actionListAsset.parameters, parameterID));
+							parameterID = Action.ChooseParameterGUI (actionListAsset.GetParameters (), parameterID);
+							ShowVarGUI (actionListAsset.GetParameters (), GetParameterWithID (actionListAsset.GetParameters (), parameterID), true);
 						}
 						else
 						{
@@ -458,7 +476,7 @@ namespace AC
 		}
 		
 		
-		private void ShowVarGUI (List<ActionParameter> parameters, ActionParameter parameter)
+		private void ShowVarGUI (List<ActionParameter> parameters, ActionParameter parameter, bool inAsset)
 		{
 			if (parameters == null || parameters.Count == 0 || parameter == null)
 			{
@@ -488,6 +506,24 @@ namespace AC
 				if (compareParameterID < 0)
 				{
 					intValue = EditorGUILayout.IntField (intValue);
+				}
+			}
+			else if (parameter.parameterType == ParameterType.PopUp)
+			{
+				intCondition = (IntCondition) EditorGUILayout.EnumPopup (intCondition);
+
+				compareParameterID = Action.ChooseParameterGUI ("", parameters, compareParameterID, parameter.parameterType, parameter.ID);
+				if (compareParameterID < 0)
+				{
+					PopUpLabelData popUpLabelData = KickStarter.variablesManager.GetPopUpLabelData (parameter.popUpID);
+					if (popUpLabelData != null)
+					{
+						intValue = EditorGUILayout.Popup (intValue, popUpLabelData.GenerateEditorPopUpLabels ());
+					}
+					else
+					{
+						intValue = EditorGUILayout.IntField (intValue);
+					}
 				}
 			}
 			else if (parameter.parameterType == ParameterType.Float)
@@ -543,17 +579,50 @@ namespace AC
 			}
 			else if (parameter.parameterType == ParameterType.GameObject)
 			{
-				compareParameterID = Action.ChooseParameterGUI ("Is equal to:", parameters, compareParameterID, parameter.parameterType, parameter.ID);
-				EditorGUILayout.EndHorizontal ();
-				EditorGUILayout.BeginHorizontal ();
-				if (compareParameterID < 0)
+				if (inAsset)
 				{
-					compareObject = (GameObject) EditorGUILayout.ObjectField ("Is equal to:", compareObject, typeof (GameObject), true);
-
 					EditorGUILayout.EndHorizontal ();
+					gameObjectCompareType = (GameObjectCompareType) EditorGUILayout.EnumPopup ("Compare:", gameObjectCompareType);
 					EditorGUILayout.BeginHorizontal ();
-					compareObjectConstantID = FieldToID (compareObject, compareObjectConstantID);
-					compareObject = IDToField (compareObject, compareObjectConstantID, false);
+				}
+				else
+				{
+					gameObjectCompareType = GameObjectCompareType.GameObject;
+				}
+
+				switch (gameObjectCompareType)
+				{
+					case GameObjectCompareType.GameObject:
+					{
+						compareParameterID = Action.ChooseParameterGUI ("Is equal to:", parameters, compareParameterID, parameter.parameterType, parameter.ID);
+						EditorGUILayout.EndHorizontal ();
+						EditorGUILayout.BeginHorizontal ();
+						if (compareParameterID < 0)
+						{
+							compareObject = (GameObject) EditorGUILayout.ObjectField ("Is equal to:", compareObject, typeof (GameObject), true);
+
+							EditorGUILayout.EndHorizontal ();
+							EditorGUILayout.BeginHorizontal ();
+							compareObjectConstantID = FieldToID (compareObject, compareObjectConstantID);
+							compareObject = IDToField (compareObject, compareObjectConstantID, false);
+						}
+						break;
+					}
+
+					case GameObjectCompareType.ConstantID:
+					{
+						compareParameterID = Action.ChooseParameterGUI ("Is equal to:", parameters, compareParameterID, ParameterType.Integer, parameter.ID);
+						EditorGUILayout.EndHorizontal ();
+						EditorGUILayout.BeginHorizontal ();
+						if (compareParameterID < 0)
+						{
+							intValue = EditorGUILayout.IntField ("Is equal to:", intValue);
+
+							EditorGUILayout.EndHorizontal ();
+							EditorGUILayout.BeginHorizontal ();
+						}
+						break;
+					}
 				}
 			}
 			else if (parameter.parameterType == ParameterType.UnityObject)
@@ -648,13 +717,13 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID (compareObject, compareObjectConstantID, 0);
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			return parameterLabel;
 		}
@@ -675,7 +744,7 @@ namespace AC
 			if (variableNumber == -1)
 			{
 				// Wasn't found (variable was deleted?), so revert to zero
-				ACDebug.LogWarning ("Previously chosen variable no longer exists!");
+				if (ID > 0) LogWarning ("Previously chosen variable no longer exists!");
 				variableNumber = 0;
 				ID = 0;
 			}
@@ -714,7 +783,7 @@ namespace AC
 			if (invNumber == -1)
 			{
 				// Wasn't found (item was possibly deleted), so revert to zero
-				ACDebug.LogWarning ("Previously chosen item no longer exists!");
+				if (ID > 0) LogWarning ("Previously chosen item no longer exists!");
 				
 				invNumber = 0;
 				ID = 0;
@@ -754,7 +823,7 @@ namespace AC
 			if (docNumber == -1)
 			{
 				// Wasn't found (item was possibly deleted), so revert to zero
-				ACDebug.LogWarning ("Previously chosen Document no longer exists!");
+				if (ID > 0) LogWarning ("Previously chosen Document no longer exists!");
 				
 				docNumber = 0;
 				ID = 0;
@@ -782,7 +851,7 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
@@ -804,15 +873,14 @@ namespace AC
 					}
 					else if (actionList.source == ActionListSource.AssetFile && actionList.assetFile != null && actionList.assetFile.useParameters)
 					{
-						_param = GetParameterWithID (actionList.assetFile.parameters, parameterID);
+						_param = GetParameterWithID (actionList.assetFile.DefaultParameters, parameterID);
 					}
 				}
 				else if (actionListSource == ActionListSource.AssetFile && actionListAsset != null && actionListAsset.useParameters)
 				{
-					_param = GetParameterWithID (actionListAsset.parameters, parameterID);
+					_param = GetParameterWithID (actionListAsset.DefaultParameters, parameterID);
 				}
 			}
-
 
 			if (_param != null && _param.parameterType == ParameterType.LocalVariable && location == VariableLocation.Local && varID == intValue)
 			{
@@ -822,29 +890,101 @@ namespace AC
 			{
 				thisCount ++;
 			}
-			else if (_param != null && _param.parameterType == ParameterType.ComponentVariable && location == VariableLocation.Component && varID == intValue && _param.variables == _variables)
+			else if (_param != null && _param.parameterType == ParameterType.ComponentVariable && location == VariableLocation.Component && varID == intValue && _variables)
 			{
-				thisCount ++;
+				if ((_variables && _param.variables == _variables) ||
+					(_param.constantID != 0 && _variablesConstantID == _param.constantID))
+				{
+					thisCount ++;
+				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		public override int GetInventoryReferences (List<ActionParameter> parameters, int _invID)
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
-			return GetParamReferences (parameters, _invID, ParameterType.InventoryItem);
+			int thisCount = 0;
+
+			ActionParameter _param = null;
+			if (checkOwn)
+			{
+				if (parameters != null)
+				{
+					_param = GetParameterWithID (parameters, parameterID);
+				}
+			}
+			else
+			{
+				if (actionListSource == ActionListSource.InScene && actionList != null)
+				{
+					if (actionList.source == ActionListSource.InScene && actionList.useParameters)
+					{
+						_param = GetParameterWithID (actionList.parameters, parameterID);
+					}
+					else if (actionList.source == ActionListSource.AssetFile && actionList.assetFile != null && actionList.assetFile.useParameters)
+					{
+						_param = GetParameterWithID (actionList.assetFile.DefaultParameters, parameterID);
+					}
+				}
+				else if (actionListSource == ActionListSource.AssetFile && actionListAsset != null && actionListAsset.useParameters)
+				{
+					_param = GetParameterWithID (actionListAsset.DefaultParameters, parameterID);
+				}
+			}
+
+			if (_param != null && _param.parameterType == ParameterType.LocalVariable && location == VariableLocation.Local && oldVarID == intValue)
+			{
+				intValue = newVarID;
+				thisCount++;
+			}
+			else if (_param != null && _param.parameterType == ParameterType.GlobalVariable && location == VariableLocation.Global && oldVarID == intValue)
+			{
+				intValue = newVarID;
+				thisCount++;
+			}
+			else if (_param != null && _param.parameterType == ParameterType.ComponentVariable && location == VariableLocation.Component && oldVarID == intValue && _variables)
+			{
+				if ((_variables && _param.variables == _variables) ||
+					(_param.constantID != 0 && _variablesConstantID == _param.constantID))
+				{
+					intValue = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
 		}
 
 
-		public override int GetDocumentReferences (List<ActionParameter> parameters, int _docID)
+		public int GetNumItemReferences (int _itemID, List<ActionParameter> parameters)
+		{
+			return GetParamReferences (parameters, _itemID, ParameterType.InventoryItem);
+		}
+
+
+		public int UpdateItemReferences (int oldItemID, int newItemID, List<ActionParameter> parameters)
+		{
+			return GetParamReferences (parameters, oldItemID, ParameterType.InventoryItem, true, newItemID);
+		}
+
+
+		public int GetNumDocumentReferences (int _docID, List<ActionParameter> parameters)
 		{
 			return GetParamReferences (parameters, _docID, ParameterType.Document);
 		}
 
 
-		private int GetParamReferences (List<ActionParameter> parameters, int _ID, ParameterType _paramType)
+		public int UpdateDocumentReferences (int oldDocumentID, int newDocumentID, List<ActionParameter> parameters)
+		{
+			return GetParamReferences (parameters, oldDocumentID, ParameterType.Document, true, newDocumentID);
+		}
+
+
+		private int GetParamReferences (List<ActionParameter> parameters, int _ID, ParameterType _paramType, bool updateID = false, int newID = 0)
 		{
 			ActionParameter _param = null;
 
@@ -865,21 +1005,49 @@ namespace AC
 					}
 					else if (actionList.source == ActionListSource.AssetFile && actionList.assetFile != null && actionList.assetFile.useParameters)
 					{
-						_param = GetParameterWithID (actionList.assetFile.parameters, parameterID);
+						_param = GetParameterWithID (actionList.assetFile.DefaultParameters, parameterID);
 					}
 				}
 				else if (actionListSource == ActionListSource.AssetFile && actionListAsset != null && actionListAsset.useParameters)
 				{
-					_param = GetParameterWithID (actionListAsset.parameters, parameterID);
+					_param = GetParameterWithID (actionListAsset.DefaultParameters, parameterID);
 				}
 			}
 
-			if (_param != null && _param.parameterType == _paramType && _ID == intValue)
+			if (_param != null && _param.parameterType == _paramType && _ID == compareVariableID && compareParameterID < 0)
 			{
+				if (updateID)
+				{
+					compareVariableID = newID;
+				}
 				return 1;
 			}
 
 			return 0;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!checkOwn && actionListSource == ActionListSource.InScene)
+			{
+				if (actionList && actionList.gameObject == _gameObject) return true;
+				if (actionListConstantID == id) return true;
+			}
+			if (compareParameterID < 0)
+			{
+				if (compareObject && compareObject == _gameObject) return true;
+				if (compareObjectConstantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset _actionListAsset)
+		{
+			if (!checkOwn && actionListSource == ActionListSource.AssetFile && _actionListAsset == actionListAsset)
+				return true;
+			return base.ReferencesAsset (actionListAsset);
 		}
 
 		#endif
@@ -893,7 +1061,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, bool checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -912,7 +1080,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, bool checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -933,7 +1101,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, bool checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -954,7 +1122,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, int checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -975,7 +1143,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, int checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -998,7 +1166,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, int checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1020,7 +1188,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, float checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1041,7 +1209,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, float checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1064,7 +1232,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, float checkValue, IntCondition condition = IntCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1085,7 +1253,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, string checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1104,7 +1272,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, string checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1125,7 +1293,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, string checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1147,7 +1315,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, Vector3 checkValue, VectorCondition condition = VectorCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1168,7 +1336,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, Vector3 checkValue, VectorCondition condition = VectorCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1191,7 +1359,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, Vector3 checkValue, VectorCondition condition = VectorCondition.EqualTo)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1213,7 +1381,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, Variables variables, int checkComponentVariableID)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1234,7 +1402,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, Variables variables, int checkComponentVariableID)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1257,7 +1425,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, Variables variables, int checkComponentVariableID)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1278,7 +1446,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, GameObject checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1297,7 +1465,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, GameObject checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1318,7 +1486,7 @@ namespace AC
 		 */		
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, GameObject checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
@@ -1338,7 +1506,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (int parameterID, Object checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = true;
 			newAction.parameterID = parameterID;
 
@@ -1357,7 +1525,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionList actionList, int parameterID, Object checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.InScene;
 			newAction.actionList = actionList;
@@ -1378,7 +1546,7 @@ namespace AC
 		 */
 		public static ActionParamCheck CreateNew (ActionListAsset actionListAsset, int parameterID, Object checkValue)
 		{
-			ActionParamCheck newAction = (ActionParamCheck) CreateInstance <ActionParamCheck>();
+			ActionParamCheck newAction = CreateNew<ActionParamCheck> ();
 			newAction.checkOwn = false;
 			newAction.actionListSource = ActionListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;

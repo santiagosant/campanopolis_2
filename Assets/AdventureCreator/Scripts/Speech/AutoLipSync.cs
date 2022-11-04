@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AutoLipsync.cs"
  * 
@@ -19,11 +19,11 @@ namespace AC
 	 * A component that provides simple lipsyncing, Half Life 1-style, in which a jaw bone rotates with the volume of the sound that the GameObject is emitting.
 	 */
 	[RequireComponent (typeof (AudioSource))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_auto_lip_sync.html")]
-	#endif
 	public class AutoLipSync : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** The jaw bone to rotate */
 		public Transform jawBone;
@@ -34,19 +34,23 @@ namespace AC
 		/** If True, rotations will be added, rather than replace, existing animation */
 		public bool isAdditive = true;
 		
-		private float volume;
-		private float bin = 0.04f;
-		private int width = 64;
-		private float output;
+		protected float volume;
+		protected float bin = 0.04f;
+		protected int width = 64;
+		protected float output;
 
-		private float[] array;
-		private Quaternion jawRotation;
-		private AudioSource _audio;
-		private Quaternion originalRotation;
-		private Char _character;
+		protected float[] array;
+		protected Quaternion jawRotation;
+		protected AudioSource _audio;
+		protected Quaternion originalRotation;
+		protected Char _character;
+
+		#endregion
+
+
+		#region UnityStandards		
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
 			_audio = GetComponent <AudioSource>();
 			_character = GetComponent <Char>();
@@ -56,7 +60,7 @@ namespace AC
 		}
 		
 		
-		private void LateUpdate ()
+		protected void LateUpdate ()
 		{
 			if (_audio.isPlaying)
 			{
@@ -87,7 +91,7 @@ namespace AC
 				output = 0f;
 			}
 
-			if (_character != null && !_character.isTalking && Mathf.Approximately (output, 0f))
+			if (_character && !_character.isTalking && Mathf.Approximately (output, 0f))
 			{
 				return;
 			}
@@ -141,7 +145,9 @@ namespace AC
 			
 			jawBone.localRotation = jawRotation;
 		}
-		
+
+		#endregion
+
 	}
 
 }

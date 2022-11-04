@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -11,10 +13,10 @@ namespace AC
 		{
 			RememberHotspot _target = (RememberHotspot) target;
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Hotspot", EditorStyles.boldLabel);
 			_target.startState = (AC_OnOff) CustomGUILayout.EnumPopup ("Hotspot state on start:", _target.startState, "The interactive state of the Hotspot when the game begins");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			if (_target.GetComponent <Hotspot>() == null)
 			{
@@ -27,3 +29,5 @@ namespace AC
 	}
 
 }
+
+#endif

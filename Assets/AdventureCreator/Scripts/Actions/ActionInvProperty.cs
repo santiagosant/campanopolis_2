@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarProperty.cs"
  * 
@@ -32,33 +32,31 @@ namespace AC
 		private VariableType propertyType = VariableType.Boolean;
 		#endif
 
-		private enum SetVarAsPropertyMethod { SpecificItem, SelectedItem };
-		[SerializeField] private SetVarAsPropertyMethod setVarAsPropertyMethod = SetVarAsPropertyMethod.SpecificItem;
+		protected enum SetVarAsPropertyMethod { SpecificItem, SelectedItem };
+		[SerializeField] protected SetVarAsPropertyMethod setVarAsPropertyMethod = SetVarAsPropertyMethod.SpecificItem;
 
+		public bool useLiveValues;
+		public bool multiplyByItemCount;
 		public int invID;
 		public int invParameterID;
 
 		public int propertyID;
 
-		private LocalVariables localVariables;
-		private InventoryManager inventoryManager;
+		protected LocalVariables localVariables;
+		protected InventoryManager inventoryManager;
 
 		public Variables variables;
 		public int variablesConstantID = 0;
 
-		private GVar runtimeVariable;
+		protected GVar runtimeVariable;
 
 
-		public ActionInvProperty ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Inventory;
-			title = "Property to Variable";
-			description = "Sets the value of a Variable as an Inventory item property.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Inventory; }}
+		public override string Title { get { return "Property to Variable"; }}
+		public override string Description { get { return "Sets the value of a Variable as an Inventory item property."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			invID = AssignInvItemID (parameters, invParameterID, invID);
 
@@ -71,7 +69,7 @@ namespace AC
 					break;
 
 				case VariableLocation.Local:
-					if (isAssetFile)
+					if (!isAssetFile)
 					{
 						variableID = AssignVariableID (parameters, varParameterID, variableID);
 						runtimeVariable = LocalVariables.GetVariable (variableID, localVariables);
@@ -90,7 +88,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -105,39 +103,89 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
-			InvItem invItem = (setVarAsPropertyMethod == SetVarAsPropertyMethod.SelectedItem) ?
-						KickStarter.runtimeInventory.LastSelectedItem :
-						KickStarter.inventoryManager.GetItem (invID);
-			
-			if (invItem != null && runtimeVariable != null)
-			{
-				InvVar invVar = invItem.GetProperty (propertyID);
+			int runtimeInvID = -1;
 
-				if (runtimeVariable.type == VariableType.String)
+			if (setVarAsPropertyMethod == SetVarAsPropertyMethod.SelectedItem)
+			{
+				if (InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance))
 				{
-					runtimeVariable.textVal = invVar.GetDisplayValue (Options.GetLanguage ());
+					runtimeInvID = KickStarter.runtimeInventory.SelectedInstance.ItemID;
 				}
-				else if (runtimeVariable.type == invVar.type)
+			}
+			else
+			{
+				runtimeInvID = invID;
+			}
+
+			InvVar invVar = null;
+			if (runtimeInvID >= 0)
+			{
+				InvInstance invInstance = (useLiveValues)
+											? KickStarter.runtimeInventory.GetInstance (runtimeInvID)
+											: new InvInstance (KickStarter.inventoryManager.GetItem (runtimeInvID));
+
+				if (!InvInstance.IsValid (invInstance))
 				{
-					if (invVar.type == VariableType.Float)
+					if (useLiveValues)
 					{
-						runtimeVariable.FloatValue = invVar.FloatValue;
-					}
-					else if (invVar.type == VariableType.Vector3)
-					{
-						runtimeVariable.Vector3Value = invVar.Vector3Value;
+						LogWarning ("Cannot find Inventory item with ID " + runtimeInvID + " in the Player's inventory");
 					}
 					else
 					{
-						runtimeVariable.IntegerValue = invVar.IntegerValue;
+						LogWarning ("Cannot find Inventory item with ID " + runtimeInvID);
 					}
+					return 0f;
 				}
-				else
+
+				invVar = invInstance.GetProperty (propertyID);
+			}
+
+			if (invVar == null)
+			{
+				LogWarning ("Cannot find property with ID " + propertyID + " on Inventory item ID " + runtimeInvID);
+				return 0f;
+			}
+
+			if (runtimeVariable.type == VariableType.String)
+			{
+				runtimeVariable.TextValue = invVar.GetDisplayValue (Options.GetLanguage ());
+			}
+			else if (runtimeVariable.type == invVar.type)
+			{
+				int itemCount = (useLiveValues && multiplyByItemCount) ? KickStarter.runtimeInventory.GetCount (runtimeInvID) : 1;
+
+				switch (invVar.type)
 				{
-					LogWarning ("Cannot assign " + varLocation.ToString () + " Variable " + runtimeVariable.label + "'s value from '" + invVar.label + "' property because their types do not match.");
+					case VariableType.Float:
+						runtimeVariable.FloatValue = invVar.FloatValue * (float)itemCount;
+						break;
+
+					case VariableType.Integer:
+						runtimeVariable.IntegerValue = invVar.IntegerValue * itemCount;
+						break;
+
+					case VariableType.Vector3:
+						runtimeVariable.Vector3Value = invVar.Vector3Value;
+						break;
+
+					case VariableType.GameObject:
+						runtimeVariable.GameObjectValue = invVar.GameObjectValue;
+						break;
+
+					case VariableType.UnityObject:
+						runtimeVariable.UnityObjectValue = invVar.UnityObjectValue;
+						break;
+
+					default:
+						runtimeVariable.IntegerValue = invVar.IntegerValue;
+						break;
 				}
+			}
+			else
+			{
+				LogWarning ("Cannot assign " + varLocation.ToString () + " Variable " + runtimeVariable.label + "'s value from '" + invVar.label + "' property because their types do not match.");
 			}
 
 			return 0;
@@ -146,7 +194,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			inventoryManager = AdvGame.GetReferences ().inventoryManager;
 
@@ -175,7 +223,7 @@ namespace AC
 					break;
 
 				case VariableLocation.Local:
-					if (isAssetFile)
+					if (!isAssetFile)
 					{
 						if (localVariables)
 						{
@@ -220,8 +268,6 @@ namespace AC
 					EditorGUILayout.HelpBox ("The chosen Inventory Item Property and Variable must share the same Type, or the Variable must be a String.", MessageType.Warning);
 				}
 			}
-
-			AfterRunningOption ();
 		}
 
 
@@ -253,7 +299,7 @@ namespace AC
 					if (propertyNumber == -1)
 					{
 						// Wasn't found (property was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen property no longer exists!");
+						if (propertyID > 0) LogWarning ("Previously chosen property no longer exists!");
 						
 						propertyNumber = 0;
 						propertyID = 0;
@@ -262,6 +308,15 @@ namespace AC
 					propertyNumber = EditorGUILayout.Popup ("Inventory property:", propertyNumber, labelList.ToArray());
 					propertyID = inventoryManager.invVars[propertyNumber].id;
 					propertyType = inventoryManager.invVars[propertyNumber].type;
+
+					useLiveValues = EditorGUILayout.Toggle ("Get 'live' value?", useLiveValues);
+					if (useLiveValues)
+					{
+						if (propertyType == VariableType.Integer || propertyType == VariableType.Float)
+						{
+							multiplyByItemCount = EditorGUILayout.Toggle ("Multiply by item count?", multiplyByItemCount);
+						}
+					}
 				}
 				else
 				{
@@ -305,7 +360,7 @@ namespace AC
 					if (invNumber == -1)
 					{
 						// Wasn't found (item was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen item no longer exists!");
+						if (invID > 0) LogWarning ("Previously chosen item no longer exists!");
 						
 						invNumber = 0;
 						invID = 0;
@@ -359,7 +414,7 @@ namespace AC
 				if (variableNumber == -1 && (parameters == null || parameters.Count == 0 || varParameterID == -1))
 				{
 					// Wasn't found (variable was deleted?), so revert to zero
-					ACDebug.LogWarning ("Previously chosen variable no longer exists!");
+					if (variableID > 0) LogWarning ("Previously chosen variable no longer exists!");
 					variableNumber = 0;
 					variableID = 0;
 				}
@@ -391,7 +446,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (varParameterID < 0)
 			{
@@ -473,29 +528,58 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
 			if (varLocation == _location && variableID == varID && varParameterID < 0)
 			{
-				if (varLocation != VariableLocation.Component || (variables != null && variables == _variables))
+				if (_location != VariableLocation.Component || (variables != null && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
 				{
 					thisCount ++;
 				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+
+			if (varLocation == _location && variableID == oldVarID && varParameterID < 0)
+			{
+				if (_location != VariableLocation.Component || (variables != null && variables == _variables) || (variablesConstantID != 0 && _variablesConstantID == variablesConstantID))
+				{
+					variableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (varLocation == VariableLocation.Component)
 			{
 				AssignConstantID <Variables> (variables, variablesConstantID, varParameterID);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (varLocation == VariableLocation.Component && varParameterID < 0)
+			{
+				if (variables && variables.gameObject == _gameObject) return true;
+				if (variablesConstantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 
 		#endif
@@ -510,7 +594,7 @@ namespace AC
 		 */
 		public static ActionInvProperty CreateNew_ToGlobalVariable (int variableID, int propertyID, int itemID = -1)
 		{
-			ActionInvProperty newAction = (ActionInvProperty) CreateInstance <ActionInvProperty>();
+			ActionInvProperty newAction = CreateNew<ActionInvProperty> ();
 			newAction.setVarAsPropertyMethod = (itemID >= 0) ? SetVarAsPropertyMethod.SpecificItem : SetVarAsPropertyMethod.SelectedItem;
 			newAction.propertyID = propertyID;
 			newAction.varLocation = VariableLocation.Global;
@@ -528,7 +612,7 @@ namespace AC
 		 */
 		public static ActionInvProperty CreateNew_ToLocalVariable (int variableID, int propertyID, int itemID = -1)
 		{
-			ActionInvProperty newAction = (ActionInvProperty) CreateInstance <ActionInvProperty>();
+			ActionInvProperty newAction = CreateNew<ActionInvProperty> ();
 			newAction.setVarAsPropertyMethod = (itemID >= 0) ? SetVarAsPropertyMethod.SpecificItem : SetVarAsPropertyMethod.SelectedItem;
 			newAction.propertyID = propertyID;
 			newAction.varLocation = VariableLocation.Local;
@@ -547,7 +631,7 @@ namespace AC
 		 */
 		public static ActionInvProperty CreateNew_ToComponentVariable (Variables variables, int variableID, int propertyID, int itemID = -1)
 		{
-			ActionInvProperty newAction = (ActionInvProperty) CreateInstance <ActionInvProperty>();
+			ActionInvProperty newAction = CreateNew<ActionInvProperty> ();
 			newAction.setVarAsPropertyMethod = (itemID >= 0) ? SetVarAsPropertyMethod.SpecificItem : SetVarAsPropertyMethod.SelectedItem;
 			newAction.propertyID = propertyID;
 			newAction.varLocation = VariableLocation.Component;

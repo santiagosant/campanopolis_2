@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionBlendShape.cs"
  * 
@@ -31,7 +31,11 @@ namespace AC
 		public int shapeGroupID = 0;
 		public int shapeKeyID = 0;
 		public float shapeValue = 0f;
+		
 		public bool isPlayer = false;
+		public int playerID = -1;
+		public int playerParameterID = -1;
+
 		public bool disableAllKeys = false;
 		public float fadeTime = 0f;
 		public MoveMethod moveMethod = MoveMethod.Smooth;
@@ -40,27 +44,24 @@ namespace AC
 		protected Shapeable runtimeShapeObject;
 
 
-		public ActionBlendShape ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Blend shape";
-			description = "Animates a Skinned Mesh Renderer's blend shape by a chosen amount. If the Shapeable script attached to the renderer has grouped multiple shapes into a group, all other shapes in that group will be deactivated.";
-		}
-		
-		
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Blend shape"; }}
+		public override string Description { get { return "Animates a Skinned Mesh Renderer's blend shape by a chosen amount. If the Shapeable script attached to the renderer has grouped multiple shapes into a group, all other shapes in that group will be deactivated."; }}
+
+
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeShapeObject = AssignFile <Shapeable> (parameters, parameterID, constantID, shapeObject);
 			
-			if (isPlayer && KickStarter.player)
+			if (isPlayer)
 			{
-				runtimeShapeObject = KickStarter.player.GetShapeable ();
+				Player player = AssignPlayer (playerID, parameters, playerParameterID);
+				runtimeShapeObject = (player != null) ? player.GetShapeable () : null;
 			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (isPlayer && runtimeShapeObject == null)
 			{
@@ -90,13 +91,13 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			DoShape (0f);
 		}
 
 
-		private void DoShape (float _time)
+		protected void DoShape (float _time)
 		{
 			if (runtimeShapeObject != null)
 			{
@@ -114,10 +115,47 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+					if (playerParameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+
+				Player _player = null;
+
+				if (playerParameterID < 0 || KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow)
+				{
+					if (playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						if (playerPrefab != null)
+						{
+							_player = (Application.isPlaying) ? playerPrefab.GetSceneInstance () : playerPrefab.playerOb;
+						}
+					}
+					else
+					{
+						_player = (Application.isPlaying) ? KickStarter.player : AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
+					}
+				}
+
+				if (_player && _player.GetShapeable ())
+				{
+					shapeObject = _player.GetShapeable ();
+				}
+				else
+				{
+					shapeObject = null;
+					EditorGUILayout.HelpBox ("Cannot find player with Shapeable script attached", MessageType.Warning);
+				}
+			}
+			else
 			{
 				parameterID = ChooseParameterGUI ("Object:", parameters, parameterID, ParameterType.GameObject);
 				if (parameterID >= 0)
@@ -133,31 +171,8 @@ namespace AC
 					shapeObject = IDToField <Shapeable> (shapeObject, constantID, false);
 				}
 			}
-			else
-			{
-				Player _player = null;
-				
-				if (Application.isPlaying)
-				{
-					_player = KickStarter.player;
-				}
-				else
-				{
-					_player = AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
-				}
-				
-				if (_player != null && _player.GetShapeable ())
-				{
-					shapeObject = _player.GetShapeable ();
-				}
-				else
-				{
-					shapeObject = null;
-					EditorGUILayout.HelpBox ("Cannot find player with Shapeable script attached", MessageType.Warning);
-				}
-			}
 			
-			if (shapeObject != null && shapeObject.shapeGroups != null)
+			if (shapeObject && shapeObject.shapeGroups != null)
 			{
 				shapeGroupID = ActionBlendShape.ShapeableGroupGUI ("Shape group:", shapeObject.shapeGroups, shapeGroupID);
 				disableAllKeys = EditorGUILayout.Toggle ("Disable all keys?", disableAllKeys);
@@ -193,12 +208,10 @@ namespace AC
 				}
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 			}
-			
-			AfterRunningOption ();
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (shapeObject)
 			{
@@ -220,7 +233,7 @@ namespace AC
 			{
 				foreach (ShapeGroup shapeGroup in shapeGroups)
 				{
-					if (shapeGroup.label != "")
+					if (!string.IsNullOrEmpty (shapeGroup.label))
 					{
 						labelList.Add (shapeGroup.ID + ": " + shapeGroup.label);
 					}
@@ -237,7 +250,7 @@ namespace AC
 				
 				if (groupNumber == -1)
 				{
-					ACDebug.LogWarning ("Previously chosen shape group no longer exists!");
+					if (groupID > 0) Debug.LogWarning ("Previously chosen shape group no longer exists!");
 					groupID = 0;
 				}
 				
@@ -283,7 +296,7 @@ namespace AC
 				
 				if (keyNumber == -1)
 				{
-					ACDebug.LogWarning ("Previously chosen shape key no longer exists!");
+					if (keyID > 0) LogWarning ("Previously chosen shape key no longer exists!");
 					keyID = 0;
 				}
 				
@@ -300,15 +313,17 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			Shapeable obToUpdate = shapeObject;
 
-			if (isPlayer)
+			if (isPlayer && (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
 			{
-				if (!fromAssetFile && GameObject.FindObjectOfType <Player>() != null)
+				if (!fromAssetFile)
 				{
-					obToUpdate = GameObject.FindObjectOfType <Player>().GetShapeable ();
+					Player charToUpdate = Object.FindObjectOfType<Player> ();
+					if (charToUpdate != null)
+						obToUpdate = charToUpdate.GetShapeable ();
 				}
 
 				if (obToUpdate == null && AdvGame.GetReferences ().settingsManager != null)
@@ -324,7 +339,31 @@ namespace AC
 			}
 			AssignConstantID <Shapeable> (obToUpdate, constantID, parameterID);
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (shapeObject && shapeObject.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
+			{
+				if (_gameObject && _gameObject.GetComponent<Char> () && _gameObject.GetComponent<Char> ().IsPlayer) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -340,7 +379,7 @@ namespace AC
 		 */
 		public static ActionBlendShape CreateNew_SetActiveKey (Shapeable shapeable, int groupID, int keyID, float newKeyValue, float transitionTime = 0f, MoveMethod moveMethod = MoveMethod.Linear, AnimationCurve timeCurve = null)
 		{
-			ActionBlendShape newAction = (ActionBlendShape) CreateInstance <ActionBlendShape>();
+			ActionBlendShape newAction = CreateNew<ActionBlendShape> ();
 			newAction.disableAllKeys = false;
 			newAction.shapeObject = shapeable;
 			newAction.shapeGroupID = groupID;
@@ -363,7 +402,7 @@ namespace AC
 		 */
 		public static ActionBlendShape CreateNew_DisableAllKeys (Shapeable shapeable, int groupID, float transitionTime = 0f, MoveMethod moveMethod = MoveMethod.Linear, AnimationCurve timeCurve = null)
 		{
-			ActionBlendShape newAction = (ActionBlendShape) CreateInstance <ActionBlendShape>();
+			ActionBlendShape newAction = CreateNew<ActionBlendShape> ();
 			newAction.disableAllKeys = true;
 			newAction.shapeObject = shapeable;
 			newAction.shapeGroupID = groupID;

@@ -1,9 +1,9 @@
-﻿namespace AC
+﻿// This script is deprecated as of v1.70.0
+
+/*
+namespace AC
 {
 
-	/**
-	 * An interface that is called when the gameState variable is changed.
-	 */
 	public interface IStateChange
 	{
 		
@@ -11,4 +11,4 @@
 
 	}
 
-}
+}*/

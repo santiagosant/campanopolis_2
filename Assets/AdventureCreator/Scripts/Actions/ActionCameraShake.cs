@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCameraShake.cs"
  * 
@@ -11,6 +11,7 @@
  */
 
 using System.Collections.Generic;
+using UnityEngine;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -27,20 +28,17 @@ namespace AC
 		public int shakeIntensityParameterID = -1;
 		public float duration = 1f;
 		public int durationParameterID = -1;
+		public AnimationCurve intensityCurve = new AnimationCurve (new Keyframe (0, 1, 0, -1), new Keyframe (1, 0, -1, 0));
 
 		public CameraShakeEffect cameraShakeEffect = CameraShakeEffect.TranslateAndRotate;
 		
 		
-		public ActionCameraShake ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Camera;
-			title = "Shake";
-			description = "Causes the camera to shake, giving an earthquake screen effect. The method of shaking, i.e. moving or rotating, depends on the type of camera the Main Camera is linked to.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Camera; }}
+		public override string Title { get { return "Shake"; }}
+		public override string Description { get { return "Causes the camera to shake, giving an earthquake screen effect. The method of shaking, i.e. moving or rotating, depends on the type of camera the Main Camera is linked to."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			shakeIntensity = AssignInteger (parameters, shakeIntensityParameterID, shakeIntensity);
 			duration = AssignFloat (parameters, durationParameterID, duration);
@@ -51,7 +49,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			MainCamera mainCam = KickStarter.mainCamera;
 			if (mainCam)
@@ -78,7 +76,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			MainCamera mainCam = KickStarter.mainCamera;
 			if (mainCam)
@@ -88,42 +86,44 @@ namespace AC
 		}
 
 
-		private void DoShake (MainCamera mainCam, float _intensity, float _duration)
+		protected void DoShake (MainCamera mainCam, float _intensity, float _duration)
 		{
 			if (mainCam.attachedCamera is GameCamera)
 			{
-				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect);
+				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect, intensityCurve);
 			}
 			else if (mainCam.attachedCamera is GameCamera25D)
 			{
-				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect);
+				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect, intensityCurve);
 				
 				GameCamera25D gameCamera = (GameCamera25D) mainCam.attachedCamera;
 				if (gameCamera.backgroundImage)
 				{
-					gameCamera.backgroundImage.Shake (_intensity / 0.67f, _duration);
+					gameCamera.backgroundImage.Shake (_intensity / 0.67f, _duration, intensityCurve);
 				}
 			}
 			else if (mainCam.attachedCamera is GameCamera2D)
 			{
-				mainCam.Shake (_intensity / 33f, _duration, cameraShakeEffect);
+				mainCam.Shake (_intensity / 33f, _duration, cameraShakeEffect, intensityCurve);
 			}
 			else
 			{
-				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect);
+				mainCam.Shake (_intensity / 67f, _duration, cameraShakeEffect, intensityCurve);
 			}
 		}
 
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			shakeIntensityParameterID = Action.ChooseParameterGUI ("Intensity:", parameters, shakeIntensityParameterID, ParameterType.Integer);
 			if (shakeIntensityParameterID < 0)
 			{
 				shakeIntensity = EditorGUILayout.IntField ("Intensity:", shakeIntensity);
 			}
+
+			intensityCurve = EditorGUILayout.CurveField ("Intensity curve:", intensityCurve);
 
 			durationParameterID = Action.ChooseParameterGUI ("Duration (s):", parameters, durationParameterID, ParameterType.Float);
 			if (durationParameterID < 0)
@@ -134,8 +134,6 @@ namespace AC
 			cameraShakeEffect = (CameraShakeEffect) EditorGUILayout.EnumPopup ("Shake effect:", cameraShakeEffect);
 
 			willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
-			
-			AfterRunningOption ();
 		}
 
 		#endif
@@ -150,7 +148,7 @@ namespace AC
 		 */
 		public static ActionCameraShake CreateNew (int intensity = 1, float duration = 1f, bool waitUntilFinish = true)
 		{
-			ActionCameraShake newAction = (ActionCameraShake) CreateInstance <ActionCameraShake>();
+			ActionCameraShake newAction = CreateNew<ActionCameraShake> ();
 			newAction.shakeIntensity = intensity;
 			newAction.duration = duration;
 			newAction.willWait = waitUntilFinish;

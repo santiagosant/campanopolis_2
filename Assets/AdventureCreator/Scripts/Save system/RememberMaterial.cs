@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberMaterial.cs"
  * 
@@ -11,25 +11,25 @@
 
 using UnityEngine;
 using System.Collections.Generic;
+#if AddressableIsPresent
+using System.Collections;
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
 namespace AC
 {
 
-	/**
-	 * Attach this to Renderer components with Materials you wish to record changes in.
-	 */
+	/** Attach this to Renderer components with Materials you wish to record changes in. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Material")]
 	[RequireComponent (typeof (Renderer))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_material.html")]
-	#endif
 	public class RememberMaterial : Remember
 	{
 
-		/**
-		 * <summary>Serialises appropriate GameObject values into a string.</summary>
-		 * <returns>The data, serialised as a string</returns>
-		 */
+		private Renderer _renderer;
+
+
 		public override string SaveData ()
 		{
 			MaterialData materialData = new MaterialData ();
@@ -37,11 +37,11 @@ namespace AC
 			materialData.savePrevented = savePrevented;
 
 			List<string> materialIDs = new List<string>();
-			Material[] mats = GetComponent <Renderer>().materials;
+			Material[] mats = Renderer.materials;
 
 			foreach (Material material in mats)
 			{
-				materialIDs.Add (AssetLoader. GetAssetInstanceID (material));
+				materialIDs.Add (AssetLoader.GetAssetInstanceID (material));
 			}
 			materialData._materialIDs = ArrayToString <string> (materialIDs.ToArray ());
 
@@ -49,41 +49,90 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Deserialises a string of data, and restores the GameObject to its previous state.</summary>
-		 * <param name = "stringData">The data, serialised as a string</param>
-		 */
 		public override void LoadData (string stringData)
 		{
 			MaterialData data = Serializer.LoadScriptData <MaterialData> (stringData);
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			Material[] mats = GetComponent <Renderer>().materials;
+			#if AddressableIsPresent
 
+			if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
+			{
+				StopAllCoroutines ();
+				StartCoroutine (LoadDataFromAddressable (data));
+				return;
+			}
+
+			#endif
+
+			LoadDataFromResources (data);
+		}
+
+
+		#if AddressableIsPresent
+
+		private IEnumerator LoadDataFromAddressable (MaterialData data)
+		{
+			Material[] mats = Renderer.materials;
 			string[] materialIDs = StringToStringArray (data._materialIDs);
 
-			for (int i=0; i<materialIDs.Length; i++)
+			int count = Mathf.Min (materialIDs.Length, mats.Length);
+			for (int i = 0; i < count; i++)
 			{
-				if (mats.Length >= i)
+				if (string.IsNullOrEmpty (materialIDs[i])) continue;
+				AsyncOperationHandle<Material> handle = Addressables.LoadAssetAsync<Material> (materialIDs[i]);
+				yield return handle;
+				if (handle.Status == AsyncOperationStatus.Succeeded && handle.Result != null)
+				{
+					mats[i] = handle.Result;
+				}
+				Addressables.Release (handle);
+			}
+
+			Renderer.materials = mats;
+		}
+
+		#endif
+
+
+		private void LoadDataFromResources (MaterialData data)
+		{
+			Material[] mats = Renderer.materials;
+			string[] materialIDs = StringToStringArray (data._materialIDs);
+
+			for (int i = 0; i < materialIDs.Length; i++)
+			{
+				if (i < mats.Length)
 				{
 					Material _material = AssetLoader.RetrieveAsset (mats[i], materialIDs[i]);
-					if (_material != null)
+					if (_material)
 					{
 						mats[i] = _material;
 					}
 				}
 			}
-			
-			GetComponent <Renderer>().materials = mats;
+
+			Renderer.materials = mats;
+		}
+
+
+		private Renderer Renderer
+		{
+			get
+			{
+				if (_renderer == null)
+				{
+					_renderer = GetComponent <Renderer>();
+				}
+				return _renderer;
+			}
 		}
 		
 	}
 	
 
-	/**
-	 * A data container used by the RememberMaterial script.
-	 */
+	/** A data container used by the RememberMaterial script. */
 	[System.Serializable]
 	public class MaterialData : RememberData
 	{
@@ -91,9 +140,7 @@ namespace AC
 		/** The unique identifier of each Material in the Renderer */
 		public string _materialIDs;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public MaterialData () { }
 
 	}

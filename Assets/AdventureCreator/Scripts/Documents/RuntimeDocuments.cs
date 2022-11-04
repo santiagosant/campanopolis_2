@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RuntimeDocuments.cs"
  * 
@@ -18,21 +18,18 @@ namespace AC
 	/**
 	 * This script stores information about the currently-open Document, as well as any runtime-made changes to all Documents.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_runtime_documents.html")]
-	#endif
 	public class RuntimeDocuments : MonoBehaviour
 	{
 
 		#region Variables
 
-		private Document activeDocument;
+		protected Document activeDocument;
 
-		private List<int> collectedDocuments = new List<int>(); 
-		private Dictionary<int, int> lastOpenPages = new Dictionary<int, int>();
+		protected List<int> collectedDocuments = new List<int>(); 
+		protected Dictionary<int, int> lastOpenPages = new Dictionary<int, int>();
 
 		#endregion
-
 
 
 		#region PublicFunctions
@@ -40,7 +37,7 @@ namespace AC
 		/**
 		 * This is called when the game begins, and sets up the initial state.
 		 */
-		public void OnStart ()
+		public void OnInitPersistentEngine ()
 		{
 			activeDocument = null;
 			collectedDocuments.Clear ();
@@ -62,7 +59,6 @@ namespace AC
 
 				activeDocument = document;
 				KickStarter.eventManager.Call_OnHandleDocument (activeDocument, true);
-				KickStarter.playerMenus.OpenDocumentMenus ();
 			}
 		}
 
@@ -288,9 +284,9 @@ namespace AC
 		#endregion
 
 
-		#region PrivateFunctions
+		#region ProtectedFunctions
 
-		private void GetDocumentsOnStart ()
+		protected void GetDocumentsOnStart ()
 		{
 			if (KickStarter.inventoryManager)
 			{

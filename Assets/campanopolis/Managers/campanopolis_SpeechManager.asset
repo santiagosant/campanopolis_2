@@ -18,6 +18,8 @@ MonoBehaviour:
   textScrollCLip: {fileID: 0}
   narrationTextScrollCLip: {fileID: 0}
   playScrollAudioEveryCharacter: 1
+  speechScrollAudioSource: 0
+  waitTimeOffset: 0
   displayForever: 0
   displayNarrationForever: 0
   playAnimationForever: 1
@@ -28,11 +30,13 @@ MonoBehaviour:
   allowGameplaySpeechSkipping: 0
   skipThresholdTime: 0
   endScrollBeforeSkip: 0
+  ifSkipWhileScrolling: 0
   scrollingTextFactorsLength: 0
   syncSubtitlesToAudio: 0
   useAssetBundles: 0
   searchAudioFiles: 1
-  autoNameSpeechFiles: 1
+  autoNameSpeechFiles: 0
+  referenceSpeechFiles: 1
   autoSpeechFolder: Speech
   autoLipsyncFolder: Lipsync
   forceSubtitles: 1
@@ -48,13 +52,17 @@ MonoBehaviour:
   separateLinePause: 1
   resetExpressionsEachLine: 1
   lines: []
-  languages:
-  - Original
-  languageIsRightToLeft: 00
-  languageAudioAssetBundles:
-  - 
-  languageLipsyncAssetBundles:
-  - 
+  languages: []
+  languageIsRightToLeft: 
+  languageAudioAssetBundles: []
+  languageLipsyncAssetBundles: []
+  Languages:
+  - name: Original
+    isRightToLeft: 0
+    audioAssetBundle: 
+    lipsyncAssetBundle: 
+    fallbackLanguageIndex: 0
+    isDisabled: 0
   ignoreOriginalText: 0
   sfxDucking: 0
   musicDucking: 0
@@ -62,11 +70,11 @@ MonoBehaviour:
   lipSyncOutput: 0
   phonemes: []
   lipSyncSpeed: 1
+  translatableTextTypes: -1
   maxID: -1
   speechIDRecycling: 0
-  sceneFiles: []
-  activeLineID: -1
   mergeMatchingSpeechIDs: 0
   useSpeechTags: 0
   speechTags: []
   previewMenuName: Subtitles
+  mergeMatchingIDs: 0

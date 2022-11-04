@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionTemplate.cs"
  * 
@@ -10,6 +10,7 @@
  */
 
 using UnityEngine;
+using System.Collections.Generic;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -21,19 +22,16 @@ namespace AC
 	public class ActionTemplate : Action
 	{
 		
+		// Declare properties here
+		public override ActionCategory Category { get { return ActionCategory.Custom; }}
+		public override string Title { get { return "Template"; }}
+		public override string Description { get { return "This is a blank Action template."; }}
+
+
 		// Declare variables here
 		
 		
-		public ActionTemplate ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Custom;
-			title = "Template";
-			description = "This is a blank Action template.";
-		}
-		
-		
-		override public float Run ()
+		public override float Run ()
 		{
 			/* 
 			 * This function is called when the action is performed.
@@ -62,7 +60,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			/*
 			 * This function is called when the Action is skipped, as a
@@ -82,11 +80,9 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			// Action-specific Inspector GUI code here
-			
-			AfterRunningOption ();
 		}
 		
 

@@ -434,7 +434,7 @@ MonoBehaviour:
     y: 121.8
     width: 130.2
     height: 116.399994
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-7193824161279580450
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -1058,7 +1058,7 @@ MonoBehaviour:
     y: 108.6
     width: 155.40001
     height: 142.8
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-5956694980687364928
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -1175,7 +1175,7 @@ MonoBehaviour:
     y: 99
     width: 130.19998
     height: 162
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-5738173509348279677
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -2215,7 +2215,7 @@ MonoBehaviour:
     y: 0
     width: 420
     height: 45.370907
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-2865939001477870255
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -2460,7 +2460,7 @@ MonoBehaviour:
     y: 162.866
     width: 101.67
     height: 34.267998
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-2064598214259196741
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -2563,7 +2563,7 @@ MonoBehaviour:
     y: 199.16998
     width: 151.20001
     height: 103.499985
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &-1934469105849111270
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -3241,7 +3241,7 @@ MonoBehaviour:
     y: 107.46391
     width: 233.75757
     height: 145.07217
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &616381451296139699
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -3420,7 +3420,7 @@ MonoBehaviour:
     y: 128.7
     width: 71.399994
     height: 102.6
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &828794609103386499
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -3590,7 +3590,7 @@ MonoBehaviour:
     y: 138.23999
     width: 142.79999
     height: 43.199997
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &1079782557028160067
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -3879,7 +3879,7 @@ MonoBehaviour:
     y: 338.52
     width: 30.66
     height: 21.480001
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &2883120612795527718
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -4338,7 +4338,7 @@ MonoBehaviour:
     y: 61.550377
     width: 228.06
     height: 236.89925
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &3899222175177564230
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -4457,7 +4457,7 @@ MonoBehaviour:
     y: 55.440002
     width: 190.20018
     height: 249.12
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &3908158393482466530
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -4936,7 +4936,7 @@ MonoBehaviour:
     y: 121.8
     width: 130.2
     height: 116.399994
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &6054162565623774359
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -5354,7 +5354,7 @@ MonoBehaviour:
     y: 237.24002
     width: 210
     height: 100.8
-  showInFilter: 0
+  showInFilter: 1
 --- !u!114 &7043042309471211417
 MonoBehaviour:
   m_ObjectHideFlags: 1

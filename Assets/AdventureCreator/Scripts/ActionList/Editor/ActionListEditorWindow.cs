@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 
@@ -10,30 +12,48 @@ namespace AC
 
 		public ActionListEditorWindowData windowData = new ActionListEditorWindowData ();
 
-		private bool isMarquee = false;
-		private Rect marqueeRect = new Rect (0f, 0f, 0f, 0f);
+		private DragMode dragMode = DragMode.None;
+		private enum DragMode { None, Node, Wire, Marquee, ScrollbarHorizontal, ScrollbarVertical };
+
 		private bool canMarquee = true;
+		private Rect marqueeRect = new Rect (0f, 0f, 0f, 0f);
 		private bool marqueeShift = false;
 		private bool isAutoArranging = false;
 		private bool showProperties = false;
 		private int focusActionIndex;
 
 		private float zoom = 1f;
-		private float zoomMin = 0.2f;
-		private float zoomMax = 1f;
+		private const float zoomMin = 0.15f;
+		private const float zoomMax = 1f;
 		
 		private Action actionChanging = null;
-		private bool resultType;
 		private int multipleResultType;
 		private int offsetChanging = 0;
 		private int numActions = 0;
 
+		private const int maxFavourites = 10;
+
 		private Vector2 scrollPosition = Vector2.zero;
-		private Vector2 maxScroll;
 		private Vector2 menuPosition;
 		
 		private ActionsManager actionsManager;
 		private static ActionListEditorWindow mainInstance;
+		private Rect startLabelRect = new Rect (16, -2, 100, 20);
+		private const string startLabel = "START";
+		private Vector2 startNodeRect = new Vector2 (14, 14);
+		private Vector2 socketSize = new Vector2 (16, 16);
+		private int actionDragging = -1;
+		private Vector2 marqueeStartPosition;
+		private Vector2 scrollLimits;
+		private Rect dragRectRelative;
+
+		private bool hasDraggedWire;
+		private const float dragMargin = 0.15f;
+
+		private float scrollBarOffset;
+		private Vector2 propertiesScroll;
+		private const float propertiesBoxWidth = 360f;
+		private const float scrollbarSelectedSizeFactor = 2.5f;
 
 		
 		[MenuItem ("Adventure Creator/Editors/ActionList Editor", false, 1)]
@@ -42,14 +62,30 @@ namespace AC
 			ActionListEditorWindow window = CreateWindow ();
 			window.Repaint ();
 			window.Show ();
-			UnityVersionHandler.SetWindowTitle (window, "ActionList Editor");
+			window.titleContent.text = "ActionList Editor";
 			window.windowData = new ActionListEditorWindowData ();
+		}
+
+
+		public static void OpenForActionList (ActionList _target)
+		{
+			if (_target.source == ActionListSource.AssetFile)
+			{
+				if (_target.assetFile != null)
+				{
+					Init (_target.assetFile);
+				}
+			}
+			else
+			{
+				Init (_target);
+			}
 		}
 
 
 		private static ActionListEditorWindow CreateWindow ()
 		{
-			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().actionsManager != null && AdvGame.GetReferences ().actionsManager.allowMultipleActionListWindows == false)
+			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().actionsManager && AdvGame.GetReferences ().actionsManager.allowMultipleActionListWindows == false)
 			{
 				return (ActionListEditorWindow) EditorWindow.GetWindow (typeof (ActionListEditorWindow));
 			}
@@ -94,7 +130,7 @@ namespace AC
 			scrollPosition = Vector2.zero;
 			zoom = 1f;
 			showProperties = false;
-			UnityVersionHandler.SetWindowTitle (this, "ActionList Editor");
+			titleContent.text = "ActionList Editor";
 			windowData = _data;
 			Repaint ();
 			Show ();
@@ -110,17 +146,9 @@ namespace AC
 					actionsManager = AdvGame.GetReferences ().actionsManager;
 					AdventureCreator.RefreshActions ();
 				}
-				else
-				{
-					ACDebug.LogError ("An Actions Manager is required - please use the Game Editor window to create one.");
-				}
 			}
-			else
-			{
-				ACDebug.LogError ("A References file is required - please use the Game Editor window to create one.");
-			}
-			
-			UnmarkAll (windowData.targetAsset != null);
+
+			UnmarkAll ();
 
 			if (windowData != null && windowData.isLocked)
 			{
@@ -146,231 +174,14 @@ namespace AC
 			}
 		}
 
-		
-		private void PanAndZoomWindow ()
-		{
-			ActionListEditorScrollWheel scrollWheel = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.actionListEditorScrollWheel : ActionListEditorScrollWheel.PansWindow;
-			bool invertPanning = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.invertPanning : false;
-			float speedFactor = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.panSpeed : 1f;
-			bool autoPanNearWindowEdge = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.autoPanNearWindowEdge : false;
 
-			invertPanning = !invertPanning;
-
-			if (actionChanging)
-			{
-				if (autoPanNearWindowEdge)
-				{
-					ApplyEdgePanning ();
-				}
-				return;
-			}
-
-			if (Event.current.alt)
-			{
-				scrollWheel = (scrollWheel == ActionListEditorScrollWheel.PansWindow)
-							  ? ActionListEditorScrollWheel.ZoomsWindow
-							  : ActionListEditorScrollWheel.PansWindow; 
-			}
-
-			if (scrollWheel == ActionListEditorScrollWheel.ZoomsWindow && Event.current.type == EventType.ScrollWheel)
-			{
-				Vector2 screenCoordsMousePos = Event.current.mousePosition;
-				Vector2 delta = Event.current.delta * speedFactor;
-				float zoomDelta = -delta.y / 80.0f;
-				float oldZoom = zoom;
-				zoom += zoomDelta;
-				zoom = Mathf.Clamp (zoom, zoomMin, zoomMax);
-				scrollPosition += (screenCoordsMousePos - scrollPosition) - (oldZoom / zoom) * (screenCoordsMousePos - scrollPosition);
-
-				Event.current.Use();
-			}
-
-			if (scrollWheel == ActionListEditorScrollWheel.PansWindow && Event.current.type == EventType.ScrollWheel)
-			{
-				Vector2 delta = Event.current.delta * speedFactor * 8f;
-				if (invertPanning)
-				{
-					scrollPosition += delta;
-				}
-				else
-				{
-					scrollPosition -= delta;
-				}
-				Event.current.Use ();
-			}
-			else if (Event.current.type == EventType.MouseDrag && Event.current.button == 2)
-			{
-				Vector2 delta = Event.current.delta * speedFactor * 1.25f;
-				if (invertPanning)
-				{
-					scrollPosition += delta;
-				}
-				else
-				{
-					scrollPosition -= delta;
-				}
-				
-				Event.current.Use ();
-			}
-
-			if (autoPanNearWindowEdge)
-			{
-				ApplyEdgePanning ();
-			}
-		}
-
-
-		private void ApplyEdgePanning ()
-		{
-			if (Event.current.type == EventType.MouseDrag && Event.current.button == 0)
-			{
-				Vector2 mousePosition = Event.current.mousePosition;
-				Vector2 newDrag = Event.current.delta;
-				Vector2 margin = new Vector2 (0.2f, 0.25f);
-
-				if (newDrag.x < 0f)
-				{
-					if (mousePosition.x > position.width * margin.x)
-					{
-						newDrag.x = 0f;
-					}
-				}
-				else if (newDrag.x > 0f)
-				{
-					if (mousePosition.x < position.width * (1f - margin.x))
-					{
-						newDrag.x = 0f;
-					}
-				}
-
-				if (newDrag.y < 0f)
-				{
-					if (mousePosition.y > position.height * margin.y)
-					{
-						newDrag.y = 0f;
-					}
-				}
-				else if (newDrag.y > 0f)
-				{
-					if (mousePosition.y < position.height * (1f - margin.y))
-					{
-						newDrag.y = 0f;
-					}
-				}
-
-				scrollPosition += newDrag;
-			}
-		}
-		
-		
-		private void DrawMarquee (bool isAsset)
-		{
-			if (actionChanging)
-			{
-				return;
-			}
-			
-			if (!canMarquee)
-			{
-				isMarquee = false;
-				return;
-			}
-
-			Event e = Event.current;
-			
-			if (e.type == EventType.MouseDown && e.button == 0 && !isMarquee)
-			{
-				if (e.mousePosition.y > 24)
-				{
-					isMarquee = true;
-					marqueeShift = false;
-					marqueeRect = new Rect (e.mousePosition.x, e.mousePosition.y, 0f, 0f);
-				}
-			}
-			else if (e.rawType == EventType.MouseUp)
-			{
-				if (isMarquee)
-				{
-					MarqueeSelect (isAsset, marqueeShift);
-				}
-				isMarquee = false;
-			}
-			if (isMarquee && e.shift)
-			{
-				marqueeShift = true;
-			}
-
-			if (isMarquee)
-			{
-				marqueeRect.width = e.mousePosition.x - marqueeRect.x;
-				marqueeRect.height = e.mousePosition.y - marqueeRect.y;
-				GUI.Label (marqueeRect, "", CustomStyles.IconMarquee);
-			}
-		}
-		
-		
-		private void MarqueeSelect (bool isAsset, bool isCumulative)
-		{
-			List<Action> actionList = new List<Action>();
-			actionList = (isAsset) ? windowData.targetAsset.actions : windowData.target.actions;
-			
-			if (marqueeRect.width < 0f)
-			{
-				marqueeRect.x += marqueeRect.width;
-				marqueeRect.width *= -1f;
-			}
-			if (marqueeRect.height < 0f)
-			{
-				marqueeRect.y += marqueeRect.height;
-				marqueeRect.height *= -1f;
-			}
-			
-			// Correct for zooming
-			marqueeRect.x /= zoom;
-			marqueeRect.y /= zoom;
-			marqueeRect.width /= zoom;
-			marqueeRect.height /= zoom;
-			
-			// Correct for panning
-			marqueeRect.x += scrollPosition.x;
-			marqueeRect.y += scrollPosition.y;
-
-			marqueeRect.y -= 18f;
-
-			if (!isCumulative)
-			{
-				UnmarkAll (isAsset);
-			}
-
-			foreach (Action action in actionList)
-			{
-				if (action == null) continue;
-
-				if (IsRectInRect (action.nodeRect, marqueeRect) || IsRectInRect (marqueeRect, action.nodeRect))
-				{
-					action.isMarked = true;
-				}
-			}
-		}
-
-
-		private bool IsRectInRect (Rect rect1, Rect rect2)
-		{
-			if (rect1.Contains (rect2.BottomRight ()) || rect1.Contains (rect2.BottomLeft ()) || rect1.Contains (rect2.TopLeft ()) || rect1.Contains (rect2.TopRight ()))
-			{
-				return true;
-			}
-			return false;
-		}
-
-		
 		private void OnGUI ()
 		{
 			if (isAutoArranging)
 			{
 				return;
 			}
-
+			
 			if (!windowData.isLocked)
 			{
 				if (Selection.activeObject && Selection.activeObject is ActionListAsset)
@@ -378,30 +189,34 @@ namespace AC
 					windowData.targetAsset = (ActionListAsset) Selection.activeObject;
 					windowData.target = null;
 				}
-				else if (Selection.activeGameObject && Selection.activeGameObject.GetComponent <ActionList>())
+				else if (Selection.activeGameObject && Selection.activeGameObject.GetComponent<ActionList> ())
 				{
 					windowData.targetAsset = null;
-					windowData.target = Selection.activeGameObject.GetComponent<ActionList>();
+					windowData.target = Selection.activeGameObject.GetComponent<ActionList> ();
 				}
 			}
 
 			if (windowData.targetAsset != null)
 			{
+				UpdateScrollLimits ();
 				ActionListAssetEditor.ResetList (windowData.targetAsset);
-				
+
 				if (showProperties)
 				{
 					PropertiesGUI (true);
 				}
-				else
-				{
-					PanAndZoomWindow ();
-					NodesGUI (true);
-					DrawMarquee (true);
-				}
 
 				TopToolbarGUI (true);
-				
+				BottomToolbarGUI (true);
+
+				if (CanvasWidth > 0f)
+				{
+					DrawGrid ();
+					PanAndZoomWindow (Event.current);
+					NodesGUI (true, Event.current);
+					DrawMarquee (true, Event.current);
+				}
+
 				if (GUI.changed)
 				{
 					EditorUtility.SetDirty (windowData.targetAsset);
@@ -409,21 +224,29 @@ namespace AC
 			}
 			else if (windowData.target != null)
 			{
+
+				UpdateScrollLimits ();
 				ActionListEditor.ResetList (windowData.target);
 
 				if (showProperties)
 				{
 					PropertiesGUI (false);
 				}
-				else if (windowData.target.source != ActionListSource.AssetFile)
+
+				if (windowData.target.source != ActionListSource.AssetFile)
 				{
-					PanAndZoomWindow ();
-					NodesGUI (false);
-					DrawMarquee (false);
+					BottomToolbarGUI (false);
+					TopToolbarGUI (false);
+
+					if (CanvasWidth > 0f)
+					{
+						DrawGrid ();
+						PanAndZoomWindow (Event.current);
+						NodesGUI (false, Event.current);
+						DrawMarquee (false, Event.current);
+					}
 				}
-
-				TopToolbarGUI (false);
-
+				
 				if (GUI.changed)
 				{
 					UnityVersionHandler.CustomSetDirty (windowData.target);
@@ -432,7 +255,782 @@ namespace AC
 			else
 			{
 				TopToolbarGUI (false);
+				DrawEmptyNotice ();
 			}
+
+			if ((windowData.targetAsset || windowData.target) && GUI.changed)
+			{
+				Repaint ();
+			}
+		}
+
+
+
+		private void PanAndZoomWindow (Event e)
+		{
+			ActionListEditorScrollWheel scrollWheel = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.actionListEditorScrollWheel : ActionListEditorScrollWheel.PansWindow;
+			bool invertPanning = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.invertPanning : false;
+			float speedFactor = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.panSpeed : 1f;
+			
+			invertPanning = !invertPanning;
+
+			if (dragMode == DragMode.Wire)
+			{
+				if (e.type == EventType.MouseDrag)
+				{
+					hasDraggedWire = true;
+				}
+				ApplyEdgePanning (e);
+				return;
+			}
+
+			if (dragMode == DragMode.Marquee || dragMode == DragMode.ScrollbarHorizontal || dragMode == DragMode.ScrollbarVertical)
+			{
+				return;
+			}
+
+			if (e.alt)
+			{
+				scrollWheel = (scrollWheel == ActionListEditorScrollWheel.PansWindow)
+							  ? ActionListEditorScrollWheel.ZoomsWindow
+							  : ActionListEditorScrollWheel.PansWindow; 
+			}
+
+			if (scrollWheel == ActionListEditorScrollWheel.ZoomsWindow && e.type == EventType.ScrollWheel)
+			{
+				Vector2 originalMousePos = (e.mousePosition + ScrollPosition) / Zoom;
+				
+				float zoomDelta = -e.delta.y * speedFactor / 80.0f;
+				Zoom += zoomDelta;
+
+				ScrollPosition = originalMousePos * Zoom - e.mousePosition;
+
+				UseEvent (e);
+			}
+
+			if (scrollWheel == ActionListEditorScrollWheel.PansWindow && e.type == EventType.ScrollWheel)
+			{
+				Vector2 delta = e.delta * speedFactor * 8f;
+				if (invertPanning)
+				{
+					ScrollPosition += delta;
+				}
+				else
+				{
+					ScrollPosition -= delta;
+				}
+
+				UseEvent (e);
+			}
+			else if (e.type == EventType.MouseDrag && e.button == 2)
+			{
+				Vector2 delta = e.delta * speedFactor * 1.25f;
+				if (invertPanning)
+				{
+					ScrollPosition += delta;
+				}
+				else
+				{
+					ScrollPosition -= delta;
+				}
+
+				UseEvent (e);
+			}
+			else if (e.type == EventType.KeyDown && !EditorGUIUtility.editingTextField)
+			{
+				if (e.keyCode == KeyCode.Home)
+				{
+					if (e.alt)
+					{
+						zoom = 1f;
+					}
+					else
+					{
+						ScrollPosition = Vector2.zero;
+					}
+					UseEvent (e);
+				}
+				else if (e.keyCode == KeyCode.PageUp)
+				{
+					if (e.alt)
+					{
+						Zoom += 0.2f;
+					}
+					else
+					{
+						ScrollPosition -= new Vector2 (0f, CanvasHeight);
+					}
+					UseEvent (e);
+				}
+				else if (e.keyCode == KeyCode.PageDown)
+				{
+					if (e.alt)
+					{
+						Zoom -= 0.2f;
+					}
+					else
+					{
+						ScrollPosition += new Vector2 (0f, CanvasHeight);
+					}
+					UseEvent (e);
+				}
+			}
+		}
+		
+
+		private void DragNodes (Event e)
+		{
+			if (dragMode != DragMode.None && dragMode != DragMode.Node)
+			{
+				return;
+			}
+			//if (actionDragging >= 1) GUI.Box (new Rect (dragRectRelative.position + Actions[actionDragging].NodeRect.position - ScrollPosition, dragRectRelative.size), "", CustomStyles.IconMarquee);
+
+			if (e.type == EventType.MouseDown)
+			{
+				if (e.button == 0)
+				{
+					for (int i = Actions.Count - 1; i >= 1; i--)
+					{
+						if (Actions[i] != null)
+						{
+							Rect rect = Actions[i].NodeRect;
+							rect.position -= scrollPosition;
+
+							if (rect.Contains (e.mousePosition))
+							{
+								BeginDrag (i);
+								UseEvent (e);
+								return;
+							}
+						}
+					}
+				}
+			}
+			else if (e.type == EventType.MouseDrag)
+			{
+				if (e.button == 0 && actionDragging >= 0)
+				{
+					UpdateDrag (e.delta);
+					UseEvent (e);
+				}
+			}
+			else if (e.rawType == EventType.MouseUp)
+			{
+				if (actionDragging >= 0)
+				{
+					actionDragging = -1;
+					dragMode = DragMode.None;
+					GUI.changed = true;
+					UseEvent (e);
+				}
+			}
+		}
+
+
+		private void BeginDrag (int index)
+		{
+			dragMode = DragMode.Node;
+			actionDragging = index;
+
+			UpdateDrag (Vector2.zero, true);
+
+			GUI.changed = true;
+		}
+
+
+		private void CalculateDragRectRelative ()
+		{
+			Rect dragRect = Actions[actionDragging].NodeRect;
+			for (int i = 1; i < Actions.Count; i++)
+			{
+				if (Actions[i] != null && Actions[i].isMarked && i != actionDragging)
+				{
+					if (Actions[i].NodeRect.x < dragRect.x)
+					{
+						float leftShift = dragRect.x - Actions[i].NodeRect.x;
+						dragRect.x -= leftShift;
+						dragRect.width += leftShift;
+					}
+
+					if ((Actions[i].NodeRect.x + Actions[i].NodeRect.width) > (dragRect.x + dragRect.width))
+					{
+						dragRect.width = Actions[i].NodeRect.x + Actions[i].NodeRect.width - dragRect.x;
+					}
+
+					if (Actions[i].NodeRect.y < dragRect.y)
+					{
+						float topShift = dragRect.y - Actions[i].NodeRect.y;
+						dragRect.y -= topShift;
+						dragRect.height += topShift;
+					}
+
+					if ((Actions[i].NodeRect.y + Actions[i].NodeRect.height) > (dragRect.y + dragRect.height))
+					{
+						dragRect.height = Actions[i].NodeRect.y + Actions[i].NodeRect.height - dragRect.y;
+					}
+				}
+			}
+
+			float leftOverspill = ScrollPosition.x - dragRect.x;
+			if (leftOverspill > 0f)
+			{
+				dragRect.x += leftOverspill;
+				dragRect.width -= leftOverspill;
+			}
+
+			float rightOverspill = CanvasWidth + (ScrollPosition.x - dragRect.x - dragRect.width) * Zoom;
+			if (rightOverspill < 0f)
+			{
+				dragRect.width += rightOverspill;
+			}
+
+			float topOverspill = ScrollPosition.y - dragRect.y;
+			if (topOverspill > 0f)
+			{
+				dragRect.y += topOverspill;
+				dragRect.height -= topOverspill;
+			}
+
+			float bottomOverspill = CanvasHeight + (ScrollPosition.y - dragRect.y - dragRect.height - 60f) * Zoom;
+			if (bottomOverspill < 0f)
+			{
+				dragRect.height += bottomOverspill;
+			}
+
+			dragRectRelative = new Rect (dragRect.position - Actions[actionDragging].NodeRect.position, dragRect.size);
+		}
+
+
+		private void UpdateDrag (Vector2 delta, bool forceUpdate = false)
+		{
+			// Limit hard edges
+			if ((delta.x + Actions[actionDragging].NodeRect.x + dragRectRelative.x) < 1f)
+			{
+				delta.x = 0f;
+			}
+			if ((delta.y + Actions[actionDragging].NodeRect.y + dragRectRelative.y) < 15f)
+			{
+				delta.y = 0f;
+			}
+			if ((delta.x + Actions[actionDragging].NodeRect.x + Actions[actionDragging].NodeRect.width + dragRectRelative.x) > (scrollLimits.x+ CanvasWidth) / zoom)
+			{
+				Debug.Log ("X: " + (delta.x + Actions[actionDragging].NodeRect.x + Actions[actionDragging].NodeRect.width + dragRectRelative.x) + ", ScrollLimits: " + scrollLimits.x + ", Zoom: " + zoom + ", CW: " + CanvasWidth + ", = " + (scrollLimits.x + CanvasWidth) / zoom);
+				delta.x = 0f;
+			}
+			if ((delta.y + Actions[actionDragging].NodeRect.y + Actions[actionDragging].NodeRect.height + dragRectRelative.y) > (scrollLimits.y + CanvasHeight) / zoom)
+			{
+				delta.y = 0f;
+			}
+
+			if (delta.sqrMagnitude > 0f || forceUpdate)
+			{
+				CalculateDragRectRelative ();
+			}
+
+			for (int i=1; i< Actions.Count; i++)
+			{
+				if (Actions[i] != null && (Actions[i].isMarked || i == actionDragging))
+				{
+					Actions[i].NodeRect = new Rect (Actions[i].NodeRect.position + delta, Actions[i].NodeRect.size);
+					GUI.changed = true;
+					
+					if (i == actionDragging)
+					{
+						Vector2 overspill = Vector2.zero;
+						
+						if (delta.x > 0f || forceUpdate)
+						{
+							float rightNodeEdge = Actions[i].NodeRect.x + dragRectRelative.x + dragRectRelative.width;
+							float rightSpill = (rightNodeEdge - ScrollPosition.x) * Zoom - CanvasWidth;
+							if (rightSpill > 0f) overspill.x = rightSpill;
+						}
+						if (delta.x < 0f || forceUpdate)
+						{
+							float leftNodeEdge = Actions[i].NodeRect.x + dragRectRelative.x;
+							float leftSpill = (leftNodeEdge - ScrollPosition.x) * Zoom;
+							if (leftSpill < 0f) overspill.x = leftSpill;
+						}
+
+						if (delta.y > 0f || forceUpdate)
+						{
+							float bottomNodeEdge = Actions[i].NodeRect.y + dragRectRelative.y + dragRectRelative.height + 60f;
+							float topSpill = (bottomNodeEdge - ScrollPosition.y) * Zoom - CanvasHeight;
+							if (topSpill > 0f) overspill.y = topSpill;
+						}
+						if (delta.y < 0f || forceUpdate)
+						{
+							float topNodeEdge = Actions[i].NodeRect.y + dragRectRelative.y;
+							float bottomSpill = (topNodeEdge - ScrollPosition.y) * Zoom;
+							if (bottomSpill < 0f) overspill.y = bottomSpill;
+						}
+						
+						ScrollPosition += overspill / Zoom;
+					}
+				}
+			}			
+		}
+
+
+		private void ApplyEdgePanning (Event e)
+		{
+			bool autoPanNearWindowEdge = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.autoPanNearWindowEdge : false;
+			if (!autoPanNearWindowEdge)
+			{
+				return;
+			}
+
+			if (e.type == EventType.MouseDown || e.type == EventType.MouseDrag)
+			{
+				float panningSpeed = (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager) ? AdvGame.GetReferences ().actionsManager.panSpeed : 1f;
+				float maxSpeed = 10f * panningSpeed;
+
+				Vector2 edgeScroll = Vector2.zero;
+
+				float leftMargin = CanvasWidth * dragMargin;
+				float rightMargin = CanvasWidth * (1f - dragMargin);
+
+				if (e.mousePosition.x > rightMargin)
+				{
+					edgeScroll.x = Mathf.Min (e.mousePosition.x - rightMargin, maxSpeed);
+				}
+				else if (e.mousePosition.x < leftMargin)
+				{
+					edgeScroll.x = Mathf.Max (e.mousePosition.x - leftMargin, -maxSpeed);
+				}
+
+				float topMargin = CanvasHeight * dragMargin;
+				float bottomMargin = CanvasHeight * (1f - dragMargin);
+
+				if (e.mousePosition.y + 20f > bottomMargin)
+				{
+					edgeScroll.y = Mathf.Min (e.mousePosition.y + 20f - bottomMargin, maxSpeed);
+				}
+				else if (e.mousePosition.y - 20f < topMargin)
+				{
+					edgeScroll.y = Mathf.Max (e.mousePosition.y - 20f - topMargin, -maxSpeed);
+				}
+
+				ScrollPosition += edgeScroll;
+			}
+		}
+
+
+		private void DrawScrollbars (Event e)
+		{
+			float scrollbarWidth = 12f;
+			float scrollbarMargin = 20f;
+
+			Vector2 drawArea = new Vector2 (position.width - ((showProperties) ? propertiesBoxWidth - 7f : 0f), position.height - 40f);
+			Vector2 maxScrollbarSize = new Vector2 (drawArea.x - 2f * scrollbarMargin, drawArea.y - 2f * scrollbarMargin);
+
+			// Horizontal
+			if (CanDrawHorizontalScrollbar)
+			{
+				float xScrollSize = CanvasWidth / (CanvasWidth + scrollLimits.x);
+				float xValue = ScrollPosition.x / scrollLimits.x * Zoom;
+				float xFreedom = maxScrollbarSize.x - (xScrollSize * maxScrollbarSize.x);
+
+				Vector2 horizontalLeft = new Vector2 (xValue * xFreedom + scrollbarMargin, drawArea.y + 8f);
+				Vector2 horizontalSize = new Vector2 (xScrollSize * maxScrollbarSize.x, scrollbarWidth / 2f);
+				if (horizontalSize.x < horizontalSize.y) horizontalSize.x = horizontalSize.y;
+
+				Rect drawnHorizontalRect = new Rect (horizontalLeft, horizontalSize);
+
+				Rect horizontalRect = drawnHorizontalRect;
+				horizontalRect.size = new Vector2 (horizontalSize.x, horizontalSize.y * scrollbarSelectedSizeFactor);
+				horizontalRect.center = drawnHorizontalRect.center;
+
+				GUI.Box (drawnHorizontalRect, string.Empty, (dragMode == DragMode.ScrollbarHorizontal) ? CustomStyles.ToolbarInverted : CustomStyles.Toolbar);
+
+				if (dragMode == DragMode.None && e.type == EventType.MouseDown)
+				{
+					if (e.button == 0)
+					{
+						if (horizontalRect.Contains (e.mousePosition))
+						{
+							dragMode = DragMode.ScrollbarHorizontal;
+							scrollBarOffset = e.mousePosition.x - horizontalLeft.x;
+							UseEvent (e);
+							return;
+						}
+						else if (e.mousePosition.y > horizontalRect.y && e.mousePosition.y < horizontalRect.yMax)
+						{
+							if (e.mousePosition.x < horizontalRect.xMin)
+							{
+								// Left
+								float offset = horizontalRect.width/ 2f;
+								if ((e.mousePosition.x - offset - scrollbarMargin) < 0f)
+								{
+									offset = e.mousePosition.x - scrollbarMargin;
+								}
+
+								xValue = (e.mousePosition.x - offset - scrollbarMargin) / xFreedom;
+								ScrollPosition = new Vector2 (xValue / Zoom * scrollLimits.x, ScrollPosition.y);
+
+								dragMode = DragMode.ScrollbarHorizontal;
+								scrollBarOffset = offset;
+								UseEvent (e);
+								Repaint ();
+								return;
+							}
+							else if (e.mousePosition.x > horizontalRect.xMax)
+							{
+								// Right
+								float offset = horizontalRect.width / 2f;
+								if ((e.mousePosition.x + offset) > CanvasWidth)
+								{
+									offset = CanvasWidth - e.mousePosition.x;
+								}
+
+								xValue = (e.mousePosition.x - horizontalRect.width + offset - scrollbarMargin) / xFreedom;
+								ScrollPosition = new Vector2 (xValue / Zoom * scrollLimits.x, ScrollPosition.y);
+
+								dragMode = DragMode.ScrollbarHorizontal;
+								scrollBarOffset = horizontalRect.width - offset;
+								UseEvent (e);
+								Repaint ();
+								return;
+							}
+						}
+					}
+				}
+				else if (e.type == EventType.MouseDrag && e.button == 0)
+				{
+					if (dragMode == DragMode.ScrollbarHorizontal)
+					{
+						float newHorizontalLeft = e.mousePosition.x - scrollBarOffset;
+						float newXValue = (newHorizontalLeft - scrollbarMargin) / xFreedom;
+						float newScrollPosition = newXValue / Zoom * scrollLimits.x;
+
+						ScrollPosition = new Vector2 (newScrollPosition, ScrollPosition.y);
+						UseEvent (e);
+					}
+				}
+				else if (e.rawType == EventType.MouseUp)
+				{
+					if (dragMode == DragMode.ScrollbarHorizontal)
+					{
+						dragMode = DragMode.None;
+						UseEvent (e);
+					}
+				}
+			}
+
+			// Vertical
+			if (CanDrawVerticalScrollbar)
+			{
+				float yScrollSize = CanvasHeight / (CanvasHeight + scrollLimits.y);
+				float yValue = ScrollPosition.y / scrollLimits.y * Zoom;
+				float yFreedom = maxScrollbarSize.y - (yScrollSize * maxScrollbarSize.y);
+
+				Vector2 verticalTop = new Vector2 (drawArea.x - 14f, yValue * yFreedom + scrollbarMargin + scrollbarMargin);
+				Vector2 verticalSize = new Vector2 (scrollbarWidth / 2f, yScrollSize * maxScrollbarSize.y);
+				if (verticalSize.y < verticalSize.x) verticalSize.y = verticalSize.x;
+
+				Rect drawnVerticalRect = new Rect (verticalTop, verticalSize);
+				Rect verticalRect = drawnVerticalRect;
+
+				verticalRect.size = new Vector2 (verticalSize.x * scrollbarSelectedSizeFactor, verticalSize.y);
+				verticalRect.center = drawnVerticalRect.center;
+
+				GUI.Box (drawnVerticalRect, string.Empty, (dragMode == DragMode.ScrollbarVertical) ? CustomStyles.ToolbarInverted : CustomStyles.Toolbar);
+
+				if (dragMode == DragMode.None && e.type == EventType.MouseDown)
+				{
+					if (e.button == 0)
+					{
+						if (verticalRect.Contains (e.mousePosition))
+						{
+							dragMode = DragMode.ScrollbarVertical;
+							scrollBarOffset = e.mousePosition.y - verticalTop.y;
+							UseEvent (e);
+							return;
+						}
+						else if (e.mousePosition.x > verticalRect.x && e.mousePosition.x < verticalRect.xMax)
+						{
+							if (e.mousePosition.y < verticalRect.yMin && e.mousePosition.y > 28f)
+							{
+								// Above
+								float offset = verticalRect.height / 2f;
+								if ((e.mousePosition.y - offset) < (scrollbarMargin + scrollbarMargin))
+								{
+									offset = e.mousePosition.y - scrollbarMargin - scrollbarMargin;
+								}
+
+								yValue = (e.mousePosition.y - offset - scrollbarMargin - scrollbarMargin) / yFreedom;
+								ScrollPosition = new Vector2 (ScrollPosition.x, yValue / Zoom * scrollLimits.y);
+
+								dragMode = DragMode.ScrollbarVertical;
+								scrollBarOffset = offset;
+								UseEvent (e);
+								Repaint ();
+								return;
+							}
+							else if (e.mousePosition.y > verticalRect.yMax && (position.height - e.mousePosition.y) > 20f)
+							{
+								// Below
+								float offset = verticalRect.height / 2f;
+								if ((e.mousePosition.y + offset) > CanvasHeight)
+								{
+									offset = CanvasHeight - e.mousePosition.y;
+								}
+
+								yValue = (e.mousePosition.y - verticalRect.height + offset - scrollbarMargin - scrollbarMargin) / yFreedom;
+								ScrollPosition = new Vector2 (ScrollPosition.x, yValue / Zoom * scrollLimits.y);
+
+								dragMode = DragMode.ScrollbarVertical;
+								scrollBarOffset = verticalRect.height - offset;
+								UseEvent (e);
+								Repaint ();
+								return;
+							}
+						}
+					}
+				}
+				else if (e.type == EventType.MouseDrag && e.button == 0)
+				{
+					if (dragMode == DragMode.ScrollbarVertical)
+					{
+						float newVerticalTop = e.mousePosition.y - scrollBarOffset - 20f;
+						float newYValue = (newVerticalTop - scrollbarMargin) / yFreedom;
+						float newScrollPosition = newYValue / Zoom * scrollLimits.y;
+
+						ScrollPosition = new Vector2 (ScrollPosition.x, newScrollPosition);
+						UseEvent (e);
+					}
+				}
+				else if (e.rawType == EventType.MouseUp)
+				{
+					if (dragMode == DragMode.ScrollbarVertical)
+					{
+						dragMode = DragMode.None;
+						UseEvent (e);
+					}
+				}
+			}
+		}
+
+
+		private void DrawMarquee (bool isAsset, Event e)
+		{
+			if (dragMode != DragMode.None && dragMode != DragMode.Marquee)
+			{
+				return;
+			}
+
+			if (!canMarquee)
+			{
+				dragMode = DragMode.None;
+				return;
+			}
+
+			if (dragMode == DragMode.Marquee)
+			{
+				ApplyEdgePanning (e);
+			}
+
+			if (e.type == EventType.MouseDown && e.button == 0 && dragMode == DragMode.None)
+			{
+				if (e.mousePosition.y > 24 && e.mousePosition.y < CanvasHeight - 22 && e.mousePosition.x < CanvasWidth)
+				{
+					marqueeStartPosition = e.mousePosition + ScrollPosition * Zoom;
+					dragMode = DragMode.Marquee;
+					marqueeShift = false;
+
+					marqueeRect = new Rect (marqueeStartPosition.x, marqueeStartPosition.y, 0f, 0f);
+					marqueeRect.position -= ScrollPosition * Zoom;
+
+					e.Use ();
+					GUI.changed = true;
+				}
+			}
+			else if (e.rawType == EventType.MouseUp)
+			{
+				if (dragMode == DragMode.Marquee)
+				{
+					MarqueeSelect (marqueeShift);
+					e.Use ();
+					GUI.changed = true;
+					dragMode = DragMode.None;
+				}
+			}
+			else if (e.type == EventType.MouseDrag)
+			{
+				Vector2 marqueeOffset = e.mousePosition + ScrollPosition * Zoom;
+
+				marqueeRect = new Rect (Mathf.Min (marqueeOffset.x, marqueeStartPosition.x),
+									Mathf.Min (marqueeOffset.y, marqueeStartPosition.y),
+									Mathf.Abs (marqueeOffset.x - marqueeStartPosition.x),
+									Mathf.Abs (marqueeOffset.y - marqueeStartPosition.y));
+
+				marqueeRect.position -= ScrollPosition * Zoom;
+			}
+
+			if (dragMode == DragMode.Marquee)
+			{
+				if (e.shift)
+				{
+					marqueeShift = true;
+				}
+
+				if (marqueeRect.size.x > 0f && marqueeRect.size.y > 0f)
+				{
+					GUI.Box (marqueeRect, string.Empty, CustomStyles.IconMarquee);
+					GUI.changed = true;
+				}
+			}
+		}
+
+
+		private Rect ConvertMarqueeRect ()
+		{
+			Rect convertedRect = marqueeRect;
+   
+			if (convertedRect.width < 0f)
+			{
+				convertedRect.x += convertedRect.width;
+				convertedRect.width *= -1f;
+			}
+			if (convertedRect.height < 0f)
+			{
+				convertedRect.y += convertedRect.height;
+				convertedRect.height *= -1f;
+			}
+
+			convertedRect.y -= 24f;
+
+			// Correct for zooming
+			convertedRect.x /= zoom;
+			convertedRect.y /= zoom;
+			convertedRect.width /= zoom;
+			convertedRect.height /= zoom;
+
+			// Correct for panning
+			convertedRect.position += ScrollPosition;
+
+			return convertedRect;
+		}
+		
+		
+		private void MarqueeSelect (bool isCumulative)
+		{
+			Rect rect = ConvertMarqueeRect ();
+
+			if (!isCumulative)
+			{
+				UnmarkAll ();
+			}
+
+			foreach (Action action in Actions)
+			{
+				if (action == null) continue;
+
+				if (action.NodeRect.Overlaps (rect) || rect.Overlaps (action.NodeRect))
+				{
+					action.isMarked = true;
+				}
+			}
+		}
+
+
+		private void UpdateScrollLimits ()
+		{
+			scrollLimits = Vector2.zero;
+			foreach (Action action in Actions)
+			{
+				if (action != null)
+				{
+					float rightMax = action.NodeRect.x + action.NodeRect.width + 500f;
+					rightMax *= Zoom;
+					if (scrollLimits.x < rightMax) scrollLimits.x = rightMax;
+
+					float bottomMax = action.NodeRect.y + action.NodeRect.height + 500f;
+					bottomMax *= Zoom;
+					if (scrollLimits.y < bottomMax) scrollLimits.y = bottomMax;
+				}
+			}
+
+			//GUI.Box (new Rect (new Vector2 (0f, 24f) - ScrollPosition * Zoom, scrollLimits), "", CustomStyles.IconMarquee);
+			scrollLimits.x = Mathf.Max (0f, scrollLimits.x - (CanvasWidth - 4f));
+			scrollLimits.y = Mathf.Max (0f, scrollLimits.y - (CanvasHeight - 50f));
+		}
+
+
+		private void BottomToolbarGUI (bool isAsset)
+		{
+			bool noList = false;
+			#if AC_ActionListPrefabs
+			bool isPrefab = false;
+			#endif
+
+			if ((isAsset && windowData.targetAsset == null) || (!isAsset && windowData.target == null) || (!isAsset && !windowData.target.gameObject.activeInHierarchy))
+			{
+				noList = true;
+
+				#if AC_ActionListPrefabs
+				if (!isAsset && !windowData.target.gameObject.activeInHierarchy && UnityVersionHandler.IsPrefabFile (windowData.target.gameObject))
+				{
+					noList = false;
+					isPrefab = true;
+				}
+				#endif
+			}
+
+			GUILayout.BeginArea (new Rect (0, position.height - 24, position.width, 24), CustomStyles.Toolbar);
+			string labelText;
+			if (noList)
+			{
+				labelText = "No ActionList selected";
+			}
+			else if (isAsset)
+			{
+				labelText = "Editing ActionList asset: " + windowData.targetAsset.name;
+			}
+			else
+			{
+				#if AC_ActionListPrefabs
+				if (isPrefab)
+				{
+					labelText = "Editing " + windowData.target.GetType ().ToString ().Replace ("AC.", "") + " prefab: " + windowData.target.gameObject.name;
+				}
+				else
+				#endif
+				{
+					labelText = "Editing " + windowData.target.GetType ().ToString ().Replace ("AC.", "") + ": " + windowData.target.gameObject.name;
+				}
+			}
+
+			if (GUI.Button (new Rect (10, 0, 18, 18), "", (windowData.isLocked) ? CustomStyles.IconLock : CustomStyles.IconUnlock))
+			{
+				windowData.isLocked = !windowData.isLocked;
+			}
+
+			GUI.Label (new Rect (30,2,50,20), labelText, CustomStyles.LabelToolbar);
+			if ((isAsset && windowData.targetAsset != null) || (!isAsset && windowData.target != null))
+			{
+				if (GUI.Button (new Rect (position.width - 202, 3, 100, 20), "Ping object", EditorStyles.miniButtonLeft))
+				{
+					if (windowData.targetAsset != null)
+					{
+						EditorGUIUtility.PingObject (windowData.targetAsset);
+					}
+					else if (windowData.target != null)
+					{
+						EditorGUIUtility.PingObject (windowData.target.gameObject);
+					}
+				}
+
+				showProperties = GUI.Toggle (new Rect (position.width - 102, 3, 100, 20), showProperties, "Properties", EditorStyles.miniButtonRight);
+			}
+
+			GUILayout.EndArea ();
+		}
+
+
+		private void OnInspectorUpdate ()
+		{
+			Repaint ();
 		}
 
 
@@ -446,70 +1044,13 @@ namespace AC
 				buttonWidth = 60f;
 				showLabel = true;
 			}
-
+			
 			if ((isAsset && windowData.targetAsset == null) || (!isAsset && windowData.target == null) || (!isAsset && !windowData.target.gameObject.activeInHierarchy))
 			{
 				noList = true;
 			}
 
-			GUILayout.BeginArea (new Rect (0, position.height - 20, position.width, 20), Resource.NodeSkin.box);
-			string labelText;
-			if (noList)
-			{
-				labelText = "No ActionList selected";
-			}
-			else if (isAsset)
-			{
-				labelText = "Editing ActionList asset: " + windowData.targetAsset.name;
-			}
-			else
-			{
-				labelText = "Editing " + windowData.target.GetType ().ToString ().Replace ("AC.", "") + ": " + windowData.target.gameObject.name;
-			}
-
-			if (GUI.Button (new Rect (10, 0, 18, 18), "", (windowData.isLocked) ? CustomStyles.IconLock : CustomStyles.IconUnlock))
-			{
-				windowData.isLocked = !windowData.isLocked;
-			}
-
-			GUI.Label (new Rect (30,2,50,20), labelText, CustomStyles.LabelToolbar);
-			if ((isAsset && windowData.targetAsset != null) || (!isAsset && windowData.target != null))
-			{
-				if (GUI.Button (new Rect (position.width - 300, 0, 100, 20), "Ping object", EditorStyles.miniButtonLeft))
-				{
-					if (windowData.targetAsset != null)
-					{
-						EditorGUIUtility.PingObject (windowData.targetAsset);
-					}
-					else if (windowData.target != null)
-					{
-						EditorGUIUtility.PingObject (windowData.target.gameObject);
-					}
-				}
-
-				if (GUI.Button (new Rect (position.width - 200, 0, 100, 20), "Frame Action", EditorStyles.miniButtonMid))
-				{
-					if (windowData.targetAsset != null)
-					{
-						ActionFocusWindow.Init (this, windowData.targetAsset.actions, true);
-					}
-					else if (windowData.target != null)
-					{
-						ActionFocusWindow.Init (this, windowData.target.actions, false);
-					}
-				}
-
-				string propertiesLabel = "Show ";
-				if (showProperties) propertiesLabel += "Actions"; else propertiesLabel += "properties";
-				if (GUI.Button (new Rect (position.width - 100, 0, 100, 20), propertiesLabel, EditorStyles.miniButtonRight))
-				{
-					showProperties = !showProperties;
-				}
-			}
-
-			GUILayout.EndArea ();
-
-			GUILayout.BeginArea (new Rect (0,0,position.width,24), Resource.NodeSkin.box);
+			GUILayout.BeginArea (new Rect (0,0,position.width,24), CustomStyles.Toolbar);
 
 			float midX = position.width * 0.4f;
 
@@ -520,11 +1061,11 @@ namespace AC
 
 			if (ToolbarButton (10f, buttonWidth, showLabel, "Insert", CustomStyles.IconInsert))
 			{
-				menuPosition = new Vector2 (70f, 30f) + scrollPosition;
+				menuPosition = new Vector2 (70f, 30f) + ScrollPosition;
 				PerformEmptyCallBack ("Add new Action");
 			}
 
-			if (!noList && NumActionsMarked (isAsset) > 0)
+			if (!noList && NumActionsMarked > 0)
 			{
 				GUI.enabled = true;
 			}
@@ -545,25 +1086,59 @@ namespace AC
 
 			if (ToolbarButton (position.width-(buttonWidth*3f), buttonWidth*1.5f, showLabel, "Auto-arrange", CustomStyles.IconAutoArrange))
 			{
-				//AutoArrange (isAsset);
-				PerformEmptyCallBack ("Auto-arrange");
+				AutoArrange ();
 			}
 
 			GUI.enabled = (noList) ? false : Application.isPlaying;
 
-			if (ToolbarButton (position.width-buttonWidth, buttonWidth, showLabel, "Run", CustomStyles.IconPlay))
+			bool isRunning = false;
+			if (Application.isPlaying)
 			{
-				if (isAsset)
+				if (isAsset && KickStarter.actionListAssetManager != null)
 				{
-					AdvGame.RunActionListAsset (windowData.targetAsset);
+					isRunning = KickStarter.actionListAssetManager.IsListRunning (windowData.targetAsset) && !windowData.targetAsset.canRunMultipleInstances;
 				}
-				else
+				else if (!isAsset && KickStarter.actionListManager != null)
 				{
-					windowData.target.Interact ();
+					isRunning = KickStarter.actionListManager.IsListRunning (windowData.target);
 				}
 			}
 
-			if (!noList && NumActionsMarked (isAsset) > 0 && !Application.isPlaying)
+			if (GUI.changed)
+			{
+				Repaint ();
+			}
+
+			if (isRunning)
+			{
+				if (ToolbarButton (position.width - buttonWidth, buttonWidth, showLabel, "Stop", CustomStyles.IconStop))
+				{
+					if (isAsset)
+					{
+						windowData.targetAsset.KillAllInstances ();
+					}
+					else
+					{
+						windowData.target.Kill ();
+					}
+				}
+			}
+			else
+			{
+				if (ToolbarButton (position.width - buttonWidth, buttonWidth, showLabel, "Run", CustomStyles.IconPlay))
+				{
+					if (isAsset)
+					{
+						AdvGame.RunActionListAsset (windowData.targetAsset);
+					}
+					else
+					{
+						windowData.target.Interact ();
+					}
+				}
+			}
+
+			if (!noList && NumActionsMarked > 0 && !Application.isPlaying)
 			{
 				GUI.enabled = true;
 			}
@@ -582,7 +1157,7 @@ namespace AC
 				PerformEmptyCallBack ("Copy selected");
 			}
 
-			if (!noList && AdvGame.copiedActions != null && AdvGame.copiedActions.Count > 0)
+			if (!noList && JsonAction.HasCopyBuffer ())
 			{
 				GUI.enabled = true;
 			}
@@ -593,7 +1168,7 @@ namespace AC
 
 			if (ToolbarButton (midX + buttonWidth, buttonWidth, showLabel, "Paste", CustomStyles.IconPaste))
 			{
-				menuPosition = new Vector2 (70f, 30f) + scrollPosition;
+				menuPosition = new Vector2 (70f, 30f) + ScrollPosition;
 				EmptyCallback ("Paste copied Action(s)");
 			}
 
@@ -605,8 +1180,8 @@ namespace AC
 
 		private void PropertiesGUI (bool isAsset)
 		{
-			EditorZoomArea.Begin (1, new Rect (0, 0, position.width, position.height - 24));
-			GUILayout.BeginArea (new Rect (0, 24, 350, position.height - 48));
+			GUILayout.BeginArea (new Rect (position.width - propertiesBoxWidth, 22, propertiesBoxWidth, position.height - 40));
+			propertiesScroll = GUILayout.BeginScrollView (propertiesScroll);
 			if (isAsset && windowData.targetAsset != null)
 			{
 				ActionListAssetEditor.ShowPropertiesGUI (windowData.targetAsset);
@@ -634,8 +1209,8 @@ namespace AC
 					InteractionEditor.PropertiesGUI (cutscene);
 				}
 			}
+			GUILayout.EndScrollView ();
 			GUILayout.EndArea ();
-			EditorZoomArea.End ();
 		}
 
 
@@ -648,12 +1223,6 @@ namespace AC
 			return GUI.Button (new Rect (startX,2,20,20), "", guiStyle);
 		}
 		
-		
-		private void OnInspectorUpdate ()
-		{
-			Repaint ();
-		}
-
 
 		private void NodeWindow (int i)
 		{
@@ -666,24 +1235,22 @@ namespace AC
 				return;
 			}
 			
-			bool isAsset;
-			Action _action;
+			if (i >= Actions.Count) return;
+
+			bool isAsset = false;
+			Action _action = Actions[i];
 			List<ActionParameter> parameters = null;
 			
 			if (windowData.targetAsset != null)
 			{
-				_action = windowData.targetAsset.actions[i];
 				isAsset = _action.isAssetFile = true;
 				if (windowData.targetAsset.useParameters)
 				{
-					parameters = windowData.targetAsset.parameters;
+					parameters = windowData.targetAsset.GetParameters ();
 				}
 			}
 			else
 			{
-				_action = windowData.target.actions[i];
-				isAsset = false;
-
 				if (!(windowData.target is RuntimeActionList && Application.isPlaying))
 				{
 					_action.isAssetFile = false;
@@ -711,28 +1278,25 @@ namespace AC
 			}
 			else
 			{
+				GUI.enabled = _action.isEnabled;
+
 				int typeIndex = KickStarter.actionsManager.GetActionTypeIndex (_action);
 				int newTypeIndex = ActionListEditor.ShowTypePopup (_action, typeIndex);
-
+				
 				if (newTypeIndex >= 0)
 				{
 					// Rebuild constructor if Subclass and type string do not match
-					Vector2 currentPosition = new Vector2 (_action.nodeRect.x, _action.nodeRect.y);
+					Vector2 currentPosition = new Vector2 (_action.NodeRect.x, _action.NodeRect.y);
 					
 					// Store "After running data" to transfer over
-					ActionEnd _end = new ActionEnd ();
-					_end.resultAction = _action.endAction;
-					_end.skipAction = _action.skipAction;
-					_end.linkedAsset = _action.linkedAsset;
-					_end.linkedCutscene = _action.linkedCutscene;
+					ActionEnd _end = _action.endings.Count > 0 ? new ActionEnd (_action.endings[0]) : null;
 					
 					if (isAsset)
 					{
 						Undo.RecordObject (windowData.targetAsset, "Change Action type");
 						
 						Action newAction = ActionListAssetEditor.RebuildAction (_action, newTypeIndex, windowData.targetAsset, i, _end);
-						newAction.nodeRect.x = currentPosition.x;
-						newAction.nodeRect.y = currentPosition.y;
+						newAction.NodeRect = new Rect (currentPosition, newAction.NodeRect.size);
 
 						ActionListAssetEditor.DeleteAction (_action, windowData.targetAsset);
 					}
@@ -741,78 +1305,40 @@ namespace AC
 						Undo.RecordObject (windowData.target, "Change Action type");
 						
 						Action newAction = ActionListEditor.RebuildAction (_action, newTypeIndex, windowData.target, i, _end);
-						newAction.nodeRect.x = currentPosition.x;
-						newAction.nodeRect.y = currentPosition.y;
+						newAction.NodeRect = new Rect (currentPosition, newAction.NodeRect.size);
 
 						ActionListEditor.DeleteAction (_action, windowData.target);
 					}
 				}
 
 				_action.ShowGUI (parameters);
-			}
-			
-			if (_action.endAction == ResultAction.Skip || _action.numSockets == 2 || _action is ActionCheckMultiple || _action is ActionParallel)
-			{
-				if (isAsset)
-				{
-					_action.SkipActionGUI (windowData.targetAsset.actions, true);
-				}
-				else
-				{
-					_action.SkipActionGUI (windowData.target.actions, true);
-				}
-			}
 
-			_action.isDisplayed = EditorGUI.Foldout (new Rect (10,1,20,16), _action.isDisplayed, "");
+				GUI.enabled = true;
+			}
 			
-			if (GUI.Button (new Rect(273,3,16,16), " ", CustomStyles.IconCogNode))
+			_action.SkipActionGUI (Actions, true);
+			
+			_action.isDisplayed = EditorGUI.Foldout (new Rect (10,1,20,16), _action.isDisplayed, string.Empty);
+			
+			if (GUI.Button (new Rect (_action.NodeRect.width - 27, 3, 16, 16), " ", CustomStyles.IconCogNode))
 			{
-				CreateNodeMenu (isAsset, i, _action);
+				CreateNodeMenu (i, _action);
 			}
 			
 			if (i == 0)
 			{
-				_action.nodeRect.x = 14;
-				_action.nodeRect.y = 14;
-			}
-			else
-			{
-				if (Event.current.button == 0)
-				{
-					GUI.DragWindow ();
-				}
+				_action.NodeRect = new Rect (startNodeRect, _action.NodeRect.size);
 			}
 		}
 		
 		
 		private void EmptyNodeWindow (int i)
 		{
-			Action _action;
-			bool isAsset = false;
-			
-			if (windowData.targetAsset != null)
-			{
-				_action = windowData.targetAsset.actions[i];
-				isAsset = true;
-			}
-			else
-			{
-				_action = windowData.target.actions[i];
-			}
+			Action _action = Actions[i];
 
-			if (_action.endAction == ResultAction.Skip || _action.numSockets == 2 || _action is ActionCheckMultiple || _action is ActionParallel)
-			{
-				if (isAsset)
-				{
-					_action.SkipActionGUI (windowData.targetAsset.actions, false);
-				}
-				else
-				{
-					_action.SkipActionGUI (windowData.target.actions, false);
-				}
-			}
+			_action.SkipActionGUI (Actions, false);
 			
-			_action.isDisplayed = EditorGUI.Foldout (new Rect (10,1,20,16), _action.isDisplayed, "");
+			_action.isDisplayed = EditorGUI.Foldout (new Rect (10, 1, 20, 16), _action.isDisplayed, string.Empty);
 
 			if (_action.showComment)
 			{
@@ -823,47 +1349,39 @@ namespace AC
 				GUI.color = _color;
 			}
 
-			if (GUI.Button (new Rect(273,3,16,16), " ", CustomStyles.IconCogNode))
+			if (GUI.Button (new Rect (_action.NodeRect.width - 27, 3, 16, 16), " ", CustomStyles.IconCogNode))
 			{
-				CreateNodeMenu (isAsset, i, _action);
+				CreateNodeMenu (i, _action);
 			}
 
 			if (i == 0)
 			{
-				_action.nodeRect.x = 14;
-				_action.nodeRect.y = 14;
-			}
-			else
-			{
-				if (Event.current.button == 0)
-				{
-					GUI.DragWindow ();
-				}
+				_action.NodeRect = new Rect (startNodeRect, _action.NodeRect.size);
 			}
 		}
 
 
 		private bool IsActionInView (Action action)
 		{
-			float height = action.nodeRect.height;
+			float height = action.NodeRect.height;
 
 			if (isAutoArranging || action.isMarked)
 			{
 				return true;
 			}
-			if (action.nodeRect.y > scrollPosition.y + position.height / zoom)
+			if (action.NodeRect.y > ScrollPosition.y + CanvasHeight / zoom)
 			{
 				return false;
 			}
-			if (action.nodeRect.y + height < scrollPosition.y)
+			if (action.NodeRect.y + height < ScrollPosition.y)
 			{
 				return false;
 			}
-			if (action.nodeRect.x > scrollPosition.x + position.width / zoom)
+			if (action.NodeRect.x > ScrollPosition.x + CanvasWidth / zoom)
 			{
 				return false;
 			}
-			if (action.nodeRect.x + action.nodeRect.width < scrollPosition.x)
+			if (action.NodeRect.x + action.NodeRect.width < ScrollPosition.x)
 			{
 				return false;
 			}
@@ -873,19 +1391,29 @@ namespace AC
 		
 		private void LimitWindow (Action action)
 		{
-			if (action.nodeRect.x < 1)
+			bool update = false;
+
+			if (action.NodeRect.x < 1)
 			{
-				action.nodeRect.x = 1;
+				action.NodeRect = new Rect (new Vector2 (1, action.NodeRect.position.y), action.NodeRect.size);
+				update = true;
 			}
 			
-			if (action.nodeRect.y < 14)
+			if (action.NodeRect.y < 14)
 			{
-				action.nodeRect.y = 14;
+				action.NodeRect = new Rect (new Vector2 (action.NodeRect.x, 14), action.NodeRect.size);
+				update = true;
+			}
+
+			if (update)
+			{
+				GUI.changed = true;
+				Repaint ();
 			}
 		}
 		
 		
-		private void NodesGUI (bool isAsset)
+		private void NodesGUI (bool isAsset, Event e)
 		{
 			if (AdvGame.GetReferences () && AdvGame.GetReferences ().actionsManager)
 			{
@@ -898,12 +1426,14 @@ namespace AC
 				OnEnable ();
 				return;
 			}
+			#if !AC_ActionListPrefabs
 			if (!isAsset && UnityVersionHandler.IsPrefabFile (windowData.target.gameObject))
 			{
 				GUILayout.Space (30f);
 				EditorGUILayout.HelpBox ("Scene-based Actions can not live in prefabs - use ActionList assets instead.", MessageType.Info);
 				return;
 			}
+			#endif
 			if (!isAsset && windowData.target != null)
 			{
 				if (windowData.target.source == ActionListSource.AssetFile)
@@ -915,82 +1445,63 @@ namespace AC
 			}
 
 			bool loseConnection = false;
-			Event e = Event.current;
-
-			if (e.isMouse && actionChanging != null)
+			
+			if (dragMode == DragMode.Wire)
 			{
-				if (e.type == EventType.MouseUp)
+				if (e.rawType == EventType.MouseUp)
 				{
 					loseConnection = true;
-				}
-				else if (e.mousePosition.x < 0f || e.mousePosition.x > position.width || e.mousePosition.y < 0f || e.mousePosition.y > position.height)
-				{
-					loseConnection = true;
-					actionChanging = null;
 				}
 			}
 			
-			if (isAsset)
+			numActions = Actions.Count;
+			if (numActions < 1)
 			{
-				numActions = windowData.targetAsset.actions.Count;
-				if (numActions < 1)
+				numActions = 1;
+				if (isAsset)
 				{
-					numActions = 1;
 					ActionListAssetEditor.AddAction (ActionsManager.GetDefaultAction (), -1, windowData.targetAsset);
 				}
-				numActions = windowData.targetAsset.actions.Count;
-			}
-			else
-			{
-				numActions = windowData.target.actions.Count;
-				if (numActions < 1)
+				else
 				{
-					numActions = 1;
 					ActionListEditor.AddAction (ActionsManager.GetDefaultAction (), -1, windowData.target);
 				}
-				numActions = windowData.target.actions.Count;
 			}
+			numActions = Actions.Count;
 
-			EditorZoomArea.Begin (zoom, new Rect (0, 0, position.width / zoom, position.height / zoom - 24));
-			scrollPosition = GUI.BeginScrollView (new Rect (0, 24, position.width / zoom, position.height / zoom - 48), scrollPosition, new Rect (0, 0, maxScroll.x, maxScroll.y), false, false);
-			
-			BeginWindows ();
-			
+			DrawScrollbars (e);
+			EditorZoomArea.Begin (zoom, new Rect (0, 24, CanvasWidth, CanvasHeight - 44));
+
+			try
+			{
+				BeginWindows ();
+			}
+			catch { return; }
+
 			canMarquee = true;
-			Vector2 newMaxScroll = Vector2.zero;
-			bool isAlreadyDragging = false;
+
+			DragNodes (e);
 
 			for (int i=0; i<numActions; i++)
 			{
 				FixConnections (i, isAsset);
 				
-				Action _action;
-				if (isAsset)
-				{
-					_action = windowData.targetAsset.actions[i];
-				}
-				else
-				{
-					_action = windowData.target.actions[i];
-				}
+				Action _action = Actions[i];
 
 				if (_action == null) continue;
 
 				if (i == 0)
 				{
-					GUI.Label (new Rect (16, -2, 100, 20), "START", Resource.NodeSkin.label);
-
-					if (Mathf.Approximately (_action.nodeRect.x, 50) && Mathf.Approximately (_action.nodeRect.y, 50))
+					GUI.Label (new Rect (startLabelRect.position - ScrollPosition, startLabelRect.size), startLabel, (Resource.NodeSkin != null) ? Resource.NodeSkin.label : new GUIStyle ());
+					if (Mathf.Approximately (_action.NodeRect.x, 50) && Mathf.Approximately (_action.NodeRect.y, 50))
 					{
 						// Upgrade
-						_action.nodeRect.x = _action.nodeRect.y = 14;
-						MarkAll (isAsset);
+						_action.NodeRect = new Rect (new Vector2 (14, 14), _action.NodeRect.size);
+						MarkAll ();
 						PerformEmptyCallBack ("Expand selected");
-						UnmarkAll (isAsset);
+						UnmarkAll ();
 					}
 				}
-
-				Vector2 originalPosition = new Vector2 (_action.nodeRect.x, _action.nodeRect.y);
 
 				if (IsActionInView (_action))
 				{
@@ -1006,7 +1517,8 @@ namespace AC
 						nodeStyle = CustomStyles.NodeRunning;
 					}
 					else if (_action.isMarked ||
-							(actionChanging != null && _action.nodeRect.Contains (e.mousePosition)))
+							(dragMode == DragMode.Wire && _action.NodeRect.Contains (e.mousePosition + ScrollPosition)) ||
+							(dragMode == DragMode.Marquee && (_action.NodeRect.Overlaps (ConvertMarqueeRect ()) || ConvertMarqueeRect ().Overlaps (_action.NodeRect))))
 					{
 						nodeStyle = CustomStyles.NodeSelected;
 					}
@@ -1021,21 +1533,34 @@ namespace AC
 
 					_action.AssignParentList (windowData.target);
 
-					if (_action.nodeRect.width == 0)
+					if (_action.NodeRect.width == 0 || _action.NodeRect.width != ACEditorPrefs.ActionNodeWidth)
 					{
-						_action.nodeRect.width = 300;
+						_action.NodeRect = new Rect (_action.NodeRect.position, new Vector2 (ACEditorPrefs.ActionNodeWidth, _action.NodeRect.height));
 					}
 
 					string label = "(" + i + ") " + actionsManager.GetActionTypeLabel (_action, false);
+
+					if (!isAsset && windowData.target && windowData.target.ActionModified (i))
+					{
+						Rect modifiedRect = new Rect (_action.NodeRect.x - 10f, _action.NodeRect.y, 3, _action.NodeRect.height);
+						modifiedRect.position -= ScrollPosition;
+						Color color = GUI.color;
+						GUI.color = Color.cyan;
+						GUI.Box (modifiedRect, string.Empty, CustomStyles.ToolbarInverted);
+						GUI.color = color;
+					}
+
 					if (!_action.isDisplayed)
 					{
-						_action.nodeRect.height = 21f;
+						_action.NodeRect = new Rect (_action.NodeRect.position, new Vector2 (_action.NodeRect.size.x, 21f));
 
 						if (_action.showComment)
 						{
 							GUIContent content = new GUIContent (_action.comment);
-							float commentHeight = nodeStyle.CalcHeight (content, _action.nodeRect.width);
-							_action.nodeRect.height += commentHeight + 5;
+							float commentHeight = nodeStyle.CalcHeight (content, _action.NodeRect.width);
+
+							Vector2 newSize = new Vector2 (_action.NodeRect.width, _action.NodeRect.height + commentHeight + 5);
+							_action.NodeRect = new Rect (_action.NodeRect.position, newSize);
 						}
 
 						string extraLabel = _action.SetLabel ();
@@ -1043,7 +1568,7 @@ namespace AC
 						{
 							extraLabel = " (" + extraLabel + ")";
 						}
-						if (_action is ActionComment)
+						if (_action is ActionComment && !string.IsNullOrEmpty (extraLabel))
 						{
 							if (extraLabel.Length > 40)
 							{
@@ -1060,73 +1585,39 @@ namespace AC
 							label += extraLabel;
 						}
 
-						_action.nodeRect = GUI.Window (i, _action.nodeRect, EmptyNodeWindow, label, nodeStyle);
+						Rect tempRect = _action.NodeRect;
+						tempRect.position -= ScrollPosition;
+						tempRect = GUI.Window (i, tempRect, EmptyNodeWindow, label, nodeStyle);
+						tempRect.position += ScrollPosition;
+
+						_action.NodeRect = new Rect (tempRect.position, _action.NodeRect.size);
 					}
 					else
 					{
-						Rect tempRect = _action.nodeRect;
-						bool adjustHeight = (Event.current.type != EventType.Repaint);
+						Rect tempRect = _action.NodeRect;
+						bool adjustHeight = (e.type != EventType.Repaint);
 
 						if (adjustHeight)
 						{
 							tempRect.height = 20f;
 						}
 
+						tempRect.position -= ScrollPosition;
 						tempRect = GUILayout.Window (i, tempRect, NodeWindow, label, nodeStyle);
+						tempRect.position += ScrollPosition;
 
-						if (!isAlreadyDragging)
-						{
-							_action.nodeRect.x = tempRect.x;
-							_action.nodeRect.y = tempRect.y;
-						}
-						_action.nodeRect.width = tempRect.width;
+						_action.NodeRect = new Rect (_action.NodeRect.position, new Vector2 (tempRect.width, _action.NodeRect.height));
 
 						if (!adjustHeight)
 						{
-							_action.nodeRect.height = tempRect.height;
+							_action.NodeRect = new Rect (_action.NodeRect.position, new Vector2 (_action.NodeRect.width, tempRect.height));
 						}
 					}
 
 					GUI.color = originalColor;
 				}
-
-				Vector2 finalPosition = new Vector2 (_action.nodeRect.x, _action.nodeRect.y);
-
-				if (isAlreadyDragging || finalPosition != originalPosition)
-				{
-					if (finalPosition.x < 1f) finalPosition.x = 1f;
-					if (finalPosition.y < 1f) finalPosition.y = 1f;
-				}
-
-				if (finalPosition != originalPosition && !isAlreadyDragging)
-				{
-					isAlreadyDragging = true;
-
-					if (isAsset)
-					{
-						DragNodes (windowData.targetAsset.actions, i, finalPosition - originalPosition);
-					}
-					else
-					{
-						DragNodes (windowData.target.actions, i, finalPosition - originalPosition);
-					}
-				}	
-					
-				if (_action.nodeRect.x + _action.nodeRect.width + 20 > newMaxScroll.x)
-				{
-					newMaxScroll.x = _action.nodeRect.x + _action.nodeRect.width + 20;
-				}
-				
-				if (!Mathf.Approximately (_action.nodeRect.height, 10))
-				{
-					if (_action.nodeRect.y + _action.nodeRect.height + 100 > newMaxScroll.y)
-					{
-						newMaxScroll.y = _action.nodeRect.y + _action.nodeRect.height + 100;
-					}
-				}
-
 				LimitWindow (_action);
-				DrawSockets (_action, isAsset);
+				DrawSockets (_action, isAsset, e);
 				
 				if (isAsset)
 				{
@@ -1137,101 +1628,83 @@ namespace AC
 					windowData.target = ActionListEditor.ResizeList (windowData.target, numActions);
 				}
 				
-				if (actionChanging != null && loseConnection && _action.nodeRect.Contains (e.mousePosition))
+				if (dragMode == DragMode.Wire && loseConnection && hasDraggedWire && _action.NodeRect.Contains (e.mousePosition + ScrollPosition))
 				{
 					Reconnect (actionChanging, _action, isAsset);
 				}
-				
-				if (!isMarquee && _action.nodeRect.Contains (e.mousePosition))
+
+				if (dragMode != DragMode.Marquee && _action.NodeRect.Contains (e.mousePosition + ScrollPosition))
 				{
 					canMarquee = false;
 				}
 			}
-			
-			if (loseConnection && actionChanging != null)
+
+			if (loseConnection && dragMode == DragMode.Wire)
 			{
-				EndConnect (actionChanging, e.mousePosition, isAsset);
-			}
-			
-			if (actionChanging != null)
-			{
-				bool onSide = false;
-				if (actionChanging is ActionCheck || actionChanging is ActionCheckMultiple || actionChanging is ActionParallel)
+				if (e.mousePosition.x > 0f && e.mousePosition.x < CanvasWidth / Zoom && e.mousePosition.y > 0f && e.mousePosition.y < (CanvasHeight - 45f) / Zoom)
 				{
-					onSide = true;
+					EndConnect (actionChanging, e.mousePosition + ScrollPosition, isAsset);
 				}
-				AdvGame.DrawNodeCurve (actionChanging.nodeRect, e.mousePosition, Color.black, offsetChanging, onSide, false, actionChanging.isDisplayed);
+				actionChanging = null;
+				dragMode = DragMode.None;
+				GUI.changed = true;
 			}
+
+			if (dragMode == DragMode.Wire)
+			{	
+				bool onSide = (actionChanging.NumSockets > 1);
+				AdvGame.DrawNodeCurve (new Rect (actionChanging.NodeRect.position - ScrollPosition, actionChanging.NodeRect.size), e.mousePosition, Color.black, offsetChanging, onSide, false, actionChanging.isDisplayed);
+			}
+
 			
-			if (e.type == EventType.ContextClick && actionChanging == null && !isMarquee)
+			if (e.type == EventType.ContextClick && dragMode == DragMode.None)
 			{
-				menuPosition = e.mousePosition;
-				CreateEmptyMenu (isAsset);
+				menuPosition = e.mousePosition + ScrollPosition;
+
+				bool clickedInsideAction = false;
+				for (int i=0; i<Actions.Count; i++)
+				{
+					if (Actions[i] != null && Actions[i].NodeRect.Contains (menuPosition))
+					{
+						clickedInsideAction = true;
+					}
+				}
+
+				if (!clickedInsideAction)
+				{
+					CreateEmptyMenu (isAsset);
+				}
 			}
 
 			EndWindows ();
-			GUI.EndScrollView ();
-			EditorZoomArea.End ();
-			
-			if (!Mathf.Approximately (newMaxScroll.y, 0f))
-			{
-				maxScroll = newMaxScroll;
-			}
+			EditorZoomArea.End (new Vector2 (CanvasWidth + 20, CanvasHeight + 20));
 		}
 
 
-		private void DragNodes (List<Action> actionList, int ignoreIndex, Vector2 offset)
+		private void SetMarked (bool state)
 		{
-			for (int i=0; i<actionList.Count; i++)
+			if (Actions != null && Actions.Count > 0)
 			{
-				if (i != ignoreIndex && actionList[i].isMarked)
+				foreach (Action action in Actions)
 				{
-					actionList[i].nodeRect.position += offset;
-				}
-			}
-		}
-
-
-		private void SetMarked (bool isAsset, bool state)
-		{
-			if (isAsset)
-			{
-				if (windowData.targetAsset && windowData.targetAsset.actions.Count > 0)
-				{
-					foreach (Action action in windowData.targetAsset.actions)
+					if (action != null)
 					{
-						if (action)
-						{
-							action.isMarked = state;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (windowData.target && windowData.target.actions.Count > 0)
-				{
-					foreach (Action action in windowData.target.actions)
-					{
-						if (action)
-						{
-							action.isMarked = state;
-						}
+						action.isMarked = state;
 					}
 				}
 			}
 		}
 		
 		
-		private void UnmarkAll (bool isAsset)
+		private void UnmarkAll ()
 		{
-			SetMarked (isAsset, false);
+			SetMarked (false);
 		}
 
 
-		private void MarkAll (bool isAsset)
+		private void MarkAll ()
 		{
-			SetMarked (isAsset, true);
+			SetMarked (true);
 		}
 			
 		
@@ -1251,11 +1724,21 @@ namespace AC
 			}
 			
 			numActions ++;
-			UnmarkAll (isAsset);
+			UnmarkAll ();
 			
-			actionList [i+1].nodeRect.x = _position.x - 150;
-			actionList [i+1].nodeRect.y = _position.y;
-			actionList [i+1].endAction = ResultAction.Stop;
+			actionList [i+1].NodeRect = new Rect (new Vector2 (_position.x - 150, _position.y), actionList [i+1].NodeRect.size);
+
+			if (actionList[i+1].NumSockets == 1)
+			{
+				if (actionList[i+1].endings.Count == 0)
+				{
+					actionList[i+1].endings.Add (Action.GenerateStopActionEnd ());
+				}
+				else
+				{
+					actionList [i+1].endings[0] = Action.GenerateStopActionEnd ();
+				}
+			}
 			actionList [i+1].isDisplayed = true;
 			
 			return actionList [i+1];
@@ -1276,64 +1759,14 @@ namespace AC
 
 			if (actionList[i] == null) return;
 			
-			if (actionList[i].numSockets == 0)
+			actionList[i].Upgrade ();
+			foreach (ActionEnd ending in actionList[i].endings)
 			{
-				actionList[i].endAction = ResultAction.Stop;
-			}
-			
-			else if (actionList[i] is ActionCheck)
-			{
-				ActionCheck tempAction = (ActionCheck) actionList[i];
-				if (tempAction.resultActionTrue == ResultAction.Skip && !actionList.Contains (tempAction.skipActionTrueActual))
+				if (ending.resultAction == ResultAction.Skip && !actionList.Contains (ending.skipActionActual))
 				{
-					if (tempAction.skipActionTrue >= actionList.Count)
+					if (ending.skipAction >= actionList.Count)
 					{
-						tempAction.resultActionTrue = ResultAction.Stop;
-					}
-				}
-				if (tempAction.resultActionFail == ResultAction.Skip && !actionList.Contains (tempAction.skipActionFailActual))
-				{
-					if (tempAction.skipActionFail >= actionList.Count)
-					{
-						tempAction.resultActionFail = ResultAction.Stop;
-					}
-				}
-			}
-			else if (actionList[i] is ActionCheckMultiple)
-			{
-				ActionCheckMultiple tempAction = (ActionCheckMultiple) actionList[i];
-				foreach (ActionEnd ending in tempAction.endings)
-				{
-					if (ending.resultAction == ResultAction.Skip && !actionList.Contains (ending.skipActionActual))
-					{
-						if (ending.skipAction >= actionList.Count)
-						{
-							ending.resultAction = ResultAction.Stop;
-						}
-					}
-				}
-			}
-			else if (actionList[i] is ActionParallel)
-			{
-				ActionParallel tempAction = (ActionParallel) actionList[i];
-				foreach (ActionEnd ending in tempAction.endings)
-				{
-					if (ending.resultAction == ResultAction.Skip && !actionList.Contains (ending.skipActionActual))
-					{
-						if (ending.skipAction >= actionList.Count)
-						{
-							ending.resultAction = ResultAction.Stop;
-						}
-					}
-				}
-			}
-			else
-			{
-				if (actionList[i].endAction == ResultAction.Skip && !actionList.Contains (actionList[i].skipActionActual))
-				{
-					if (actionList[i].skipAction >= actionList.Count)
-					{
-						actionList[i].endAction = ResultAction.Stop;
+						ending.resultAction = ResultAction.Stop;
 					}
 				}
 			}
@@ -1343,146 +1776,34 @@ namespace AC
 		private void EndConnect (Action action1, Vector2 mousePosition, bool isAsset)
 		{
 			List<Action> actionList = (isAsset) ? windowData.targetAsset.actions : windowData.target.actions;
-			
-			isMarquee = false;
-			
-			if (action1 is ActionCheck)
+
+			dragMode = DragMode.None;
+
+			ActionEnd ending = action1.endings[multipleResultType];
+
+			if (actionList.IndexOf (action1) == actionList.Count - 1 && ending.resultAction != ResultAction.Skip)
 			{
-				ActionCheck tempAction = (ActionCheck) action1;
-				if (resultType)
-				{
-					if (actionList.IndexOf (action1) == actionList.Count - 1 && tempAction.resultActionTrue != ResultAction.Skip)
-					{
-						InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
-						tempAction.resultActionTrue = ResultAction.Continue;
+				InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
+				ending.resultAction = ResultAction.Continue;
 
-						if (tempAction.resultActionFail == ResultAction.Continue)
-						{
-							tempAction.resultActionFail = ResultAction.Stop;
-						}
-					}
-					else if (tempAction.resultActionTrue == ResultAction.Stop)
-					{
-						tempAction.resultActionTrue = ResultAction.Skip;
-						tempAction.skipActionTrueActual = InsertAction (actionList.Count-1, mousePosition, isAsset);
-					}
-					else
-					{
-						tempAction.resultActionTrue = ResultAction.Stop;
-					}
-				}
-				else
+				foreach (ActionEnd otherEnding in action1.endings)
 				{
-					if (actionList.IndexOf (action1) == actionList.Count - 1 && tempAction.resultActionFail != ResultAction.Skip)
+					if (otherEnding != ending && otherEnding.resultAction == ResultAction.Continue)
 					{
-						InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
-						tempAction.resultActionFail = ResultAction.Continue;
-
-						if (tempAction.resultActionTrue == ResultAction.Continue)
-						{
-							tempAction.resultActionTrue = ResultAction.Stop;
-						}
-					}
-					else if (tempAction.resultActionFail == ResultAction.Stop)
-					{
-						tempAction.resultActionFail = ResultAction.Skip;
-						tempAction.skipActionFailActual = InsertAction (actionList.Count-1, mousePosition, isAsset);
-					}
-					else
-					{
-						tempAction.resultActionFail = ResultAction.Stop;
+						otherEnding.resultAction = ResultAction.Stop;
 					}
 				}
 			}
-			else if (action1 is ActionCheckMultiple)
+			else if (ending.resultAction == ResultAction.Stop)
 			{
-				ActionCheckMultiple tempAction = (ActionCheckMultiple) action1;
-				ActionEnd ending = tempAction.endings [multipleResultType];
-				
-				if (actionList.IndexOf (action1) == actionList.Count - 1 && ending.resultAction != ResultAction.Skip)
-				{
-					InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
-					ending.resultAction = ResultAction.Continue;
-
-					foreach (ActionEnd otherEnding in tempAction.endings)
-					{
-						if (otherEnding != ending && otherEnding.resultAction == ResultAction.Continue)
-						{
-							otherEnding.resultAction = ResultAction.Stop;
-						}
-					}
-				}
-				else if (ending.resultAction == ResultAction.Stop)
-				{
-					ending.resultAction = ResultAction.Skip;
-					ending.skipActionActual = InsertAction (actionList.Count-1, mousePosition, isAsset);
-				}
-				else
-				{
-					ending.resultAction = ResultAction.Stop;
-				}
-			}
-			else if (action1 is ActionParallel)
-			{
-				ActionParallel tempAction = (ActionParallel) action1;
-				ActionEnd ending = tempAction.endings [multipleResultType];
-				
-				if (actionList.IndexOf (action1) == actionList.Count - 1 && ending.resultAction != ResultAction.Skip)
-				{
-					InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
-					ending.resultAction = ResultAction.Continue;
-
-					foreach (ActionEnd otherEnding in tempAction.endings)
-					{
-						if (otherEnding != ending && otherEnding.resultAction == ResultAction.Continue)
-						{
-							otherEnding.resultAction = ResultAction.Stop;
-						}
-					}
-				}
-				else if (ending.resultAction == ResultAction.Stop)
-				{
-					ending.resultAction = ResultAction.Skip;
-					ending.skipActionActual = InsertAction (actionList.Count-1, mousePosition, isAsset);
-				}
-				else
-				{
-					ending.resultAction = ResultAction.Stop;
-				}
+				ending.resultAction = ResultAction.Skip;
+				ending.skipActionActual = InsertAction (actionList.Count - 1, mousePosition, isAsset);
 			}
 			else
 			{
-				if (actionList.IndexOf (action1) == actionList.Count - 1 && action1.endAction != ResultAction.Skip)
-				{
-					InsertAction (actionList.IndexOf (action1), mousePosition, isAsset);
-					action1.endAction = ResultAction.Continue;
-				}
-				else if (action1.endAction == ResultAction.Stop)
-				{
-					// Remove bad "end" connection
-					float x = mousePosition.x;
-					foreach (AC.Action action in actionList)
-					{
-						if (action.nodeRect.x > x && !(action is ActionCheck) && !(action is ActionCheckMultiple || action is ActionParallel) && action.endAction == ResultAction.Continue)
-						{
-							// Is this the "last" one?
-							int i = actionList.IndexOf (action);
-							if (actionList.Count == (i+1))
-							{
-								action.endAction = ResultAction.Stop;
-							}
-						}
-					}
-					
-					action1.endAction = ResultAction.Skip;
-					action1.skipActionActual = InsertAction (actionList.Count-1, mousePosition, isAsset);
-				}
-				else
-				{
-					action1.endAction = ResultAction.Stop;
-				}
+				ending.resultAction = ResultAction.Stop;
 			}
-			
+
 			actionChanging = null;
 			offsetChanging = 0;
 			
@@ -1495,65 +1816,25 @@ namespace AC
 				UnityVersionHandler.CustomSetDirty (windowData.target, true);
 			}
 		}
-		
-		
+
+
 		private void Reconnect (Action action1, Action action2, bool isAsset)
 		{
-			isMarquee = false;
-			
-			if (action1 is ActionCheck)
+			dragMode = DragMode.None;
+
+			ActionEnd ending = action1.endings[multipleResultType];
+
+			ending.resultAction = ResultAction.Skip;
+			if (action2 != null)
 			{
-				ActionCheck actionCheck = (ActionCheck) action1;
-				
-				if (resultType)
-				{
-					actionCheck.resultActionTrue = ResultAction.Skip;
-					if (action2 != null)
-					{
-						actionCheck.skipActionTrueActual = action2;
-					}
-				}
-				else
-				{
-					actionCheck.resultActionFail = ResultAction.Skip;
-					if (action2 != null)
-					{
-						actionCheck.skipActionFailActual = action2;
-					}
-				}
+				ending.skipActionActual = action2;
 			}
-			else if (action1 is ActionCheckMultiple)
-			{
-				ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) action1;
-				
-				ActionEnd ending = actionCheckMultiple.endings [multipleResultType];
-				
-				ending.resultAction = ResultAction.Skip;
-				if (action2 != null)
-				{
-					ending.skipActionActual = action2;
-				}
-			}
-			else if (action1 is ActionParallel)
-			{
-				ActionParallel actionParallel = (ActionParallel) action1;
-				ActionEnd ending = actionParallel.endings [multipleResultType];
-				
-				ending.resultAction = ResultAction.Skip;
-				if (action2 != null)
-				{
-					ending.skipActionActual = action2;
-				}
-			}
-			else
-			{
-				action1.endAction = ResultAction.Skip;
-				action1.skipActionActual = action2;
-			}
-			
+
+			action1.SkipActionGUI (Actions, false); // Force update of ending data in case not on-screen
+
 			actionChanging = null;
 			offsetChanging = 0;
-			
+
 			if (isAsset)
 			{
 				EditorUtility.SetDirty (windowData.targetAsset);
@@ -1563,9 +1844,9 @@ namespace AC
 				UnityVersionHandler.CustomSetDirty (windowData.target, true);
 			}
 		}
-		
-		
-		private void DrawSockets (Action action, bool isAsset)
+
+
+		private void DrawSockets (Action action, bool isAsset, Event e)
 		{
 			if (action == null) return;
 
@@ -1580,279 +1861,149 @@ namespace AC
 			}
 			
 			int i = actionList.IndexOf (action);
-			Event e = Event.current;
 			
-			if (action.numSockets == 0)
+			if (action.NumSockets == 0)
 			{
 				return;
 			}
 			
-			if (!action.isDisplayed && (action is ActionCheck || action is ActionCheckMultiple || action is ActionParallel))
+			if (!action.isDisplayed && action.NumSockets > 1)
 			{
-				action.DrawOutWires (actionList, i, 0);
+				action.DrawOutWires (actionList, i, 0, scrollPosition);
 				return;
 			}
 			
 			int offset = 0;
-			
-			if (action is ActionCheck)
+
+			int totalHeight = 20;
+			for (int j = action.endings.Count - 1; j >= 0; j--)
 			{
-				ActionCheck actionCheck = (ActionCheck) action;
-				if (actionCheck.resultActionFail != ResultAction.RunCutscene)
+				ActionEnd ending = action.endings[j];
+
+				if (ending.resultAction != ResultAction.RunCutscene)
 				{
-					if (actionCheck.resultActionFail != ResultAction.Skip || action.showOutputSockets)
+					if (ending.resultAction != ResultAction.Skip || action.showOutputSockets)
 					{
-						Rect buttonRect = new Rect (action.nodeRect.x + action.nodeRect.width - 2, action.nodeRect.y - 22 + action.nodeRect.height, 16, 16);
-						
-						if (e.isMouse && actionChanging == null && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains(e.mousePosition))
+						Vector2 buttonPosition;
+						if (action.endings.Count == 1)
+						{
+							buttonPosition = new Vector2 (action.NodeRect.x + action.NodeRect.width / 2f - 8, action.NodeRect.y + action.NodeRect.height);
+						}
+						else
+						{
+							buttonPosition = new Vector2 (action.NodeRect.x + action.NodeRect.width - 2, action.NodeRect.y + action.NodeRect.height - totalHeight);
+						}
+						Rect buttonRect = new Rect (buttonPosition - scrollPosition, socketSize);
+
+						if (e.isMouse && dragMode == DragMode.None && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains (e.mousePosition))
 						{
 							if (e.button == 0)
 							{
-								offsetChanging = 10;
-								resultType = false;
+								offsetChanging = totalHeight - 10;
+								multipleResultType = action.endings.IndexOf (ending);
 								actionChanging = action;
+								dragMode = DragMode.Wire;
+								hasDraggedWire = false;
 							}
 							else if (e.button == 1)
 							{
-								if (actionCheck.resultActionFail == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
+								if (ending.resultAction == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
 								{
 									CreateSocketMenu (actionList.IndexOf (action) + 1);
 								}
-								else if (actionCheck.resultActionFail == ResultAction.Skip)
+								else if (ending.resultAction == ResultAction.Skip)
 								{
-									CreateSocketMenu (actionCheck.skipActionFail);
+									CreateSocketMenu (ending.skipAction);
 								}
 							}
 						}
 
-						GUI.Button (buttonRect, "", CustomStyles.IconSocket);
-					}
-
-					if (actionCheck.resultActionFail == ResultAction.Skip)
-					{
-						offset = 17;
+						GUI.Button (buttonRect, string.Empty, CustomStyles.IconSocket);
 					}
 				}
-				if (actionCheck.resultActionTrue != ResultAction.RunCutscene)
+
+				if (ending.resultAction == ResultAction.Skip)
 				{
-					if (actionCheck.resultActionTrue != ResultAction.Skip || action.showOutputSockets)
-					{
-						Rect buttonRect = new Rect (action.nodeRect.x + action.nodeRect.width - 2, action.nodeRect.y - 40 - offset + action.nodeRect.height, 16, 16);
-						
-						if (e.isMouse && actionChanging == null && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains(e.mousePosition))
-						{
-							if (e.button == 0)
-							{
-								offsetChanging = 30 + offset;
-								resultType = true;
-								actionChanging = action;
-							}
-							else if (e.button == 1)
-							{
-								if (actionCheck.resultActionTrue == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
-								{
-									CreateSocketMenu (actionList.IndexOf (action) + 1);
-								}
-								else if (actionCheck.resultActionTrue == ResultAction.Skip)
-								{
-									CreateSocketMenu (actionCheck.skipActionTrue);
-								}
-							}
-						}
-						
-						GUI.Button (buttonRect, "", CustomStyles.IconSocket);
-					}
+					totalHeight += Action.skipSocketSeparation;
 				}
-			}
-			else if (action is ActionCheckMultiple)
-			{
-				ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) action;
-
-				int totalHeight = 20;
-				for (int j = actionCheckMultiple.endings.Count-1; j>=0; j--)
+				else
 				{
-					ActionEnd ending = actionCheckMultiple.endings [j];
-
-					if (ending.resultAction != ResultAction.RunCutscene)
-					{
-						if (ending.resultAction != ResultAction.Skip || action.showOutputSockets)
-						{
-							Rect buttonRect = new Rect (action.nodeRect.x + action.nodeRect.width - 2,
-							                            action.nodeRect.y + action.nodeRect.height
-							                            - totalHeight,
-							                            16, 16);
-
-							if (e.isMouse && actionChanging == null && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains(e.mousePosition))
-							{
-								if (e.button == 0)
-								{
-									offsetChanging = totalHeight - 10;
-									multipleResultType = actionCheckMultiple.endings.IndexOf (ending);
-									actionChanging = action;
-								}
-								else if (e.button == 1)
-								{
-									if (ending.resultAction == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
-									{
-										CreateSocketMenu (actionList.IndexOf (action) + 1);
-									}
-									else if (ending.resultAction == ResultAction.Skip)
-									{
-										CreateSocketMenu (ending.skipAction);
-									}
-								}
-							}
-							
-							GUI.Button (buttonRect, "", CustomStyles.IconSocket);
-						}
-					}
-
-					if (ending.resultAction == ResultAction.Skip)
-					{
-						totalHeight += 44;
-					}
-					else
-					{
-						totalHeight += 26;
-					}
-				}
-			}
-			else if (action is ActionParallel)
-			{
-				ActionParallel actionParallel = (ActionParallel) action;
-
-				int totalHeight = 20;
-				for (int j = actionParallel.endings.Count-1; j>=0; j--)
-				{
-					ActionEnd ending = actionParallel.endings [j];
-
-					if (ending.resultAction != ResultAction.RunCutscene)
-					{
-						if (ending.resultAction != ResultAction.Skip || action.showOutputSockets)
-						{
-							Rect buttonRect = new Rect (action.nodeRect.x + action.nodeRect.width - 2,
-							                            action.nodeRect.y + action.nodeRect.height
-							                            - totalHeight,
-							                            16, 16);
-
-							if (e.isMouse && actionChanging == null && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains(e.mousePosition))
-							{
-								if (e.button == 0)
-								{
-									offsetChanging = totalHeight - 10;
-									multipleResultType = actionParallel.endings.IndexOf (ending);
-									actionChanging = action;
-								}
-								else if (e.button == 1)
-								{
-									if (ending.resultAction == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
-									{
-										CreateSocketMenu (actionList.IndexOf (action) + 1);
-									}
-									else if (ending.resultAction == ResultAction.Skip)
-									{
-										CreateSocketMenu (ending.skipAction);
-									}
-								}
-							}
-							
-							GUI.Button (buttonRect, "", CustomStyles.IconSocket);
-						}
-					}
-
-					if (ending.resultAction == ResultAction.Skip)
-					{
-						totalHeight += 44;
-					}
-					else
-					{
-						totalHeight += 26;
-					}
-				}
-			}
-			else
-			{
-				if (action.endAction != ResultAction.RunCutscene)
-				{
-					if (action.endAction != ResultAction.Skip || action.showOutputSockets)
-					{
-						Rect buttonRect = new Rect (action.nodeRect.x + action.nodeRect.width / 2f - 8, action.nodeRect.y + action.nodeRect.height, 16, 16);
-						
-						if (e.isMouse && actionChanging == null && e.type == EventType.MouseDown && action.isEnabled && buttonRect.Contains(e.mousePosition))
-						{
-							if (e.button == 0)
-							{
-								offsetChanging = 10;
-								actionChanging = action;
-							}
-							else if (e.button == 1)
-							{
-								if (action.endAction == ResultAction.Continue && (actionList.IndexOf (action) < actionList.Count - 1))
-								{
-									CreateSocketMenu (actionList.IndexOf (action) + 1);
-								}
-								else if (action.endAction == ResultAction.Skip)
-								{
-									CreateSocketMenu (action.skipAction);
-								}
-							}
-						}
-						
-						GUI.Button (buttonRect, "", CustomStyles.IconSocket);
-					}
+					totalHeight += Action.socketSeparation;
 				}
 			}
 
-			action.DrawOutWires (actionList, i, offset);
+
+			action.DrawOutWires (actionList, i, offset, scrollPosition);
 		}
 
 
-		public void FocusOnAction (int i, bool isAsset)
+		private void FocusOnActions (bool onlyIfNotInView = false, bool onlyMarked = true)
 		{
-			UnmarkAll (isAsset);
-			List<Action> actionList = new List<Action>();
-			if (isAsset)
+			if (NumActionsMarked > 0 || !onlyMarked)
 			{
-				actionList = windowData.targetAsset.actions;
-			}
-			else
-			{
-				actionList = windowData.target.actions;
-			}
-
-			if (actionList.Count > i && i >= 0 && actionList[i] != null)
-			{
-				actionList[i].isMarked = true;
-				Vector2 topLeft = new Vector2 (actionList[i].nodeRect.x, actionList[i].nodeRect.y);
-				Vector2 offset = new Vector2 (-50f, -50f);
-
-				scrollPosition = topLeft + offset;
-			}
-		}
-		
-		
-		private int NumActionsMarked (bool isAsset)
-		{
-			List<Action> actionList = new List<Action>();
-			if (isAsset)
-			{
-				actionList = windowData.targetAsset.actions;
-			}
-			else
-			{
-				actionList = windowData.target.actions;
-			}
-			
-			int i=0;
-			foreach (Action action in actionList)
-			{
-				if (action != null && action.isMarked)
+				Vector2 maxCorner = (Actions[0] != null) ? Actions[0].NodeRect.position : Vector2.zero;
+				for (int i=0; i<Actions.Count; i++)
 				{
-					i++;
+					if (Actions[i] != null && (Actions[i].isMarked || !onlyMarked))
+					{
+						maxCorner.x = Mathf.Max (maxCorner.x, Actions[i].NodeRect.x + Actions[i].NodeRect.width);
+						maxCorner.y = Mathf.Max (maxCorner.y, Actions[i].NodeRect.y + Actions[i].NodeRect.height);
+					}
+				}
+
+				Vector2 minCorner = maxCorner - new Vector2 (ACEditorPrefs.ActionNodeWidth, 50f);
+				for (int i=0; i<Actions.Count; i++)
+				{
+					if (Actions[i] != null && (Actions[i].isMarked || !onlyMarked))
+					{
+						minCorner.x = Mathf.Min (minCorner.x, Actions[i].NodeRect.x);
+						minCorner.y = Mathf.Min (minCorner.y, Actions[i].NodeRect.y);
+					}
+				}
+
+				Vector2 relativeScale = new Vector2 ((maxCorner.x - minCorner.x) / CanvasWidth, (maxCorner.y - minCorner.y) / CanvasHeight);
+				float largestScale = Mathf.Max (relativeScale.x, relativeScale.y);
+				Zoom = 1f / largestScale;
+
+				if (onlyIfNotInView)
+				{
+					if ((minCorner.x < ScrollPosition.x) || 
+						(maxCorner.x > ScrollPosition.x + CanvasWidth) ||
+						(minCorner.y < ScrollPosition.y) ||
+						(maxCorner.y > ScrollPosition.y + CanvasHeight))
+					{
+						// OK, move
+					}
+					else
+					{
+						return;
+					}
+				}
+
+				if (!onlyMarked)
+				{
+					ScrollPosition = Vector2.zero;
+				}
+				else
+				{
+					ScrollPosition = new Vector2 ((maxCorner.x + minCorner.x) / 2f, (maxCorner.y + minCorner.y) / 2f) - (position.size / 2f);
 				}
 			}
-			
-			return i;
+		}
+
+
+		private void FocusOnAction (int i)
+		{
+			UnmarkAll ();
+
+			if (Actions.Count > i && i >= 0 && Actions[i] != null)
+			{
+				Zoom = 1f;
+
+				Vector2 centre = Actions[i].NodeRect.center;
+				ScrollPosition = new Vector2 (centre.x - CanvasWidth / 2f, centre.y - CanvasHeight / 2f);
+				Repaint ();
+			}
 		}
 		
 		
@@ -1861,68 +2012,108 @@ namespace AC
 			EditorGUIUtility.editingTextField = false;
 			GenericMenu menu = new GenericMenu ();
 			menu.AddItem (new GUIContent ("Add new Action"), false, EmptyCallback, "Add new Action");
-			if (AdvGame.copiedActions != null && AdvGame.copiedActions.Count > 0)
+			if (JsonAction.HasCopyBuffer ())
 			{
-				menu.AddSeparator ("");
 				menu.AddItem (new GUIContent ("Paste copied Action(s)"), false, EmptyCallback, "Paste copied Action(s)");
 			}
+
+			if (KickStarter.actionsManager.GetNumFavouriteActions () > 0)
+			{
+				for (int j=1; j<maxFavourites; j++)
+				{
+					string label = KickStarter.actionsManager.GetFavouriteActionLabel (j);
+					if (string.IsNullOrEmpty (label)) continue;
+					menu.AddItem (new GUIContent ("Paste favourite/Slot " + j.ToString () + " (" + label + ")"), false, EmptyCallback, "Paste Favourite " + j.ToString ());
+				}
+			}
 			
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 			menu.AddItem (new GUIContent ("Select all"), false, EmptyCallback, "Select all");
 			
-			if (NumActionsMarked (isAsset) > 0)
+			if (NumActionsMarked > 0)
 			{
 				menu.AddItem (new GUIContent ("Deselect all"), false, EmptyCallback, "Deselect all");
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 				if (!Application.isPlaying)
 				{
 					menu.AddItem (new GUIContent ("Cut selected"), false, EmptyCallback, "Cut selected");
 					menu.AddItem (new GUIContent ("Copy selected"), false, EmptyCallback, "Copy selected");
 				}
 				menu.AddItem (new GUIContent ("Delete selected"), false, EmptyCallback, "Delete selected");
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 				menu.AddItem (new GUIContent ("Collapse selected"), false, EmptyCallback, "Collapse selected");
 				menu.AddItem (new GUIContent ("Expand selected"), false, EmptyCallback, "Expand selected");
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 				menu.AddItem (new GUIContent ("Comment selected"), false, EmptyCallback, "Comment selected");
 				menu.AddItem (new GUIContent ("Uncomment selected"), false, EmptyCallback, "Uncomment selected");
-				menu.AddSeparator ("");
-				menu.AddItem (new GUIContent ("Show output socket(s)"), false, EmptyCallback, "Show output socket(s)");
-				menu.AddItem (new GUIContent ("Hide output socket(s)"), false, EmptyCallback, "Hide output socket(s)");
+				menu.AddSeparator (string.Empty);
+				menu.AddItem (new GUIContent ("Output sockets/Show"), false, EmptyCallback, "Show output socket(s)");
+				menu.AddItem (new GUIContent ("Output sockets/Hide"), false, EmptyCallback, "Hide output socket(s)");
 
-				menu.AddItem (new GUIContent ("Color/Default"), false, EmptyCallback, "ColorDefault");
-				menu.AddItem (new GUIContent ("Color/Blue"), false, EmptyCallback, "ColorBlue");
-				menu.AddItem (new GUIContent ("Color/Red"), false, EmptyCallback, "ColorRed");
-				menu.AddItem (new GUIContent ("Color/Green"), false, EmptyCallback, "ColorGreen");
-				menu.AddItem (new GUIContent ("Color/Yellow"), false, EmptyCallback, "ColorYellow");
-				menu.AddItem (new GUIContent ("Color/Cyan"), false, EmptyCallback, "ColorCyan");
-				menu.AddItem (new GUIContent ("Color/Purple"), false, EmptyCallback, "ColorMagenta");
+				menu.AddItem (new GUIContent ("Colour/Default"), false, EmptyCallback, "ColorDefault");
+				menu.AddItem (new GUIContent ("Colour/Blue"), false, EmptyCallback, "ColorBlue");
+				menu.AddItem (new GUIContent ("Colour/Red"), false, EmptyCallback, "ColorRed");
+				menu.AddItem (new GUIContent ("Colour/Green"), false, EmptyCallback, "ColorGreen");
+				menu.AddItem (new GUIContent ("Colour/Yellow"), false, EmptyCallback, "ColorYellow");
+				menu.AddItem (new GUIContent ("Colour/Cyan"), false, EmptyCallback, "ColorCyan");
+				menu.AddItem (new GUIContent ("Colour/Purple"), false, EmptyCallback, "ColorMagenta");
 
-				if (NumActionsMarked (isAsset) == 1)
+				if (NumActionsMarked == 1)
 				{
 					menu.AddSeparator ("");
 					menu.AddItem (new GUIContent ("Move to front"), false, EmptyCallback, "Move to front");
 				}
 			}
 			
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 
-			if (NumActionsMarked (isAsset) > 1)
+			menu.AddItem (new GUIContent ("View/Reset"), false, EmptyCallback, "ViewReset");
+			menu.AddItem (new GUIContent ("View/All"), false, EmptyCallback, "ViewAll");
+
+			if (NumActionsMarked > 0)
+			{
+				menu.AddItem (new GUIContent ("View/Selected"), false, EmptyCallback, "ViewSelected");
+			}
+
+			for (int i = 0; i < Actions.Count; i++)
+			{
+				if (Actions[i] != null)
+				{
+					string actionLabel = "(" + i.ToString () + ") " + Actions[i].Category.ToString () + ": " + Actions[i].Title;
+					menu.AddItem (new GUIContent ("View/Action/" + actionLabel), false, EmptyCallback, "ViewFrame" + i.ToString ());
+				}
+			}
+
+			menu.AddSeparator (string.Empty);
+
+			if (NumActionsMarked > 1)
 			{
 				menu.AddItem (new GUIContent ("Align/Horizontally"), false, EmptyCallback, "AlignHorizontally");
 				menu.AddItem (new GUIContent ("Align/Vertically"), false, EmptyCallback, "AlignVertically");
 			}
 
-			menu.AddItem (new GUIContent ("Auto-arrange"), false, EmptyCallback, "Auto-arrange");
+			if (NumActionsMarked > 1 && NumActionsMarked < Actions.Count)
+			{
+				menu.AddItem (new GUIContent ("Auto-arrange selected"), false, EmptyCallback, "Auto-arrange selected");
+			}
+			else if (NumActionsMarked != 1)
+			{
+				menu.AddItem (new GUIContent ("Auto-arrange"), false, EmptyCallback, "Auto-arrange");
+			}
+
+			Matrix4x4 originalMatrix = GUI.matrix;
+			GUI.matrix = GetMenuScaleMatrix ();
 
 			menu.ShowAsContext ();
+
+			GUI.matrix = originalMatrix;
 		}
 		
 		
-		private void CreateNodeMenu (bool isAsset, int i, Action _action)
+		private void CreateNodeMenu (int i, Action _action)
 		{
 			EditorGUIUtility.editingTextField = false;
-			UnmarkAll (isAsset);
+			UnmarkAll ();
 			_action.isMarked = true;
 
 			GenericMenu menu = new GenericMenu ();
@@ -1931,35 +2122,57 @@ namespace AC
 			{
 				menu.AddItem (new GUIContent ("Cut"), false, EmptyCallback, "Cut selected");
 				menu.AddItem (new GUIContent ("Copy"), false, EmptyCallback, "Copy selected");
-				if (AdvGame.copiedActions.Count > 0)
+				if (JsonAction.HasCopyBuffer ())
 				{
 					menu.AddItem (new GUIContent ("Paste after"), false, EmptyCallback, "Paste after");
 				}
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 			}
 			menu.AddItem (new GUIContent ("Insert after"), false, EmptyCallback, "Insert after");
 			menu.AddItem (new GUIContent ("Delete"), false, EmptyCallback, "Delete selected");
 			
 			if (i>0)
 			{
-				menu.AddSeparator ("");
+				menu.AddSeparator (string.Empty);
 				menu.AddItem (new GUIContent ("Move to front"), false, EmptyCallback, "Move to front");
 			}
 
-			menu.AddSeparator ("");
+			menu.AddSeparator (string.Empty);
 			menu.AddItem (new GUIContent ("Toggle breakpoint"), false, EmptyCallback, "Toggle breakpoint");
 			menu.AddItem (new GUIContent ("Toggle comment"), false, EmptyCallback, "Toggle comment");
 			menu.AddItem (new GUIContent ("Toggle output socket(s)"), false, EmptyCallback, "Toggle output socket(s)");
 
-			menu.AddItem (new GUIContent ("Color/Default"), false, EmptyCallback, "ColorDefault");
-			menu.AddItem (new GUIContent ("Color/Blue"), false, EmptyCallback, "ColorBlue");
-			menu.AddItem (new GUIContent ("Color/Red"), false, EmptyCallback, "ColorRed");
-			menu.AddItem (new GUIContent ("Color/Green"), false, EmptyCallback, "ColorGreen");
-			menu.AddItem (new GUIContent ("Color/Yellow"), false, EmptyCallback, "ColorYellow");
-			menu.AddItem (new GUIContent ("Color/Cyan"), false, EmptyCallback, "ColorCyan");
-			menu.AddItem (new GUIContent ("Color/Purple"), false, EmptyCallback, "ColorMagenta");
+			menu.AddItem (new GUIContent ("Colour/Default"), false, EmptyCallback, "ColorDefault");
+			menu.AddItem (new GUIContent ("Colour/Blue"), false, EmptyCallback, "ColorBlue");
+			menu.AddItem (new GUIContent ("Colour/Red"), false, EmptyCallback, "ColorRed");
+			menu.AddItem (new GUIContent ("Colour/Green"), false, EmptyCallback, "ColorGreen");
+			menu.AddItem (new GUIContent ("Colour/Yellow"), false, EmptyCallback, "ColorYellow");
+			menu.AddItem (new GUIContent ("Colour/Cyan"), false, EmptyCallback, "ColorCyan");
+			menu.AddItem (new GUIContent ("Colour/Purple"), false, EmptyCallback, "ColorMagenta");
+
+			for (int j=1; j<=maxFavourites; j++)
+			{
+				string label = KickStarter.actionsManager.GetFavouriteActionLabel (j);
+				if (!string.IsNullOrEmpty (label)) label = " (" + label + ")";
+				menu.AddItem (new GUIContent ("Favourite/Slot " + j.ToString () + label), false, EmptyCallback, "SetFavourite" + j.ToString ());
+			}
+
+			menu.AddSeparator (string.Empty);
+			menu.AddItem (new GUIContent ("Edit Script"), false, EmptyCallback, "EditSource");
+
+			Matrix4x4 originalMatrix = GUI.matrix;
+			GUI.matrix = GetMenuScaleMatrix ();
 
 			menu.ShowAsContext ();
+
+			GUI.matrix = originalMatrix;
+		}
+
+
+		private Matrix4x4 GetMenuScaleMatrix ()
+		{
+			float scale = 1f / zoom;
+			return GUI.matrix * Matrix4x4.Scale (Vector3.one * scale);
 		}
 
 
@@ -1971,7 +2184,13 @@ namespace AC
 			GenericMenu menu = new GenericMenu ();
 
 			menu.AddItem (new GUIContent ("Frame linked Action"), false, SocketCallBack, "Focus on linked Action");
+			
+			Matrix4x4 originalMatrix = GUI.matrix;
+			GUI.matrix = GetMenuScaleMatrix ();
+
 			menu.ShowAsContext ();
+
+			GUI.matrix = originalMatrix;
 		}
 		
 
@@ -1990,7 +2209,7 @@ namespace AC
 		private void PerformEmptyCallBack (string objString)
 		{
 			bool isAsset = false;
-			bool doUndo = (objString != "Copy selected");
+			bool doUndo = (objString != "Copy selected" && !objString.StartsWith ("SetFavourite") && !objString.StartsWith ("View"));
 			List<Action> actionList = new List<Action>();
 			if (windowData.targetAsset != null)
 			{
@@ -2004,33 +2223,66 @@ namespace AC
 
 			if (doUndo)
 			{
+				Action[] actionsArray = new Action[0];
+				if (isAsset)
+				{
+					if (windowData.targetAsset.actions != null)
+					{
+						List<Action> actionsAsList = new List<Action>();
+						foreach (Action action in windowData.targetAsset.actions)
+						{
+							if (action != null) actionsAsList.Add (action);
+						}
+						actionsArray = actionsAsList.ToArray ();
+					}
+				}
+				else
+				{
+					if (windowData.target.actions != null)
+					{
+						List<Action> actionsAsList = new List<Action> ();
+						foreach (Action action in windowData.target.actions)
+						{
+							if (action != null) actionsAsList.Add (action);
+						}
+						actionsArray = actionsAsList.ToArray ();
+					}
+				}
+
 				if (isAsset)
 				{
 					Undo.SetCurrentGroupName (objString);
-					Undo.RecordObjects (new UnityEngine.Object [] {  windowData.targetAsset }, objString);
-					Undo.RecordObjects (windowData.targetAsset.actions.ToArray (), objString);
+					Undo.RecordObjects (new Object [] {  windowData.targetAsset }, objString);
+#if !AC_ActionListPrefabs
+					if (actionsArray.Length > 0) Undo.RecordObjects (actionsArray, objString);
+#endif
 				}
 				else
 				{
 					Undo.SetCurrentGroupName (objString);
-					Undo.RecordObjects (new UnityEngine.Object [] {  windowData.target }, objString);
-					Undo.RecordObjects (windowData.target.actions.ToArray (), objString);
+					Undo.RecordObjects (new Object [] {  windowData.target }, objString);
+#if !AC_ActionListPrefabs
+					if (actionsArray.Length > 0) Undo.RecordObjects (actionsArray, objString);
+#endif
 				}
 			}
 
 			foreach (Action action in actionList)
 			{
-				action.SkipActionGUI (actionList, false);
+				if (action != null)
+				{
+					action.SkipActionGUI (actionList, false);
+				}
 			}
-			
+
 			if (objString == "Add new Action")
 			{
-				Action currentAction = actionList [actionList.Count-1];
-				if (currentAction.endAction == ResultAction.Continue)
+				Action currentAction = (actionList.Count > 0) ? actionList[actionList.Count - 1] : null;
+				if (currentAction != null && currentAction.NumSockets == 1 && currentAction.endings[0].resultAction == ResultAction.Continue)
 				{
-					currentAction.endAction = ResultAction.Stop;
+					currentAction.endings[0].resultAction = ResultAction.Stop;
 				}
-				
+
 				if (isAsset)
 				{
 					ActionListAssetEditor.ModifyAction (windowData.targetAsset, currentAction, "Insert after");
@@ -2039,82 +2291,85 @@ namespace AC
 				{
 					ActionListEditor.ModifyAction (windowData.target, null, "Insert end");
 				}
-				
-				actionList[actionList.Count-1].nodeRect.x = menuPosition.x;
-				actionList[actionList.Count-1].nodeRect.y = menuPosition.y;
-				actionList[actionList.Count-1].isDisplayed = true;
+
+				actionList[actionList.Count - 1].NodeRect = new Rect (menuPosition, actionList[actionList.Count-1].NodeRect.size);
+				actionList[actionList.Count - 1].isDisplayed = true;
 			}
 			else if (objString == "Paste copied Action(s)")
 			{
-				if (AdvGame.copiedActions.Count == 0)
+				if (!JsonAction.HasCopyBuffer ())
 				{
 					return;
 				}
 
-				int offset = actionList.Count;
-				UnmarkAll (isAsset);
+				//int offset = actionList.Count;
+				UnmarkAll ();
 
-				Action currentLastAction = actionList [actionList.Count-1];
-				if (currentLastAction.endAction == ResultAction.Continue)
+				Action currentLastAction = actionList[actionList.Count - 1];
+				if (currentLastAction != null && currentLastAction.endings.Count == 1 && currentLastAction.endings[0].resultAction == ResultAction.Continue)
 				{
-					currentLastAction.endAction = ResultAction.Stop;
+					currentLastAction.endings[0].resultAction = ResultAction.Stop;
 				}
-				
-				Vector2 firstPosition = new Vector2 (AdvGame.copiedActions[0].nodeRect.x, AdvGame.copiedActions[0].nodeRect.y);
-				foreach (Action actionToCopy in AdvGame.copiedActions)
+
+				List<Action> newActions = JsonAction.CreatePasteBuffer (false);
+				Vector2 firstPosition = new Vector2 (newActions[0].NodeRect.x, newActions[0].NodeRect.y);
+				foreach (Action newAction in newActions)
 				{
-					if (actionToCopy == null)
+					if (newActions.IndexOf (newAction) == 0)
 					{
-						ACDebug.LogWarning ("Error when pasting Action - cannot find original. Did you change scene before pasting? If you need to transfer Actions between scenes, copy them to an ActionList asset first.");
-						continue;
-					}
-
-					AC.Action duplicatedAction = Object.Instantiate (actionToCopy) as AC.Action;
-					duplicatedAction.PrepareToPaste (offset);
-
-					if (AdvGame.copiedActions.IndexOf (actionToCopy) == 0)
-					{
-						duplicatedAction.nodeRect.x = menuPosition.x;
-						duplicatedAction.nodeRect.y = menuPosition.y;
+						newAction.NodeRect = new Rect (menuPosition, newAction.NodeRect.size);
 					}
 					else
 					{
-						duplicatedAction.nodeRect.x = menuPosition.x + (actionToCopy.nodeRect.x - firstPosition.x);
-						duplicatedAction.nodeRect.y = menuPosition.y + (actionToCopy.nodeRect.y - firstPosition.y);
+						Vector2 newPosition = menuPosition + (newAction.NodeRect.position - firstPosition);
+						newAction.NodeRect = new Rect (newPosition, newAction.NodeRect.size);
 					}
 
-					duplicatedAction.isMarked = true;
+					newAction.isMarked = true;
+					Action addedAction = null;
 
 					if (isAsset)
 					{
-						ActionListAssetEditor.AddAction (duplicatedAction, -1, windowData.targetAsset);
+						addedAction = ActionListAssetEditor.AddAction (newAction, -1, windowData.targetAsset);
 					}
 					else
 					{
-						ActionListEditor.AddAction (duplicatedAction, -1, windowData.target);
+						addedAction = ActionListEditor.AddAction (newAction, -1, windowData.target);
+					}
+
+					if (newActions.IndexOf (newAction) == newActions.Count - 1)
+					{
+						if (addedAction.endings != null && addedAction.endings.Count > 0)
+						{
+							addedAction.endings[0].resultAction = ResultAction.Stop;
+						}
 					}
 				}
-				AdvGame.DuplicateActionsBuffer ();
+
+				if (KickStarter.actionsManager.focusOnPastedActions)
+				{
+					FocusOnActions (true, true);
+				}
 			}
 			else if (objString == "Select all")
 			{
 				foreach (Action action in actionList)
 				{
-					action.isMarked = true;
+					if (action != null) action.isMarked = true;
 				}
 			}
 			else if (objString == "Deselect all")
 			{
 				foreach (Action action in actionList)
 				{
-					action.isMarked = false;
+					if (action != null) action.isMarked = false;
 				}
 			}
 			else if (objString == "Expand selected")
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isDisplayed = true;
 					}
@@ -2124,7 +2379,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isDisplayed = false;
 					}
@@ -2134,7 +2389,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showComment = true;
 					}
@@ -2144,7 +2399,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showComment = false;
 					}
@@ -2154,7 +2409,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showOutputSockets = true;
 					}
@@ -2164,7 +2419,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showOutputSockets = false;
 					}
@@ -2172,67 +2427,56 @@ namespace AC
 			}
 			else if (objString == "Cut selected")
 			{
-				List<Action> copyList = new List<Action>();
+				List<Action> cutList = new List<Action> ();
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
-						Action copyAction = Object.Instantiate (action) as Action;
-						copyAction.name = copyAction.name.Replace ("(Clone)", "");
-						copyAction.PrepareToCopy (actionList.IndexOf (action), actionList);
-						copyAction.ClearIDs ();
-						copyAction.isMarked = false;
-						copyList.Add (copyAction);
+						cutList.Add (action);
 					}
 				}
 
-				AdvGame.copiedActions = copyList;
+				JsonAction.ToCopyBuffer (cutList, false);
 				PerformEmptyCallBack ("Delete selected");
 			}
 			else if (objString == "Copy selected")
 			{
-				List<Action> copyList = new List<Action>();
+				List<Action> copyList = new List<Action> ();
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
-						Action copyAction = Object.Instantiate (action) as Action;
-						copyAction.name = copyAction.name.Replace ("(Clone)", "");
-						copyAction.PrepareToCopy (actionList.IndexOf (action), actionList);
-						copyAction.ClearIDs ();
-						copyAction.isMarked = false;
-						copyList.Add (copyAction);
+						copyList.Add (action);
+						action.isMarked = false;
 					}
 				}
 
-				AdvGame.copiedActions = copyList;
-				UnmarkAll (isAsset);
+				JsonAction.ToCopyBuffer (copyList);
 			}
 			else if (objString == "Delete selected")
 			{
-				while (NumActionsMarked (isAsset) > 0)
+				while (NumActionsMarked > 0)
 				{
 					foreach (Action action in actionList)
 					{
-						if (action.isMarked)
+						if (action != null && action.isMarked)
 						{
 							// Work out what has to be re-connected to what after deletion
 							Action targetAction = null;
-							if (action is ActionCheck || action is ActionCheckMultiple || action is ActionParallel) {}
-							else
+							foreach (ActionEnd ending in action.endings)
 							{
-								if (action.endAction == ResultAction.Skip && action.skipActionActual)
+								if (ending.resultAction == ResultAction.Skip && ending.skipActionActual != null)
 								{
-									targetAction = action.skipActionActual;
+									targetAction = ending.skipActionActual;
 								}
-								else if (action.endAction == ResultAction.Continue && actionList.IndexOf (action) < (actionList.Count - 1))
+								else if (ending.resultAction == ResultAction.Continue && actionList.IndexOf (action) < (actionList.Count - 1))
 								{
-									targetAction = actionList [actionList.IndexOf (action)+1];
+									targetAction = actionList[actionList.IndexOf (action) + 1];
 								}
 
 								foreach (Action _action in actionList)
 								{
-									if (action != _action)
+									if (_action != null && action != _action)
 									{
 										_action.FixLinkAfterDeleting (action, targetAction, actionList);
 									}
@@ -2254,8 +2498,8 @@ namespace AC
 							{
 								ActionListEditor.DeleteAction (action, windowData.target);
 							}
-							
-							numActions --;
+
+							numActions--;
 							break;
 						}
 					}
@@ -2270,10 +2514,10 @@ namespace AC
 			}
 			else if (objString == "Move to front")
 			{
-				for (int i=0; i<actionList.Count; i++)
+				for (int i = 0; i < actionList.Count; i++)
 				{
 					Action action = actionList[i];
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isMarked = false;
 
@@ -2282,134 +2526,37 @@ namespace AC
 							bool hasConnection = false;
 							bool isLast = (i == actionList.Count - 1);
 
-							if (action is ActionParallel)
+							foreach (ActionEnd ending in action.endings)
 							{
-								ActionParallel actionParallel = (ActionParallel) action;
-
-								foreach (ActionEnd ending in actionParallel.endings)
-								{
-									if (ending.resultAction == ResultAction.Continue)
-									{
-										if (isLast)
-										{
-											ending.resultAction = ResultAction.Stop;
-										}
-										else
-										{
-											ending.resultAction = ResultAction.Skip;
-											ending.skipActionActual = actionList[i+1];
-											hasConnection = true;
-										}
-									}
-									else if (ending.resultAction != ResultAction.Stop)
-									{
-										hasConnection = true;
-									}
-								}
-							}
-							else if (action is ActionCheck)
-							{
-								ActionCheck actionCheck = (ActionCheck) action;
-
-								if (actionCheck.resultActionTrue == ResultAction.Continue)
+								if (ending.resultAction == ResultAction.Continue)
 								{
 									if (isLast)
 									{
-										actionCheck.resultActionTrue = ResultAction.Stop;
+										ending.resultAction = ResultAction.Stop;
 									}
 									else
 									{
-										actionCheck.resultActionTrue = ResultAction.Skip;
-										actionCheck.skipActionTrueActual = actionList[i+1];
+										ending.resultAction = ResultAction.Skip;
+										ending.skipActionActual = actionList[i + 1];
 										hasConnection = true;
 									}
 								}
-								else if (actionCheck.resultActionTrue != ResultAction.Stop)
-								{
-									hasConnection = true;
-								}
-
-								if (actionCheck.resultActionFail == ResultAction.Continue)
-								{
-									if (isLast)
-									{
-										actionCheck.resultActionFail = ResultAction.Stop;
-									}
-									else
-									{
-										actionCheck.resultActionFail = ResultAction.Skip;
-										actionCheck.skipActionFailActual = actionList[i+1];
-										hasConnection = true;
-									}
-								}
-								else if (actionCheck.resultActionFail != ResultAction.Stop)
+								else if (ending.resultAction != ResultAction.Stop)
 								{
 									hasConnection = true;
 								}
 							}
-							else if (action is ActionCheckMultiple)
-							{
-								ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) action;
 
-								foreach (ActionEnd ending in actionCheckMultiple.endings)
-								{
-									if (ending.resultAction == ResultAction.Continue)
-									{
-										if (isLast)
-										{
-											ending.resultAction = ResultAction.Stop;
-										}
-										else
-										{
-											ending.resultAction = ResultAction.Skip;
-											ending.skipActionActual = actionList[i+1];
-											hasConnection = true;
-										}
-									}
-									else if (ending.resultAction != ResultAction.Stop)
-									{
-										hasConnection = true;
-									}
-								}
-							}
-							else
-							{
-								if (action.endAction == ResultAction.Continue)
-								{
-									if (isLast)
-									{
-										action.endAction = ResultAction.Stop;
-									}
-									else
-									{
-										action.endAction = ResultAction.Skip;
-										action.skipActionActual = actionList[i+1];
-										hasConnection = true;
-									}
-								}
-								else if (action.endAction != ResultAction.Stop)
-								{
-									hasConnection = true;
-								}
-							}
-							
-							actionList[0].nodeRect.x += 30f;
-							actionList[0].nodeRect.y += 30f;
+							actionList[0].NodeRect = new Rect (actionList[0].NodeRect.position + new Vector2 (30, 30), actionList[0].NodeRect.size);
 							actionList.Remove (action);
 							actionList.Insert (0, action);
 
 							if (!hasConnection && actionList.Count > 1)
 							{
-								if (action is ActionParallel)
-								{}
-								else if (action is ActionCheckMultiple)
-								{}
-								else if (action is ActionCheck)
-								{}
-								else
+								if (action.endings.Count == 1)
 								{
-									action.endAction = ResultAction.Skip;
-									action.skipActionActual = actionList[1];
+									action.endings[0].resultAction = ResultAction.Skip;
+									action.endings[0].skipActionActual = actionList[1];
 								}
 							}
 						}
@@ -2418,13 +2565,17 @@ namespace AC
 			}
 			else if (objString == "Auto-arrange")
 			{
-				AutoArrange (isAsset);
+				AutoArrange ();
+			}
+			else if (objString == "Auto-arrange selected")
+			{
+				AutoArrange (true);
 			}
 			else if (objString == "Toggle breakpoint")
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isBreakPoint = !action.isBreakPoint;
 						action.isMarked = false;
@@ -2435,7 +2586,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showComment = !action.showComment;
 						action.isMarked = false;
@@ -2446,7 +2597,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.showOutputSockets = !action.showOutputSockets;
 						action.isMarked = false;
@@ -2457,7 +2608,7 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isMarked = false;
 
@@ -2472,34 +2623,14 @@ namespace AC
 							ActionListEditor.ModifyAction (windowData.target, action, "Insert after");
 						}
 
-						actionList[newIndex].nodeRect.x = action.nodeRect.x + 50;
-						actionList[newIndex].nodeRect.y = action.nodeRect.y + 100;
+						Vector2 newPosition = new Vector2 (action.NodeRect.x + 50, action.NodeRect.y + 100);
+						actionList[newIndex].NodeRect = new Rect (newPosition, action.NodeRect.size);
+
 						actionList[newIndex].isDisplayed = true;
 
-						if (action is ActionParallel)
+						if (action.endings != null && action.endings.Count > 0)
 						{
-							ActionParallel actionParallel = (ActionParallel) action;
-							if (actionParallel.endings != null && actionParallel.endings.Count > 0)
-							{
-								actionParallel.endings[0].resultAction = ResultAction.Continue;
-							}
-						}
-						else if (action is ActionCheck)
-						{
-							ActionCheck actionCheck = (ActionCheck) action;
-							actionCheck.resultActionTrue = ResultAction.Continue;
-						}
-						else if (action is ActionCheckMultiple)
-						{
-							ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) action;
-							if (actionCheckMultiple.endings != null && actionCheckMultiple.endings.Count > 0)
-							{
-								actionCheckMultiple.endings[0].resultAction = ResultAction.Continue;
-							}
-						}
-						else
-						{
-							action.endAction = ResultAction.Continue;
+							action.endings[0].resultAction = ResultAction.Continue;
 						}
 
 						break;
@@ -2510,77 +2641,49 @@ namespace AC
 			{
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.isMarked = false;
 
 						int offset = actionList.IndexOf (action) + 1;
-						Vector2 initialPosition = new Vector2 (action.nodeRect.x + 50, action.nodeRect.y + 100);
+						Vector2 initialPosition = new Vector2 (action.NodeRect.x + 50, action.NodeRect.y + 100);
 
-						//
-						Vector2 firstPosition = new Vector2 (AdvGame.copiedActions[0].nodeRect.x, AdvGame.copiedActions[0].nodeRect.y);
-						foreach (Action actionToCopy in AdvGame.copiedActions)
+						List<Action> newActions = JsonAction.CreatePasteBuffer (false);
+						Vector2 firstPosition = new Vector2 (newActions[0].NodeRect.x, newActions[0].NodeRect.y);
+						foreach (Action newAction in newActions)
 						{
-							if (actionToCopy == null)
-							{
-								ACDebug.LogWarning ("Error when pasting Action - cannot find original. Did you change scene before pasting? If you need to transfer Actions between scenes, copy them to an ActionList asset first.");
-								continue;
-							}
-
-							int ownIndex = AdvGame.copiedActions.IndexOf (actionToCopy);
-
-							AC.Action duplicatedAction = Object.Instantiate (actionToCopy) as AC.Action;
-							duplicatedAction.PrepareToPaste (offset);
+							int ownIndex = newActions.IndexOf (newAction);
 
 							if (ownIndex == 0)
 							{
-								duplicatedAction.nodeRect.x = initialPosition.x;
-								duplicatedAction.nodeRect.y = initialPosition.y;
+								newAction.NodeRect = new Rect (initialPosition, newAction.NodeRect.size);
 							}
 							else
 							{
-								duplicatedAction.nodeRect.x = initialPosition.x + (actionToCopy.nodeRect.x - firstPosition.x);
-								duplicatedAction.nodeRect.y = initialPosition.y + (actionToCopy.nodeRect.y - firstPosition.y);
+								Vector2 newPosition = initialPosition + newAction.NodeRect.position - firstPosition;
+								newAction.NodeRect = new Rect (newPosition, newAction.NodeRect.size);
 							}
 
-							duplicatedAction.isMarked = true;
+							newAction.isMarked = true;
+							Action addedAction = null;
 							if (isAsset)
 							{
-								ActionListAssetEditor.AddAction (duplicatedAction, offset + ownIndex, windowData.targetAsset);
+								addedAction = ActionListAssetEditor.AddAction (newAction, offset + ownIndex, windowData.targetAsset);
 							}
 							else
 							{
-								ActionListEditor.AddAction (duplicatedAction, offset + ownIndex, windowData.target);
+								addedAction = ActionListEditor.AddAction (newAction, offset + ownIndex, windowData.target);
+							}
+
+							if (newActions.IndexOf (newAction) == newActions.Count - 1)
+							{
+								if (addedAction.endings != null && addedAction.endings.Count > 0)
+								{
+									addedAction.endings[0].resultAction = ResultAction.Stop;
+								}
 							}
 						}
 
-						if (action is ActionParallel)
-						{
-							ActionParallel actionParallel = (ActionParallel) action;
-							if (actionParallel.endings != null && actionParallel.endings.Count > 0)
-							{
-								actionParallel.endings[0].resultAction = ResultAction.Continue;
-							}
-						}
-						else if (action is ActionCheck)
-						{
-							ActionCheck actionCheck = (ActionCheck) action;
-							actionCheck.resultActionTrue = ResultAction.Continue;
-						}
-						else if (action is ActionCheckMultiple)
-						{
-							ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) action;
-							if (actionCheckMultiple.endings != null && actionCheckMultiple.endings.Count > 0)
-							{
-								actionCheckMultiple.endings[0].resultAction = ResultAction.Continue;
-							}
-						}
-						else
-						{
-							action.endAction = ResultAction.Continue;
-						}
-
-						AdvGame.DuplicateActionsBuffer ();
 						break;
 					}
 				}
@@ -2588,16 +2691,16 @@ namespace AC
 			else if (objString.StartsWith ("Color"))
 			{
 				Color newColor = Color.white;
-				if (objString == "ColorBlue") newColor = Color.blue;
-				if (objString == "ColorRed") newColor = Color.red;
-				if (objString == "ColorGreen") newColor = Color.green;
-				if (objString == "ColorYellow") newColor = Color.yellow;
-				if (objString == "ColorCyan") newColor = Color.cyan;
-				if (objString == "ColorMagenta") newColor = Color.magenta;
+				if (objString == "ColorBlue") newColor = new Color (0.5f, 0.5f, 1f);
+				if (objString == "ColorRed") newColor = new Color (1f, 0.4f, 0.4f);
+				if (objString == "ColorGreen") newColor = new Color (0.3f, 1f, 0.3f);
+				if (objString == "ColorYellow") newColor = new Color (1f, 0.9f, 0.4f);
+				if (objString == "ColorCyan") newColor = new Color (0f, 1f, 1f);
+				if (objString == "ColorMagenta") newColor = new Color (1f, 0.4f, 1f);
 
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
 						action.overrideColor = newColor;
 					}
@@ -2609,27 +2712,27 @@ namespace AC
 				int numActions = 0;
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
-						medianY += action.nodeRect.y;
-						numActions ++;
+						medianY += action.NodeRect.y;
+						numActions++;
 					}
 				}
 
 				if (numActions > 0)
 				{
-					medianY /= (float) numActions;
+					medianY /= (float)numActions;
 
 					if (actionList.Count > 0 && actionList[0] != null && actionList[0].isMarked)
 					{
-						medianY = actionList[0].nodeRect.y;
+						medianY = actionList[0].NodeRect.y;
 					}
 
 					foreach (Action action in actionList)
 					{
 						if (action.isMarked)
 						{
-							action.nodeRect.y = medianY;;
+							action.NodeRect = new Rect (new Vector2 (action.NodeRect.x, medianY), action.NodeRect.size);
 							action.isMarked = false;
 						}
 					}
@@ -2641,49 +2744,190 @@ namespace AC
 				int numActions = 0;
 				foreach (Action action in actionList)
 				{
-					if (action.isMarked)
+					if (action != null && action.isMarked)
 					{
-						medianX += action.nodeRect.x;
-						numActions ++;
+						medianX += action.NodeRect.x;
+						numActions++;
 					}
 				}
 
 				if (numActions > 0)
 				{
-					medianX /= (float) numActions;
+					medianX /= (float)numActions;
 
 					if (actionList.Count > 0 && actionList[0] != null && actionList[0].isMarked)
 					{
-						medianX = actionList[0].nodeRect.x;
+						medianX = actionList[0].NodeRect.x;
 					}
 
 					foreach (Action action in actionList)
 					{
 						if (action.isMarked)
 						{
-							action.nodeRect.x = medianX;;
+							action.NodeRect = new Rect (new Vector2 (medianX, action.NodeRect.position.y), action.NodeRect.size);
 							action.isMarked = false;
 						}
 					}
 				}
 			}
+			else if (objString == "ViewReset")
+			{
+				ScrollPosition = Vector2.zero;
+				Zoom = 1f;
+			}
+			else if (objString == "ViewAll")
+			{
+				Vector2 maxCorner = Actions[0].NodeRect.position;
+				for (int i=1; i<Actions.Count; i++)
+				{
+					if (Actions[i] == null) continue;
+					maxCorner.x = Mathf.Max (maxCorner.x, Actions[i].NodeRect.x + Actions[i].NodeRect.width + 30f);
+					maxCorner.y = Mathf.Max (maxCorner.y, Actions[i].NodeRect.y + Actions[i].NodeRect.height + 130f);
+				}
+				
+				ScrollPosition = Vector2.zero;
+
+				Vector2 relativeScale = new Vector2 (maxCorner.x / CanvasWidth, maxCorner.y / CanvasHeight);
+				float largestScale = Mathf.Max (relativeScale.x, relativeScale.y);
+				Zoom = 1f / largestScale;
+			}
+			else if (objString.StartsWith ("ViewSelected"))
+			{
+				FocusOnActions (false, true);
+			}
+			else if (objString.StartsWith ("ViewFrame"))
+			{
+				int _frameIndex = -1;
+				string frameText = objString.Substring (9);
+				if (int.TryParse (frameText, out _frameIndex))
+				{
+					FocusOnAction (_frameIndex);
+				}
+			}
+			else if (objString.StartsWith ("SetFavourite"))
+			{
+				int _favouriteID = -1;
+				string favouriteIDText = objString.Substring (12);
+
+				if (int.TryParse (favouriteIDText, out _favouriteID))
+				{
+					foreach (Action action in actionList)
+					{
+						if (action != null && action.isMarked)
+						{
+							KickStarter.actionsManager.SetFavourite (action, _favouriteID);
+							action.isMarked = false;
+							break;
+						}
+					}
+				}
+			}
+			else if (objString.StartsWith ("Paste Favourite "))
+			{
+				int _favouriteID = -1;
+				string favouriteIDText = objString.Substring (16);
+
+				if (int.TryParse (favouriteIDText, out _favouriteID))
+				{
+					Action newAction = KickStarter.actionsManager.GenerateFavouriteAction (_favouriteID);
+					{
+						Action currentAction = actionList[actionList.Count - 1];
+						if (currentAction != null && currentAction.endings.Count > 0 && currentAction.endings[0].resultAction == ResultAction.Continue)
+						{
+							currentAction.endings[0].resultAction = ResultAction.Stop;
+						}
+
+						if (isAsset)
+						{
+							ActionListAssetEditor.AddAction (newAction, -1, windowData.targetAsset);
+						}
+						else
+						{
+							ActionListEditor.AddAction (newAction, -1, windowData.target);
+						}
+
+						newAction.NodeRect = new Rect (menuPosition, new Vector2 (newAction.NodeRect.width, newAction.NodeRect.height));
+						newAction.isDisplayed = true;
+					}
+				}
+			}
+			else if (objString.StartsWith ("EditSource"))
+			{
+				foreach (Action action in actionList)
+				{
+					if (action != null && action.isMarked)
+					{
+						Action.EditSource (action);
+						action.isMarked = false;
+					}
+				}
+			}
+			#if UNITY_2019_2_OR_NEWER
+			else if (objString.StartsWith ("BackupAll"))
+			{
+				if (windowData.target)
+				{
+					windowData.target.BackupData ();
+				}
+			}
+			else if (objString.StartsWith ("RestoreAll"))
+			{
+				if (windowData.target)
+				{
+					windowData.target.RestoreData ();
+				}
+			}
+			#endif
 
 			foreach (Action action in actionList)
 			{
-				action.SkipActionGUI (actionList, false);
+				if (action != null)
+				{
+					action.SkipActionGUI (actionList, false);
+				}
 			}
 
 			if (doUndo)
 			{
+				Action[] actionsArray = new Action[0];
 				if (isAsset)
 				{
-					Undo.RecordObjects (new UnityEngine.Object [] { windowData.targetAsset }, objString);
-					Undo.RecordObjects (windowData.targetAsset.actions.ToArray (), objString);
+					if (windowData.targetAsset.actions != null)
+					{
+						List<Action> actionsAsList = new List<Action> ();
+						foreach (Action action in windowData.targetAsset.actions)
+						{
+							if (action != null) actionsAsList.Add (action);
+						}
+						actionsArray = actionsAsList.ToArray ();
+					}
 				}
 				else
 				{
-					Undo.RecordObjects (new UnityEngine.Object [] { windowData.target }, objString);
-					Undo.RecordObjects (windowData.target.actions.ToArray (), objString);
+					if (windowData.target.actions != null)
+					{
+						List<Action> actionsAsList = new List<Action> ();
+						foreach (Action action in windowData.target.actions)
+						{
+							if (action != null) actionsAsList.Add (action);
+						}
+						actionsArray = actionsAsList.ToArray ();
+					}
+				}
+
+				if (isAsset)
+				{
+					Undo.RecordObjects (new Object [] { windowData.targetAsset }, objString);
+#if !AC_ActionListPrefabs
+					if (actionsArray.Length > 0) Undo.RecordObjects (actionsArray, objString);
+#endif
+				}
+				else
+				{
+					Undo.RecordObjects (new Object [] { windowData.target }, objString);
+#if !AC_ActionListPrefabs
+					if (actionsArray.Length > 0) Undo.RecordObjects (actionsArray, objString);
+#endif
 				}
 				Undo.CollapseUndoOperations (Undo.GetCurrentGroup ());
 			}
@@ -2696,50 +2940,78 @@ namespace AC
 			{
 				EditorUtility.SetDirty (windowData.target);
 			}
+
+			if (objString.StartsWith ("Delete selected") && Actions.Count == 1)
+			{
+				ScrollPosition = Vector2.zero;
+			}
+
+			UpdateScrollLimits ();
+			ScrollPosition = ScrollPosition;
+			Repaint ();
 		}
 
 
 		private void PerformSocketCallBack (string objString)
 		{
-			bool isAsset = false;
-			if (windowData.targetAsset != null)
-			{
-				isAsset = true;
-			}
-
 			if (objString == "Focus on linked Action")
 			{
-				FocusOnAction (focusActionIndex, isAsset);
+				FocusOnAction (focusActionIndex);
 			}
 		}
 		
 		
-		private void AutoArrange (bool isAsset)
+		private void AutoArrange (bool onlyMarked = false)
 		{
-			isAutoArranging = true;
-
-			List<Action> actionList = (isAsset) ? windowData.targetAsset.actions : windowData.target.actions;
-			foreach (Action action in actionList)
+			List<Action> actionList = new List<Action> ();
+			foreach (Action action in Actions)
 			{
-				// Fix reconnection error from non-displayed Actions
-				if (action.endAction == ResultAction.Skip || action.numSockets == 2 || action is ActionCheckMultiple || action is ActionParallel)
+				if (action == null) continue;
+				if (!onlyMarked || action.isMarked)
 				{
-					if (isAsset)
-					{
-						action.SkipActionGUI (actionList, false);
-					}
-					else
-					{
-						action.SkipActionGUI (actionList, false);
-					}
-				}
-
-				action.isMarked = true;
-				if (actionList.IndexOf (action) != 0)
-				{
-					action.nodeRect.x = action.nodeRect.y = -10;
+					actionList.Add (action);
 				}
 			}
+
+			if (actionList.Count == 0) return;
+
+			int rootIndex = (onlyMarked) ? FindRootActionIndex (actionList.ToArray ()) : 0;
+			if (rootIndex > 0 && rootIndex < actionList.Count)
+			{
+				// Need to convert Continue Actions to skip, since next index to process is different from actual ActionList
+				foreach (Action action in actionList)
+				{
+					if (action == null) continue;
+					int _i = Actions.IndexOf (action);
+
+					for (int j=action.endings.Count-1; j>=0; j--)
+					{
+						ActionEnd ending = action.endings [j];
+						if (ending.resultAction == ResultAction.Continue)
+						{
+							if (_i == Actions.Count -1)
+							{
+								ending.resultAction = ResultAction.Stop;
+							}
+							else
+							{
+								ending.resultAction = ResultAction.Skip;
+								ending.skipActionActual= Actions[_i+1];
+							}
+						}
+					}
+				}
+
+
+				Action rootAction = actionList[rootIndex];
+				actionList.Remove (rootAction);
+				actionList.Insert (0, rootAction);
+
+			}
+
+			isAutoArranging = true;
+
+			Vector2 startPosition = actionList[0].NodeRect.position;
 			
 			DisplayActionsInEditor _display = DisplayActionsInEditor.ArrangedVertically;
 			if (AdvGame.GetReferences ().actionsManager && AdvGame.GetReferences ().actionsManager.displayActionsInEditor == DisplayActionsInEditor.ArrangedHorizontally)
@@ -2747,37 +3019,63 @@ namespace AC
 				_display = DisplayActionsInEditor.ArrangedHorizontally;
 			}
 
-			ArrangeFromIndex (actionList, 0, 0, 14, _display);
+			foreach (Action action in actionList)
+			{
+				if (action == null) continue;
+
+				// Fix reconnection error from non-displayed Actions
+				action.SkipActionGUI (Actions, false);
+
+				action.isMarked = true;
+				if (actionList.IndexOf (action) > 0)
+				{
+					action.NodeRect = new Rect (new Vector2 (-10, -10), action.NodeRect.size);
+
+					if (onlyMarked)
+					{
+						if (_display == DisplayActionsInEditor.ArrangedHorizontally)
+						{
+							action.NodeRect = new Rect (new Vector2 (action.NodeRect.position.x, startPosition.y), action.NodeRect.size);
+						}
+						else if (_display == DisplayActionsInEditor.ArrangedVertically)
+						{
+							action.NodeRect = new Rect (new Vector2 (startPosition.x, action.NodeRect.position.y), action.NodeRect.size);
+						}
+					}
+				}
+			}
+			
+			float startDepth = (_display == DisplayActionsInEditor.ArrangedHorizontally) ? startPosition.x : startPosition.y;
+			ArrangeFromIndex (actionList, 0, 0, startDepth, _display);
 
 			int i=1;
 			float maxValue = 0f;
 			foreach (Action _action in actionList)
 			{
+				if (_action == null) continue;
 				if (_display == DisplayActionsInEditor.ArrangedVertically)
 				{
-					maxValue = Mathf.Max (maxValue, _action.nodeRect.y + _action.nodeRect.height);
+					maxValue = Mathf.Max (maxValue, _action.NodeRect.y + _action.NodeRect.height);
 				}
 				else
 				{
-					maxValue = Mathf.Max (maxValue, _action.nodeRect.x);
+					maxValue = Mathf.Max (maxValue, _action.NodeRect.x);
 				}
 			}
 
 			foreach (Action _action in actionList)
 			{
-				if (_action.isMarked)
+				if (_action != null && _action.isMarked)
 				{
 					// Wasn't arranged
 					if (_display == DisplayActionsInEditor.ArrangedVertically)
 					{
-						_action.nodeRect.x = 14;
-						_action.nodeRect.y = maxValue + 14*i;
+						_action.NodeRect = new Rect (new Vector2 (14, maxValue + 14*i), _action.NodeRect.size);
 						ArrangeFromIndex (actionList, actionList.IndexOf (_action), 0, 14, _display);
 					}
 					else
 					{
-						_action.nodeRect.x = maxValue + 350*i;
-						_action.nodeRect.y = 14;
+						_action.NodeRect = new Rect (new Vector2 (maxValue + AutoArrangeWidthMargin * i, 14), _action.NodeRect.size);
 						ArrangeFromIndex (actionList, actionList.IndexOf (_action), 0, 14, _display);
 					}
 					_action.isMarked = false;
@@ -2786,6 +3084,19 @@ namespace AC
 			}
 
 			isAutoArranging = false;
+
+			UpdateScrollLimits ();
+			ScrollPosition = Vector2.zero;
+
+			if (onlyMarked)
+			{
+				foreach (Action _action in Actions)
+				{
+					if (_action == null) continue;
+					_action.isMarked = (actionList.Contains (_action));
+				}
+				FocusOnActions (false);
+			}
 		}
 		
 		
@@ -2799,7 +3110,8 @@ namespace AC
 				{
 					if (_display == DisplayActionsInEditor.ArrangedVertically)
 					{
-						_action.nodeRect.x = 14 + (350 * depth);
+						Vector2 newPosition = new Vector2 (actionList[0].NodeRect.position.x + (AutoArrangeWidthMargin * depth), 0f);
+						_action.NodeRect = new Rect (newPosition, _action.NodeRect.size);
 
 						// Find top-most Y position
 						float yPos = minValue;
@@ -2810,9 +3122,9 @@ namespace AC
 							int numChanged = 0;
 							foreach (Action otherAction in actionList)
 							{
-								if (otherAction != _action && Mathf.Approximately (otherAction.nodeRect.x, _action.nodeRect.x) && otherAction.nodeRect.y >= yPos)
+								if (otherAction != _action && Mathf.Approximately (otherAction.NodeRect.x, _action.NodeRect.x) && otherAction.NodeRect.y >= yPos)
 								{
-									yPos = otherAction.nodeRect.y + otherAction.nodeRect.height + 30f;
+									yPos = otherAction.NodeRect.y + otherAction.NodeRect.height + 30f;
 									numChanged ++;
 								}
 							}
@@ -2822,14 +3134,16 @@ namespace AC
 								doAgain = false;
 							}
 						}
-						_action.nodeRect.y = yPos;
+
+						_action.NodeRect = new Rect (new Vector2 (_action.NodeRect.x, yPos), _action.NodeRect.size);
 					}
 					else
 					{
-						_action.nodeRect.y = 14 + (260 * depth);
+						Vector2 newPosition = new Vector2 (_action.NodeRect.x, actionList[0].NodeRect.position.y + (260 * depth));
+						_action.NodeRect = new Rect (newPosition, _action.NodeRect.size);
 
 						// Find left-most X position
-						float xPos = minValue + 350;
+						float xPos = minValue + AutoArrangeWidthMargin;
 						bool doAgain = true;
 						
 						while (doAgain)
@@ -2837,9 +3151,9 @@ namespace AC
 							int numChanged = 0;
 							foreach (Action otherAction in actionList)
 							{
-								if (otherAction != _action && Mathf.Approximately (otherAction.nodeRect.x, xPos) && Mathf.Approximately (otherAction.nodeRect.y, _action.nodeRect.y))
+								if (otherAction != _action && Mathf.Approximately (otherAction.NodeRect.x, xPos) && Mathf.Approximately (otherAction.NodeRect.y, _action.NodeRect.y))
 								{
-									xPos += 350;
+									xPos += AutoArrangeWidthMargin;
 									numChanged ++;
 								}
 							}
@@ -2849,7 +3163,7 @@ namespace AC
 								doAgain = false;
 							}
 						}
-						_action.nodeRect.x = xPos;
+						_action.NodeRect = new Rect (new Vector2 (xPos, _action.NodeRect.y), _action.NodeRect.size);
 					}
 				}
 				
@@ -2860,142 +3174,138 @@ namespace AC
 				
 				_action.isMarked = false;
 
-				float newMinValue = 0f;
-				if (_display == DisplayActionsInEditor.ArrangedVertically)
-				{
-					newMinValue = _action.nodeRect.y + _action.nodeRect.height + 30f;
-				}
-				else
-				{
-					newMinValue = _action.nodeRect.x;
-				}
+				float newMinValue = (_display == DisplayActionsInEditor.ArrangedVertically)
+									? _action.NodeRect.y + _action.NodeRect.height + 30f
+									: _action.NodeRect.x;
 				
-				if (_action is ActionCheckMultiple)
+				for (int j= _action.endings.Count-1; j>=0; j--)
 				{
-					ActionCheckMultiple _actionCheckMultiple = (ActionCheckMultiple) _action;
-					
-					for (int j=_actionCheckMultiple.endings.Count-1; j>=0; j--)
+					ActionEnd ending = _action.endings [j];
+					if (j >= 0)
 					{
-						ActionEnd ending = _actionCheckMultiple.endings [j];
-						if (j >= 0)
+						if (ending.resultAction == ResultAction.Skip)
 						{
-							if (ending.resultAction == ResultAction.Skip)
+							int newDepth = depth;
+							for (int k = 0; k<j; k++)
 							{
-								int newDepth = depth;
-								for (int k = 0; k<j; k++)
+								ActionEnd prevEnding = _action.endings [k];
+								if (prevEnding.resultAction == ResultAction.Continue || 
+									(prevEnding.resultAction == ResultAction.Skip && prevEnding.skipAction != i))
 								{
-									ActionEnd prevEnding = _actionCheckMultiple.endings [k];
-									if (prevEnding.resultAction == ResultAction.Continue || 
-									    (prevEnding.resultAction == ResultAction.Skip && prevEnding.skipAction != i))
-									{
-										newDepth ++;
-									}
+									newDepth ++;
 								}
+							}
 
-								ArrangeFromIndex (actionList, actionList.IndexOf (ending.skipActionActual), newDepth, newMinValue, _display);
-							}
-							else if (ending.resultAction == ResultAction.Continue)
-							{
-								ArrangeFromIndex (actionList, i+1, depth+j, newMinValue, _display);
-							}
+							ArrangeFromIndex (actionList, actionList.IndexOf (ending.skipActionActual), newDepth, newMinValue, _display);
 						}
-					}
-				}
-				if (_action is ActionParallel)
-				{
-					ActionParallel _ActionParallel = (ActionParallel) _action;
-					
-					for (int j=_ActionParallel.endings.Count-1; j>=0; j--)
-					{
-						ActionEnd ending = _ActionParallel.endings [j];
-						if (j >= 0) // Want this to run for all, now
+						else if (ending.resultAction == ResultAction.Continue)
 						{
-							if (ending.resultAction == ResultAction.Skip)
-							{
-								ArrangeFromIndex (actionList, actionList.IndexOf (ending.skipActionActual), depth+j, newMinValue, _display);
-							}
-							else if (ending.resultAction == ResultAction.Continue)
-							{
-								ArrangeFromIndex (actionList, i+1, depth+j, newMinValue, _display);
-							}
+							ArrangeFromIndex (actionList, i+1, depth+j, newMinValue, _display);
 						}
-						else
-						{
-							if (ending.resultAction == ResultAction.Skip)
-							{
-								i = actionList.IndexOf (ending.skipActionActual);
-							}
-							else if (ending.resultAction == ResultAction.Continue)
-							{
-								i++;
-							}
-							else
-							{
-								i = -1;
-							}
-						}
-					}
-				}
-				else if (_action is ActionCheck)
-				{
-					ActionCheck _actionCheck = (ActionCheck) _action;
-
-					if (_actionCheck.resultActionFail == ResultAction.Stop || _actionCheck.resultActionFail == ResultAction.RunCutscene)
-					{
-						if (_actionCheck.resultActionTrue == ResultAction.Skip)
-						{
-							i = actionList.IndexOf (_actionCheck.skipActionTrueActual);
-						}
-						else if (_actionCheck.resultActionTrue == ResultAction.Continue)
-						{
-							i++;
-						}
-						else
-						{
-							i = -1;
-						}
-					}
-					else
-					{
-						if (_actionCheck.resultActionTrue == ResultAction.Skip)
-						{
-							ArrangeFromIndex (actionList, actionList.IndexOf (_actionCheck.skipActionTrueActual), depth+1, newMinValue, _display);
-						}
-						else if (_actionCheck.resultActionTrue == ResultAction.Continue)
-						{
-							ArrangeFromIndex (actionList, i+1, depth+1, newMinValue, _display);
-						}
-						
-						if (_actionCheck.resultActionFail == ResultAction.Skip)
-						{
-							i = actionList.IndexOf (_actionCheck.skipActionFailActual);
-						}
-						else if (_actionCheck.resultActionFail == ResultAction.Continue)
-						{
-							i++;
-						}
-						else
-						{
-							i = -1;
-						}
-					}
-				}
-				else
-				{
-					if (_action.endAction == ResultAction.Skip)
-					{
-						i = actionList.IndexOf (_action.skipActionActual);
-					}
-					else if (_action.endAction == ResultAction.Continue)
-					{
-						i++;
-					}
-					else
-					{
-						i = -1;
 					}
 				}
 			}
+		}
+
+
+		private int AutoArrangeWidthMargin
+		{
+			get
+			{
+				return ACEditorPrefs.ActionNodeWidth + 50;
+			}
+		}
+
+
+		private int FindRootActionIndex (Action[] _actions)
+		{
+			List<int> foundRootIndices = new List<int> ();
+
+			for (int i=0; i<_actions.Length; i++)
+			{
+				if (!AreActionsConnecting (_actions, i))
+				{
+					foundRootIndices.Add (i);
+				}
+			}
+
+			if (foundRootIndices.Count == 1)
+			{
+				return foundRootIndices[0];
+			}
+			else if (foundRootIndices.Count == 0)
+			{
+				for (int i = 0; i < _actions.Length; i++)
+				{
+					foundRootIndices.Add (i);
+				}
+			}
+
+			// Got multiple, choose by position
+			DisplayActionsInEditor _display = DisplayActionsInEditor.ArrangedVertically;
+			if (AdvGame.GetReferences ().actionsManager && AdvGame.GetReferences ().actionsManager.displayActionsInEditor == DisplayActionsInEditor.ArrangedHorizontally)
+			{
+				_display = DisplayActionsInEditor.ArrangedHorizontally;
+			}
+
+			float minValue = Mathf.Infinity;
+			int minValueIndex = 0;
+			
+			for (int i=0; i<foundRootIndices.Count; i++)
+			{
+				int index = foundRootIndices[i];
+				Action action = _actions[index];
+				Vector2 _position = action.NodeRect.position;
+
+				if (_display == DisplayActionsInEditor.ArrangedHorizontally)
+				{
+					if (_position.x < minValue)
+					{
+						minValue = _position.x;
+						minValueIndex = index;
+					}
+				}
+				else if (_display == DisplayActionsInEditor.ArrangedVertically)
+				{
+					if (_position.y < minValue)
+					{
+						minValue = _position.y;
+						minValueIndex = index;
+					}
+				}
+			}
+
+			return minValueIndex;
+		}
+
+
+		private bool AreActionsConnecting (Action[] _actions, int toIndex)
+		{
+			if (toIndex < 0 || toIndex > _actions.Length) return false;
+
+			Action toAction = _actions[toIndex];
+
+			for (int i = 0; i < _actions.Length; i++)
+			{
+				if (i == toIndex)
+				{
+					continue;
+				}
+
+				foreach (ActionEnd ending in _actions[i].endings)
+				{
+					if (ending.resultAction == ResultAction.Skip)
+					{
+						if (ending.skipActionActual == toAction) return true;
+					}
+					else if (ending.resultAction == ResultAction.Continue)
+					{
+						if (i == toIndex - 1) return true;
+					}
+				}
+			}
+
+			return false;
 		}
 
 
@@ -3003,7 +3313,7 @@ namespace AC
 		{
 			get
 			{
-				return (scrollPosition + (new Vector2 (position.width, position.height) / 2f));
+				return (scrollPosition + (new Vector2 (CanvasWidth, CanvasHeight) / 2f));
 			}
 		}
 
@@ -3021,6 +3331,200 @@ namespace AC
 			return null;
 		}
 
+
+		private void DrawGrid ()
+		{
+			DrawGrid (20, 0.2f, Color.gray);
+			DrawGrid (100, 0.4f, Color.gray);
+		}
+
+
+		private void DrawEmptyNotice ()
+		{
+			Vector2 size = new Vector2 (Mathf.Min (350f, position.size.x), Mathf.Min (70f, position.size.y));
+			Rect rect = new Rect (Vector2.zero, size);
+			rect.center = position.size / 2f;
+			GUI.BeginGroup (rect);
+			GUILayout.Label ("No ActionList assigned", CustomStyles.subHeader);
+			GUILayout.Label ("Click an ActionList's Hierarchy node icon,\nor the 'Action List Editor' button in it's Inspector.");
+			GUI.EndGroup ();
+		}
+
+
+		private void DrawGrid (float gridSpacing, float gridOpacity, Color gridColor)
+		{
+			gridSpacing *= zoom;
+
+			int widthDivs = Mathf.CeilToInt (CanvasWidth / gridSpacing);
+			int heightDivs = Mathf.CeilToInt (CanvasHeight / gridSpacing);
+
+			Handles.BeginGUI ();
+			Handles.color = new Color (gridColor.r, gridColor.g, gridColor.b, gridOpacity);
+
+			Vector3 newOffset = new Vector3 ((-scrollPosition.x * zoom) % gridSpacing, (-scrollPosition.y * zoom) % gridSpacing, 0);
+
+			for (int i = 0; i < widthDivs + 1; i++)
+			{
+				Vector3 start = new Vector3 (gridSpacing * i, -gridSpacing, 0) + newOffset;
+				Vector3 end = new Vector3 (gridSpacing * i, CanvasHeight + gridSpacing, 0f) + newOffset;
+
+				if (start.y < 24) start.y = 24;
+
+				if (end.x > CanvasWidth) continue;
+				if (end.y > CanvasHeight) end.y = CanvasHeight;
+
+				end.y -= 18;
+
+				Handles.DrawLine (start, end);
+			}
+
+			for (int j = 0; j < heightDivs + 1; j++)
+			{
+				Vector3 start = new Vector3 (-gridSpacing, gridSpacing * j, 0) + newOffset;
+				Vector3 end = new Vector3 (CanvasWidth + gridSpacing, gridSpacing * j, 0f) + newOffset;
+
+				if (start.y < 44) continue;
+				
+				if (end.x > CanvasWidth) end.x = CanvasWidth;
+				if (end.y > CanvasHeight) continue;
+
+				start.y -= 18;
+				end.y -= 18;
+
+				Handles.DrawLine (start, end);
+			}
+
+			Handles.color = Color.white;
+			Handles.EndGUI ();
+		}
+
+
+		private void UseEvent (Event e)
+		{
+			e.Use ();
+		}
+
+
+		private Vector2 ScrollPosition
+		{
+			get
+			{
+				return scrollPosition;
+			}
+			set
+			{
+				Vector2 oldValue = scrollPosition;
+				scrollPosition.x = Mathf.Clamp (value.x, 0f, scrollLimits.x / Zoom);
+				scrollPosition.y = Mathf.Clamp (value.y, 0f, scrollLimits.y / Zoom);
+				if (oldValue != scrollPosition) GUI.changed = true;
+			}
+		}
+
+
+		private float Zoom
+		{
+			get
+			{
+				return zoom;
+			}
+			set
+			{
+				float oldValue = zoom;
+				zoom = Mathf.Clamp (value, zoomMin, zoomMax);
+				if (oldValue != zoom) GUI.changed = true;
+			}
+		}
+
+
+		private List<Action> Actions
+		{
+			get
+			{
+				if (windowData.targetAsset != null)
+				{
+					return windowData.targetAsset.actions;
+				}
+				if (windowData.target != null)
+				{
+					return windowData.target.actions;
+				}
+				return null;
+			}
+		}
+
+
+		private int NumActionsMarked
+		{
+			get
+			{
+				int i = 0;
+				foreach (Action action in Actions)
+				{
+					if (action != null && action.isMarked)
+					{
+						i++;
+					}
+				}
+
+				return i;
+			}
+		}
+
+
+		private float CanvasWidth
+		{
+			get
+			{
+				float offset = 0f;
+				if (showProperties)
+				{
+					offset = propertiesBoxWidth - 7f;
+				}
+				if (CanDrawVerticalScrollbar)
+				{
+					offset += 20f;
+				}
+				return position.width - offset;
+			}
+		}
+
+
+		private float CanvasHeight
+		{
+			get
+			{
+				float offset = 6f;
+				if (CanDrawHorizontalScrollbar)
+				{
+					offset = 20f;
+				}
+				return position.height - offset;
+			}
+		}
+
+
+		private bool CanDrawHorizontalScrollbar
+		{
+			get
+			{
+				float width = (showProperties) ? (position.width - propertiesBoxWidth + 7f) : position.width;
+				float xScrollSize = width / (width + scrollLimits.x);
+				return (xScrollSize < 1f);
+			}
+		}
+
+
+		private bool CanDrawVerticalScrollbar
+		{
+			get
+			{
+				float yScrollSize = position.height / (position.height + scrollLimits.y);
+				return (yScrollSize < 1f);
+			}
+		}
+
 	}
 
 }
+
+#endif

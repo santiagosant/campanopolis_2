@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SceneChanger.cs"
  * 
@@ -11,6 +11,11 @@
  */
 
 using UnityEngine;
+using UnityEngine.SceneManagement;
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.ResourceManagement.ResourceProviders;
+#endif
 using System.Collections;
 using System.Collections.Generic;
 
@@ -21,69 +26,109 @@ namespace AC
 	 * Handles the changing of the scene, and keeps track of which scene was previously loaded.
 	 * It should be placed on the PersistentEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_scene_changer.html")]
-	#endif
 	public class SceneChanger : MonoBehaviour
 	{
 
-		private SceneInfo previousSceneInfo;
-		private SceneInfo previousGlobalSceneInfo;
+		#region Variables
 
-		private List<SubScene> subScenes = new List<SubScene>();
 
-		private Vector3 relativePosition;
-		private AsyncOperation preloadAsync;
-		private SceneInfo preloadSceneInfo;
-		private SceneInfo thisSceneInfo;
-		private Player playerOnTransition = null;
-		private Texture2D textureOnTransition = null;
-		private bool isLoading = false;
-		private float loadingProgress = 0f;
+		protected List<SceneInfo> buildScenes = new List<SceneInfo> ();
+		protected int previousGlobalSceneIndex = -1;
+		protected string previousGlobalSceneName;
+
+		protected List<SubScene> subScenes = new List<SubScene>();
+
+		protected Vector3 relativePosition;
+		protected AsyncOperation preloadAsync;
+		protected int preloadSceneIndex = -1;
+		protected string preloadSceneName;
+		protected Texture2D textureOnTransition = null;
+		protected bool isLoading = false;
+		protected float loadingProgress = 0f;
 		
-		private bool takeNPCPosition;
+		protected Vector2 simulatedCursorPositionOnExit = new Vector2 (-1f, -1f);
+		protected bool completeSceneActivation;
+
+		#endregion
 
 
-		public void OnAwake ()
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
-			previousSceneInfo = new SceneInfo ("", -1);
-			previousGlobalSceneInfo = new SceneInfo ("", -1);
-
-			relativePosition = Vector3.zero;
-			isLoading = false;
-			AssignThisSceneInfo ();
+			EventManager.OnInitialiseScene += OnInitialiseScene;
+			EventManager.OnAfterChangeScene += OnAfterChangeScene;
+			UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnActiveSceneChanged;
 		}
 
 
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
+		protected void OnDisable ()
 		{
-			loadingProgress = 0f;
-			AssignThisSceneInfo ();
+			EventManager.OnInitialiseScene -= OnInitialiseScene;
+			EventManager.OnAfterChangeScene -= OnAfterChangeScene;
+			UnityEngine.SceneManagement.SceneManager.activeSceneChanged -= OnActiveSceneChanged;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		public void OnInitPersistentEngine ()
+		{
+			preloadSceneIndex = -1;
+			preloadSceneName = string.Empty;
+			previousGlobalSceneIndex = -1;
+			previousGlobalSceneName = string.Empty;
+
+			PopulateBuildSceneData ();
 		}
 
 
-		private void AssignThisSceneInfo ()
+		public int NameToIndex (string sceneName)
 		{
-			thisSceneInfo = new SceneInfo (UnityVersionHandler.GetCurrentSceneName (), UnityVersionHandler.GetCurrentSceneNumber ());
+			sceneName = AdvGame.ConvertTokens (sceneName);
+
+			foreach (SceneInfo buildSceneInfo in buildScenes)
+			{
+				if (buildSceneInfo.Filename == sceneName)
+				{
+					return buildSceneInfo.BuildIndex;
+				}
+			}
+
+			if (KickStarter.settingsManager.loadScenesFromAddressable && KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name)
+			{ }
+			else
+			{
+				ACDebug.LogWarning ("The scene named '" + sceneName + "' was not found in the Build settings.");
+			}
+			return 0;
+		}
+
+
+		public string IndexToName (int sceneIndex)
+		{
+			SceneInfo sceneInfo = GetSceneInfo (sceneIndex);
+			if (sceneInfo != null) return sceneInfo.Filename;
+			return string.Empty;
 		}
 
 
 		/**
 		 * <summary>Calculates the player's position relative to the next scene's PlayerStart.</summary>
-		 * <param name = "markerTransform">The Transform of the GameObject that marks the position that the player should be placed relative to.</param>
+		 * <param name = "marker">The Marker of the GameObject that marks the position that the player should be placed relative to.</param>
 		 */
-		public void SetRelativePosition (Transform markerTransform)
+		public void SetRelativePosition (Marker marker)
 		{
-			if (KickStarter.player == null || markerTransform == null)
+			if (KickStarter.player == null || marker == null)
 			{
 				relativePosition = Vector2.zero;
 			}
 			else
 			{
-				relativePosition = KickStarter.player.transform.position - markerTransform.position;
+				relativePosition = KickStarter.player.Transform.position - marker.Position;
 				if (SceneSettings.IsUnity2D ())
 				{
 					relativePosition.z = 0f;
@@ -101,7 +146,7 @@ namespace AC
 		 * <param name = "playerStartPosition">The position of the PlayerStart object</param>
 		 * <returns>The player's starting position</returns>
 		 */
-		public Vector3 GetStartPosition (Vector3 playerStartPosition)
+		public virtual Vector3 GetStartPosition (Vector3 playerStartPosition)
 		{
 			Vector3 startPosition = playerStartPosition + relativePosition;
 			relativePosition = Vector2.zero;
@@ -127,95 +172,144 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Checks if a scene is being loaded</summary>
+		 * <returns>True if a scene is being loaded</returns>
+		 */
 		public bool IsLoading ()
 		{
 			return isLoading;
 		}
 
 
-		public void PreloadScene (SceneInfo nextSceneInfo)
+		/**
+		 * <summary>Preloads a scene.  Preloaded data will be discarded if the next scene opened is not the same as the one preloaded<summary>
+		 * <param name = "nextSceneIndex">The build index to load</param>
+		 * </returns>
+		 */
+		public void PreloadScene (int nextSceneIndex)
 		{
-			if (preloadSceneInfo != null && preloadSceneInfo.Matches (nextSceneInfo))
+			if (nextSceneIndex < 0) return;
+
+			if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name && KickStarter.settingsManager.loadScenesFromAddressable)
 			{
-				ACDebug.Log ("Skipping preload of scene '" + nextSceneInfo.GetLabel () + "' - already preloaded.");
+				ACDebug.LogWarning ("Scene preloading is not currently possible if scenes are loaded via Addressables");
 				return;
 			}
-			StartCoroutine (PreloadLevelAsync (nextSceneInfo));
+
+			if (nextSceneIndex == preloadSceneIndex)
+			{
+				ACDebug.Log ("Skipping preload of scene '" + nextSceneIndex + "' - already preloaded.");
+				return;
+			}
+			PreloadLevelAsync (nextSceneIndex);
+		}
+
+
+		/**
+		 * <summary>Preloads a scene.  Preloaded data will be discarded if the next scene opened is not the same as the one preloaded<summary>
+		 * <param name = "nextSceneIndex">The build index to load</param>
+		 * </returns>
+		 */
+		public void PreloadScene (string nextSceneName)
+		{
+			if (string.IsNullOrEmpty (nextSceneName)) return;
+
+			if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name && KickStarter.settingsManager.loadScenesFromAddressable)
+			{
+				ACDebug.LogWarning ("Scene preloading is not currently possible if scenes are loaded via Addressables");
+				return;
+			}
+
+			if (nextSceneName == preloadSceneName)
+			{
+				ACDebug.Log ("Skipping preload of scene '" + nextSceneName + "' - already preloaded.");
+				return;
+			}
+			PreloadLevelAsync (nextSceneName);
 		}
 
 
 		/**
 		 * <summary>Loads a new scene.  This method should be used instead of Unity's own scene-switching method, because this allows for AC objects to be saved beforehand</summary>
-		 * <param name = "nextSceneInfo">Info about the scene to load</param>
-		 * <param name = "sceneNumber">The number of the scene to load, if sceneName = ""</param>
+		 * <param name = "nextSceneIndex">The build index of the scene to load</param>
 		 * <param name = "saveRoomData">If True, then the states of the current scene's Remember scripts will be recorded in LevelStorage</param>
 		 * <param name = "forceReload">If True, the scene will be re-loaded if it is already open.</param>
-		 * <param name = "_takeNPCPosition">If True, and _revemoNPCID is non-zero, then the Player will teleport to the NPC's position before the NPC is removed</param>
+		 * <param name = "doOverlay">If True, an overlay texture will be displayed fullscreen during the transition</param>
+		 * <returns>True if the new scene will be loaded in</returns>
 		 */
-		public void ChangeScene (SceneInfo nextSceneInfo, bool saveRoomData, bool forceReload = false, bool _takeNPCPosition = false)
+		public bool ChangeScene (int nextSceneIndex, bool saveRoomData, bool forceReload = false, bool doOverlay = false)
 		{
-			takeNPCPosition = false;
+			if (nextSceneIndex < 0)
+			{
+				return false;
+			}
 
 			if (!isLoading)
 			{
-				if (!nextSceneInfo.Matches (thisSceneInfo) || forceReload)
+				if (forceReload || nextSceneIndex != CurrentSceneIndex)
 				{
-					if (preloadSceneInfo != null && preloadSceneInfo.IsValid () && !preloadSceneInfo.Matches (nextSceneInfo))
+					if (preloadSceneIndex >= 0 && preloadSceneIndex != nextSceneIndex)
 					{
-						ACDebug.LogWarning ("Opening scene '" + nextSceneInfo.GetLabel () + "', but have preloaded scene '" + preloadSceneInfo.GetLabel () + "'.  Preloaded data must be scrapped.");
+						ACDebug.LogWarning ("Opening scene " + nextSceneIndex + ", but have preloaded scene " + preloadSceneIndex + ".  Preloaded data will be scrapped.");
 						if (preloadAsync != null) preloadAsync.allowSceneActivation = true;
-						preloadSceneInfo = null;
+						preloadSceneIndex = -1;
 					}
 
-					takeNPCPosition = _takeNPCPosition;
-
-					PrepareSceneForExit (!KickStarter.settingsManager.useAsyncLoading, saveRoomData);
-					LoadLevel (nextSceneInfo, KickStarter.settingsManager.useLoadingScreen, KickStarter.settingsManager.useAsyncLoading, forceReload);
+					PrepareSceneForExit (!KickStarter.settingsManager.useAsyncLoading, saveRoomData, doOverlay);
+					if (KickStarter.eventManager) KickStarter.eventManager.Call_OnBeforeChangeScene (IndexToName (nextSceneIndex));
+					LoadLevel (nextSceneIndex, KickStarter.settingsManager.useLoadingScreen, KickStarter.settingsManager.useAsyncLoading, forceReload, doOverlay);
+					return true;
 				}
-			}
-		}
-
-
-		/**
-		 * <summary>Loads the previously-entered scene.</summary>
-		 */
-		public void LoadPreviousScene ()
-		{
-			if (previousSceneInfo != null && !previousSceneInfo.IsNull)
-			{
-				ChangeScene (previousSceneInfo, true);
 			}
 			else
 			{
-				ACDebug.LogWarning ("Cannot load previous scene - no scene data present!");
+				ACDebug.LogWarning ("Cannot switch scene while another scene-loading operation is underway.");
 			}
+			return false;
 		}
 
 
 		/**
-		 * <summary>Gets the Player prefab that was active during the last scene transition.</summary>
-		 * <returns>The Player prefab that was active during the last scene transition</returns>
+		 * <summary>Loads a new scene.  This method should be used instead of Unity's own scene-switching method, because this allows for AC objects to be saved beforehand</summary>
+		 * <param name = "nextSceneName">The name of the scene to load</param>
+		 * <param name = "saveRoomData">If True, then the states of the current scene's Remember scripts will be recorded in LevelStorage</param>
+		 * <param name = "forceReload">If True, the scene will be re-loaded if it is already open.</param>
+		 * <param name = "doOverlay">If True, an overlay texture will be displayed fullscreen during the transition</param>
+		 * <returns>True if the new scene will be loaded in</returns>
 		 */
-		public Player GetPlayerOnTransition ()
+		public bool ChangeScene (string nextSceneName, bool saveRoomData, bool forceReload = false, bool doOverlay = false)
 		{
-			return playerOnTransition;
-		}
-
-
-		/**
-		 * Destroys the Player prefab that was active during the last scene transition.
-		 */
-		public void DestroyOldPlayer ()
-		{
-			if (playerOnTransition)
+			if (string.IsNullOrEmpty (nextSceneName))
 			{
-				ACDebug.Log ("New player found - " + playerOnTransition.name + " deleted");
-				DestroyImmediate (playerOnTransition.gameObject);
+				return false;
 			}
+			if (!isLoading)
+			{
+				if (forceReload || nextSceneName != CurrentSceneName)
+				{
+					if (!string.IsNullOrEmpty (preloadSceneName) && preloadSceneName != nextSceneName)
+					{
+						ACDebug.LogWarning ("Opening scene " + nextSceneName + ", but have preloaded scene " + preloadSceneName + ".  Preloaded data will be scrapped.");
+						if (preloadAsync != null) preloadAsync.allowSceneActivation = true;
+						preloadSceneName = string.Empty;
+					}
+
+					PrepareSceneForExit (!KickStarter.settingsManager.useAsyncLoading, saveRoomData, doOverlay);
+					KickStarter.eventManager.Call_OnBeforeChangeScene (nextSceneName);
+					LoadLevel (nextSceneName, KickStarter.settingsManager.useLoadingScreen, KickStarter.settingsManager.useAsyncLoading, forceReload, doOverlay);
+					return true;
+				}
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot switch scene while another scene-loading operation is underway.");
+			}
+			return false;
 		}
 
 
-		/*
+		/**
 		 * <summary>Stores a texture used as an overlay during a scene transition. This texture can be retrieved with GetAndResetTransitionTexture().</summary>
 		 * <param name = "_texture">The Texture2D to store</param>
 		 */
@@ -246,7 +340,7 @@ namespace AC
 			if (_gameObject.GetComponentInChildren <ActionList>())
 			{
 				ActionList actionList = _gameObject.GetComponent <ActionList>();
-				if (actionList != null && KickStarter.actionListManager.IsListRunning (actionList))
+				if (actionList && KickStarter.actionListManager.IsListRunning (actionList))
 				{
 					actionList.Kill ();
 					ACDebug.LogWarning ("The ActionList '" + actionList.name + "' is being removed from the scene while running!  Killing it now to prevent hanging.");
@@ -257,54 +351,304 @@ namespace AC
 		}
 
 
-		private IEnumerator ScheduleForDeletionCoroutine (GameObject _gameObject)
+		/** Saves the current scene objects, kills speech dialog etc.  This should if the scene is changed using a custom script, i.e. without using the provided 'Scene: Switch' Action. */
+		public void PrepareSceneForExit ()
 		{
-			yield return new WaitForEndOfFrame ();
-			DestroyImmediate (_gameObject);
+			PrepareSceneForExit (false, true, false);
 		}
 
 
-		private void LoadLevel (SceneInfo nextSceneInfo, bool useLoadingScreen, bool useAsyncLoading, bool forceReload = false)
+		/** Creates an internal record of all scenes that are in the game.  If scenes are added at runtime, this function may need to be overridden to include them. */
+		public virtual void PopulateBuildSceneData ()
 		{
+			int numScenes = UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings;
+			for (int i = 0; i < numScenes; i++)
+			{
+				string path = SceneUtility.GetScenePathByBuildIndex (i);
+				string sceneName = System.IO.Path.GetFileNameWithoutExtension (path);
+
+				if (!string.IsNullOrEmpty (sceneName))
+				{
+					SceneInfo buildScene = new SceneInfo (i, sceneName);
+					buildScenes.Add (buildScene);
+				}
+			}
+
+			if (numScenes == 0)
+			{
+				// No scenes added, add current as temp
+				buildScenes.Add (new SceneInfo (0, string.Empty));
+			}
+		}
+
+
+		/** Resets the current scene, clearing all data related to it */
+		public void ResetCurrentScene ()
+		{
+			KickStarter.runtimeInventory.SetNull ();
+			KickStarter.runtimeInventory.RemoveRecipes ();
+
+			if (KickStarter.settingsManager.blackOutWhenInitialising)
+			{
+				KickStarter.mainCamera.ForceOverlayForFrames (6);
+			}
+
+			if (KickStarter.player)
+			{
+				DestroyImmediate (KickStarter.player.gameObject);
+			}
+
+			KickStarter.levelStorage.ClearCurrentLevelData ();
+
+			switch (KickStarter.settingsManager.referenceScenesInSave)
+			{
+				case ChooseSceneBy.Name:
+					ChangeScene (CurrentSceneName, false, true);
+					break;
+
+				case ChooseSceneBy.Number:
+				default:
+					ChangeScene (CurrentSceneIndex, false, true);
+					break;
+			}
+		}
+
+
+		/** Displays scene-related information for the AC Status window */
+		public void DrawStatus ()
+		{
+			if (SubScenesAreOpen ())
+			{
+				string openScenes = string.Empty;
+				for (int i = 0; i < subScenes.Count; i++)
+				{
+					if (subScenes[i] == null || subScenes[i].gameObject == null) continue;
+
+					openScenes += subScenes[i].gameObject.scene.name;
+					if (i < (subScenes.Count - 1))
+					{
+						openScenes += ", ";
+					}
+				}
+				GUILayout.Label ("Active scene: " + UnityVersionHandler.GetCurrentSceneName ());
+				GUILayout.Label ("Sub-scenes: " + openScenes);
+			}
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected SceneInfo GetSceneInfo (int sceneIndex)
+		{
+			foreach (SceneInfo buildSceneInfo in buildScenes)
+			{
+				if (buildSceneInfo.BuildIndex == sceneIndex)
+				{
+					return buildSceneInfo;
+				}
+			}
+
+			ACDebug.LogWarning ("The scene with build index " + sceneIndex + " was not found in the Build settings.");
+			return null;
+		}
+
+
+		protected SceneInfo GetSceneInfo (string sceneName, bool requireInBuildSettings = false)
+		{
+			foreach (SceneInfo buildSceneInfo in buildScenes)
+			{
+				if (buildSceneInfo.Filename == sceneName)
+				{
+					return new SceneInfo (-1, sceneName);
+				}
+			}
+
+			return new SceneInfo (-1, sceneName, requireInBuildSettings);
+		}
+
+
+		protected void OnActiveSceneChanged (Scene oldScene, Scene newScene)
+		{
+			isLoading = false;
+			loadingProgress = 0f;
+
+			SubScene newSceneSubScene = UnityVersionHandler.GetSceneInstance<SubScene> (newScene);
+			if (newSceneSubScene)
+			{
+				// New active scene is a sub-scene
+				newSceneSubScene.MakeMain ();
+			}
+			
+			if (!string.IsNullOrEmpty (oldScene.name) || oldScene.buildIndex >= 0)
+			{
+				SceneInfo oldSceneInfo = null;
+				
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						oldSceneInfo = GetSceneInfo (oldScene.name);
+						break;
+
+					case ChooseSceneBy.Number:
+					default:
+						oldSceneInfo = GetSceneInfo (oldScene.buildIndex);
+						break;
+				}
+
+				if (oldSceneInfo != null)
+				{
+					MultiSceneChecker multiSceneChecker = MultiSceneChecker.GetSceneInstance (oldScene);
+					if (multiSceneChecker != null)
+					{
+						// Register as a subscene
+						GameObject subSceneOb = new GameObject ();
+						UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene (subSceneOb, oldScene);
+						SubScene oldSubScene = subSceneOb.AddComponent<SubScene> ();
+						oldSubScene.Initialise (multiSceneChecker);
+					}
+				}
+			}
+		}
+
+
+		protected void OnAfterChangeScene (LoadingGame loadingGame)
+		{
+			isLoading = false;
+			loadingProgress = 0f;
+
+			KickStarter.stateHandler.IgnoreNavMeshCollisions ();
+
+			if (preloadCoroutine == null)
+			{
+				preloadAsync = null;
+				preloadSceneIndex = -1;
+				preloadSceneName = string.Empty;
+			}
+		}
+
+
+		protected void OnInitialiseScene ()
+		{
+			loadingProgress = 0f;
+			
+			if (KickStarter.settingsManager.inputMethod == InputMethod.KeyboardOrController && simulatedCursorPositionOnExit.x >= 0f)
+			{
+				KickStarter.playerInput.SetSimulatedCursorPosition (simulatedCursorPositionOnExit);
+			}
+		}
+
+
+		protected IEnumerator ScheduleForDeletionCoroutine (GameObject _gameObject)
+		{
+			yield return new WaitForEndOfFrame ();
+			if (_gameObject)
+			{ 
+				DestroyImmediate (_gameObject);
+			}
+		}
+
+
+		protected void LoadLevel (int nextSceneIndex, bool useLoadingScreen, bool useAsyncLoading, bool forceReload, bool doOverlay)
+		{
+			previousGlobalSceneIndex = CurrentSceneIndex;
+			previousGlobalSceneName = CurrentSceneName;
+
 			if (useLoadingScreen)
 			{
-				StartCoroutine (LoadLoadingScreen (nextSceneInfo, new SceneInfo (KickStarter.settingsManager.loadingSceneIs, KickStarter.settingsManager.loadingSceneName, KickStarter.settingsManager.loadingScene), useAsyncLoading));
+				int loadingSceneIndex = (KickStarter.settingsManager.loadingSceneIs == ChooseSceneBy.Name) ? NameToIndex (KickStarter.settingsManager.loadingSceneName) : KickStarter.settingsManager.loadingScene;
+				LoadLoadingScreen (nextSceneIndex, loadingSceneIndex, useAsyncLoading, doOverlay);
 			}
 			else
 			{
 				if (useAsyncLoading && !forceReload)
 				{
-					StartCoroutine (LoadLevelAsync (nextSceneInfo));
+					LoadLevelAsync (nextSceneIndex, doOverlay);
 				}
 				else
 				{
-					StartCoroutine (LoadLevelCo (nextSceneInfo, forceReload));
+					LoadLevelCo (nextSceneIndex, forceReload, doOverlay);
 				}
 			}
 		}
 
 
-		private IEnumerator LoadLoadingScreen (SceneInfo nextSceneInfo, SceneInfo loadingSceneInfo, bool loadAsynchronously = false)
+		protected void LoadLevel (string nextSceneName, bool useLoadingScreen, bool useAsyncLoading, bool forceReload, bool doOverlay)
 		{
-			if (preloadSceneInfo != null && !preloadSceneInfo.IsNull)
+			previousGlobalSceneIndex = CurrentSceneIndex;
+			previousGlobalSceneName = CurrentSceneName;
+
+			if (useLoadingScreen)
 			{
-				ACDebug.LogWarning ("Cannot use preloaded scene '" + preloadSceneInfo.GetLabel () + "' because the loading scene overrides it - discarding preloaded data.");
+				string loadingSceneName = (KickStarter.settingsManager.loadingSceneIs == ChooseSceneBy.Name) ? KickStarter.settingsManager.loadingSceneName : IndexToName (KickStarter.settingsManager.loadingScene);
+				LoadLoadingScreen (nextSceneName, loadingSceneName, useAsyncLoading, doOverlay);
+			}
+			else
+			{
+				if (useAsyncLoading && !forceReload)
+				{
+					LoadLevelAsync (nextSceneName, doOverlay);
+				}
+				else
+				{
+					LoadLevelCo (nextSceneName, forceReload, doOverlay);
+				}
+			}
+		}
+
+
+		protected void LoadLoadingScreen (int nextSceneIndex, int loadingSceneIndex, bool loadAsynchronously, bool doOverlay)
+		{
+			if (preloadSceneIndex >= 0)
+			{
+				ACDebug.LogWarning ("Cannot use preloaded scene " + preloadSceneIndex + " because the loading scene overrides it - discarding preloaded data.");
 			}
 			preloadAsync = null;
-			preloadSceneInfo = new SceneInfo ("", -1);
+			preloadSceneIndex = -1;
 
 			isLoading = true;
 			loadingProgress = 0f;
 
-			loadingSceneInfo.LoadLevel ();
-			yield return null;
+			SceneInfo loadingSceneInfo = GetSceneInfo (loadingSceneIndex);
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneIndex);
 
-			if (KickStarter.player != null)
+			StartCoroutine (LoadLoadingScreen (loadingSceneInfo, nextSceneInfo, loadAsynchronously, doOverlay));
+		}
+
+
+		protected void LoadLoadingScreen (string nextSceneName, string loadingSceneName, bool loadAsynchronously, bool doOverlay)
+		{
+			if (preloadSceneIndex >= 0)
 			{
-				KickStarter.player.transform.position += new Vector3 (0f, -10000f, 0f);
+				ACDebug.LogWarning ("Cannot use preloaded scene " + preloadSceneIndex + " because the loading scene overrides it - discarding preloaded data.");
+			}
+			preloadAsync = null;
+			preloadSceneName = string.Empty;
+
+			isLoading = true;
+			loadingProgress = 0f;
+
+			SceneInfo loadingSceneInfo = GetSceneInfo (loadingSceneName, true);
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneName);
+
+			StartCoroutine (LoadLoadingScreen (loadingSceneInfo, nextSceneInfo, loadAsynchronously, doOverlay));
+		}
+
+
+		protected IEnumerator LoadLoadingScreen (SceneInfo loadingSceneInfo, SceneInfo nextSceneInfo, bool loadAsynchronously, bool doOverlay)
+		{
+			if (loadingSceneInfo != null)
+			{
+				loadingSceneInfo.Open ();
+				yield return null;
+
+				if (KickStarter.player)
+				{
+					KickStarter.player.Teleport (KickStarter.player.Transform.position + new Vector3 (0f, -10000f, 0f));
+				}
 			}
 
-			PrepareSceneForExit (true, false);
 			if (loadAsynchronously)
 			{
 				if (KickStarter.settingsManager.loadingDelay > 0f)
@@ -316,174 +660,414 @@ namespace AC
 					}
 				}
 
-				AsyncOperation aSync = nextSceneInfo.LoadLevelASync ();
-
-				if (KickStarter.settingsManager.loadingDelay > 0f)
+				if (nextSceneInfo != null)
 				{
-					aSync.allowSceneActivation = false;
-
-					while (aSync.progress < 0.9f)
+					#if AddressableIsPresent
+					if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name && KickStarter.settingsManager.loadScenesFromAddressable)
 					{
-						loadingProgress = aSync.progress;
-						yield return null;
+						bool manualActivation = doOverlay || KickStarter.settingsManager.manualSceneActivation;
+						AsyncOperationHandle<SceneInstance> handle = nextSceneInfo.OpenAddressableAsync (manualActivation);
+
+						if (handle.IsValid () && manualActivation)
+						{
+							while (handle.PercentComplete < 0.9f && handle.Status != AsyncOperationStatus.Failed)
+							{
+								loadingProgress = handle.PercentComplete;
+								yield return null;
+							}
+
+							if (doOverlay)
+							{
+								yield return new WaitForEndOfFrame ();
+								KickStarter.mainCamera.TakeOverlayScreenshot ();
+							}
+
+							loadingProgress = 1f;
+
+							if (KickStarter.settingsManager.manualSceneActivation)
+							{
+								if (KickStarter.eventManager)
+								{
+									completeSceneActivation = false;
+									KickStarter.eventManager.Call_OnAwaitSceneActivation (nextSceneInfo.Filename);
+								}
+
+								while (!completeSceneActivation)
+								{
+									yield return null;
+								}
+								completeSceneActivation = false;
+							}
+
+							if (KickStarter.settingsManager.loadingDelay > 0f)
+							{
+								float waitForTime = Time.realtimeSinceStartup + KickStarter.settingsManager.loadingDelay;
+								while (Time.realtimeSinceStartup < waitForTime && KickStarter.settingsManager.loadingDelay > 0f)
+								{
+									yield return null;
+								}
+							}
+
+							if (handle.Status == AsyncOperationStatus.Succeeded)
+							{
+								yield return handle.Result.ActivateAsync ();
+							}
+							else
+							{
+								isLoading = false;
+							}
+						}
+						else
+						{
+							isLoading = false;
+						}
 					}
-					loadingProgress = 1f;
-
-					isLoading = false;
-
-					float waitForTime = Time.realtimeSinceStartup + KickStarter.settingsManager.loadingDelay;
-					while (Time.realtimeSinceStartup < waitForTime && KickStarter.settingsManager.loadingDelay > 0f)
+					else
+					#endif
 					{
-						yield return null;
-					}
+						AsyncOperation aSync = nextSceneInfo.OpenAsync ();
+						if (aSync != null)
+						{
+							aSync.allowSceneActivation = false;
 
-					aSync.allowSceneActivation = true;
+							while (aSync.progress < 0.9f)
+							{
+								loadingProgress = aSync.progress;
+								yield return null;
+							}
+
+							loadingProgress = 1f;
+
+							if (doOverlay)
+							{
+								yield return new WaitForEndOfFrame ();
+								KickStarter.mainCamera.TakeOverlayScreenshot ();
+							}
+
+							if (KickStarter.settingsManager.manualSceneActivation)
+							{
+								if (KickStarter.eventManager)
+								{
+									completeSceneActivation = false;
+									KickStarter.eventManager.Call_OnAwaitSceneActivation (nextSceneInfo.Filename);
+								}
+
+								while (!completeSceneActivation)
+								{
+									yield return null;
+								}
+								completeSceneActivation = false;
+							}
+
+							if (KickStarter.settingsManager.loadingDelay > 0f)
+							{
+								float waitForTime = Time.realtimeSinceStartup + KickStarter.settingsManager.loadingDelay;
+								while (Time.realtimeSinceStartup < waitForTime && KickStarter.settingsManager.loadingDelay > 0f)
+								{
+									yield return null;
+								}
+							}
+
+							aSync.allowSceneActivation = true;
+						}
+						else
+						{
+							isLoading = false;
+						}
+					}
+				}
+			}
+			else
+			{
+				if (nextSceneInfo != null)
+				{
+					nextSceneInfo.Open ();
 				}
 				else
 				{
-					while (!aSync.isDone)
-					{
-						loadingProgress = aSync.progress;
-						yield return null;
-					}
-					loadingProgress = 1f;
+					isLoading = false;
 				}
-
-				KickStarter.stateHandler.IgnoreNavMeshCollisions ();
 			}
-			else
-			{
-				nextSceneInfo.LoadLevel ();
-			}
-
-			isLoading = false;
-
-			StartCoroutine (OnCompleteSceneChange ());
 		}
 
 
-		private IEnumerator LoadLevelAsync (SceneInfo nextSceneInfo)
+		/** Activates the loaded scene, if it must be done so manually */
+		public void ActivateLoadedScene ()
+		{
+			completeSceneActivation = true;
+		}
+
+
+		protected void LoadLevelAsync (int nextSceneIndex, bool doOverlay)
+		{
+			if (nextSceneIndex >= 0)
+			{
+				bool isPreloadScene = (nextSceneIndex == preloadSceneIndex);
+				SceneInfo nextSceneInfo = GetSceneInfo (nextSceneIndex);
+				StartCoroutine (LoadLevelAsync (isPreloadScene, nextSceneInfo, doOverlay));
+			}
+		}
+
+
+		protected void LoadLevelAsync (string nextSceneName, bool doOverlay)
+		{
+			if (!string.IsNullOrEmpty (nextSceneName))
+			{
+				bool isPreloadScene = (nextSceneName == preloadSceneName);
+				SceneInfo nextSceneInfo = GetSceneInfo (nextSceneName);
+				StartCoroutine (LoadLevelAsync (isPreloadScene, nextSceneInfo, doOverlay));
+			}
+		}
+
+
+		protected IEnumerator LoadLevelAsync (bool isPreloadScene, SceneInfo nextSceneInfo, bool doOverlay)
 		{
 			isLoading = true;
 			loadingProgress = 0f;
-			PrepareSceneForExit (true, false);
 
 			AsyncOperation aSync = null;
-			if (nextSceneInfo.Matches (preloadSceneInfo))
+			if (isPreloadScene)
 			{
 				aSync = preloadAsync;
 				aSync.allowSceneActivation = true;
+
+				while (!aSync.isDone)
+				{
+					loadingProgress = aSync.progress;
+					yield return null;
+				}
+				loadingProgress = 1f;
 			}
-			else
+			else if (nextSceneInfo != null)
 			{
-				aSync = nextSceneInfo.LoadLevelASync ();
-			}
+				#if AddressableIsPresent
+				if (KickStarter.settingsManager.referenceScenesInSave == ChooseSceneBy.Name && KickStarter.settingsManager.loadScenesFromAddressable)
+				{
+					bool manualActivation = doOverlay || KickStarter.settingsManager.manualSceneActivation;
+					AsyncOperationHandle<SceneInstance> handle = nextSceneInfo.OpenAddressableAsync (manualActivation);
 
-			while (!aSync.isDone)
+					if (handle.IsValid () && manualActivation)
+					{
+						while (handle.PercentComplete < 0.9f && handle.Status != AsyncOperationStatus.Failed)
+						{
+							loadingProgress = handle.PercentComplete;
+							yield return null;
+						}
+						
+						if (doOverlay)
+						{
+							yield return new WaitForEndOfFrame ();
+							KickStarter.mainCamera.TakeOverlayScreenshot ();
+						}
+						
+						loadingProgress = 1f;
+
+						if (KickStarter.settingsManager.manualSceneActivation)
+						{
+							if (KickStarter.eventManager)
+							{
+								completeSceneActivation = false;
+								KickStarter.eventManager.Call_OnAwaitSceneActivation (nextSceneInfo.Filename);
+							}
+
+							while (!completeSceneActivation)
+							{
+								yield return null;
+							}
+							completeSceneActivation = false;
+						}
+
+						yield return new WaitForEndOfFrame ();
+
+						if (handle.Status == AsyncOperationStatus.Succeeded)
+						{
+							yield return handle.Result.ActivateAsync ();
+						}
+						else
+						{
+							isLoading = false;
+						}
+					}
+					else
+					{
+						isLoading = false;
+					}
+				}
+				else
+				#endif
+				{
+					aSync = nextSceneInfo.OpenAsync ();
+
+					if (aSync != null)
+					{
+						aSync.allowSceneActivation = false;
+
+						while (aSync.progress < 0.9f)
+						{
+							loadingProgress = aSync.progress;
+							yield return null;
+						}
+
+						loadingProgress = 1f;
+				
+						if (doOverlay)
+						{
+							yield return new WaitForEndOfFrame ();
+							KickStarter.mainCamera.TakeOverlayScreenshot ();
+						}
+
+						if (KickStarter.settingsManager.manualSceneActivation)
+						{
+							if (KickStarter.eventManager)
+							{
+								completeSceneActivation = false;
+								KickStarter.eventManager.Call_OnAwaitSceneActivation (nextSceneInfo.Filename);
+							}
+
+							while (!completeSceneActivation)
+							{
+								yield return null;
+							}
+							completeSceneActivation = false;
+						}
+
+						yield return new WaitForEndOfFrame ();
+
+						aSync.allowSceneActivation = true;
+					}
+					else
+					{
+						isLoading = false;
+					}
+				}
+			}
+		}
+
+		private Coroutine preloadCoroutine;
+		protected void PreloadLevelAsync (int nextSceneIndex)
+		{
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneIndex);
+			if (nextSceneInfo != null)
 			{
-				loadingProgress = aSync.progress;
-				yield return null;
+				if (preloadCoroutine != null)
+				{
+					StopCoroutine (preloadCoroutine);
+				}
+				preloadCoroutine = StartCoroutine (PreloadLevelAsync (nextSceneInfo));
 			}
-			loadingProgress = 1f;
-
-			KickStarter.stateHandler.IgnoreNavMeshCollisions ();
-			isLoading = false;
-			preloadAsync = null;
-			preloadSceneInfo = new SceneInfo ("", -1);
-
-			StartCoroutine (OnCompleteSceneChange ());
 		}
 
 
-		private IEnumerator PreloadLevelAsync (SceneInfo nextSceneInfo)
+		protected void PreloadLevelAsync (string nextSceneName)
+		{
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneName);
+			if (nextSceneInfo != null)
+			{
+				if (preloadCoroutine != null)
+				{
+					StopCoroutine (preloadCoroutine);
+				}
+				preloadCoroutine = StartCoroutine (PreloadLevelAsync (nextSceneInfo));
+			}
+		}
+
+
+		protected IEnumerator PreloadLevelAsync (SceneInfo nextSceneInfo)
 		{
 			// Wait for any other loading operations to complete
 			while (isLoading)
 			{
 				yield return null;
 			}
-
+			
 			loadingProgress = 0f;
+			preloadSceneIndex = nextSceneInfo.BuildIndex;
+			preloadSceneName = nextSceneInfo.Filename;
 
-			preloadSceneInfo = nextSceneInfo;
-			preloadAsync = nextSceneInfo.LoadLevelASync ();
-
-			preloadAsync.allowSceneActivation = false;
-
-			// Wait until done and collect progress as we go.
-			while (!preloadAsync.isDone)
+			if (nextSceneInfo != null)
 			{
-				loadingProgress = preloadAsync.progress;
-				if (loadingProgress >= 0.9f)
+				preloadAsync = nextSceneInfo.OpenAsync ();
+
+				preloadAsync.allowSceneActivation = false;
+
+				// Wait until done and collect progress as we go.
+				while (!preloadAsync.isDone)
 				{
-					// Almost done.
-					break;
+					loadingProgress = preloadAsync.progress;
+					if (loadingProgress >= 0.9f)
+					{
+						// Almost done.
+						break;
+					}
+					loadingProgress = 1f;
+					yield return null;
 				}
-				loadingProgress = 1f;
-				yield return null;
+
+				if (KickStarter.eventManager)
+				{
+					KickStarter.eventManager.Call_OnCompleteScenePreload (nextSceneInfo.Filename);
+				}
 			}
 
-			if (KickStarter.eventManager != null)
+			preloadCoroutine = null;
+		}
+
+
+		protected void LoadLevelCo (int nextSceneIndex, bool forceReload, bool doOverlay)
+		{
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneIndex);
+			if (nextSceneInfo != null)
 			{
-				KickStarter.eventManager.Call_OnCompleteScenePreload (nextSceneInfo);
+				StartCoroutine (LoadLevelCo (nextSceneInfo, forceReload, doOverlay));
 			}
 		}
 
 
-		private IEnumerator LoadLevelCo (SceneInfo nextSceneInfo, bool forceReload = false)
+		protected void LoadLevelCo (string nextSceneName, bool forceReload, bool doOverlay)
+		{
+			SceneInfo nextSceneInfo = GetSceneInfo (nextSceneName);
+			if (nextSceneInfo != null)
+			{
+				StartCoroutine (LoadLevelCo (nextSceneInfo, forceReload, doOverlay));
+			}
+		}
+
+
+		protected IEnumerator LoadLevelCo (SceneInfo nextSceneInfo, bool forceReload, bool doOverlay)
 		{
 			isLoading = true;
 			yield return new WaitForEndOfFrame ();
 
-			nextSceneInfo.LoadLevel (forceReload);
-			isLoading = false;
-
-			StartCoroutine (OnCompleteSceneChange ());
-		}
-
-
-		private IEnumerator OnCompleteSceneChange ()
-		{
-			bool _takeNPCPosition = takeNPCPosition;
-			takeNPCPosition = false;
-
-			yield return new WaitForEndOfFrame ();
-
-			if (_takeNPCPosition)
+			if (doOverlay)
 			{
-				NPC npc = KickStarter.player.GetRuntimeAssociatedNPC ();
-				if (npc != null)
-				{
-					KickStarter.player.RepositionToTransform (npc.transform);
-				}
+				KickStarter.mainCamera.TakeOverlayScreenshot ();
+			}
+
+			bool opened = nextSceneInfo.Open (forceReload);
+			if (!opened)
+			{
+				isLoading = false;
 			}
 		}
 
 
-		/**
-		 * <summary>Saves the current scene objects, kills speech dialog etc.  This should if the scene is changed using a custom script, i.e. without using the provided 'Scene: Switch' Action.</summary>
-		 */
-		public void PrepareSceneForExit ()
-		{
-			PrepareSceneForExit (false, true);
-		}
-
-
-		private void PrepareSceneForExit (bool isInstant, bool saveRoomData)
+		protected virtual void PrepareSceneForExit (bool isInstant, bool saveRoomData, bool doOverlay)
 		{
 			if (isInstant)
 			{
-				KickStarter.mainCamera.FadeOut (0f);
+				if (!doOverlay)
+				{
+					KickStarter.mainCamera.FadeOut (0f);
+				}
 				
 				if (KickStarter.player)
 				{
+					KickStarter.player.EndPath ();
 					KickStarter.player.Halt (false);
 				}
-				
-				KickStarter.stateHandler.gameState = GameState.Normal;
 			}
 
-			if (KickStarter.dialog != null) KickStarter.dialog.KillDialog (true, true);
+			if (KickStarter.dialog) KickStarter.dialog.KillDialog (true, true);
 
 			Sound[] sounds = FindObjectsOfType (typeof (Sound)) as Sound[];
 			foreach (Sound sound in sounds)
@@ -496,56 +1080,90 @@ namespace AC
 			if (saveRoomData)
 			{
 				KickStarter.levelStorage.StoreAllOpenLevelData ();
-				previousSceneInfo = new SceneInfo ();
-				previousGlobalSceneInfo = new SceneInfo ();
-
+				
+				KickStarter.saveSystem.SaveNonPlayerData (true);
 				KickStarter.saveSystem.SaveCurrentPlayerData ();
 			}
 			subScenes.Clear ();
 
-			playerOnTransition = KickStarter.player;
-
-			if (KickStarter.eventManager != null)
+			if (KickStarter.playerInput)
 			{
-				KickStarter.eventManager.Call_OnBeforeChangeScene ();
+				simulatedCursorPositionOnExit = KickStarter.playerInput.GetMousePosition ();
 			}
 		}
 
+		#endregion
 
-		/** SUB-SCENES */
+
+		#region SubScenes
+
+		public bool SubScenesAreOpen ()
+		{
+			return (subScenes.Count > 0);
+		}
+
 
 		/**
 		 * <summary>Adds a new scene as a sub-scene, without affecting any other open scenes.</summary>
-		 * <param name = "sceneInfo">The SceneInfo of the new scene to open</param>
+		 * <param name = "subSceneIndex">The index of the new scene to open</param>
+		 * <returns>True if the scene was succesfully added</returns>
 		 */
-		public bool AddSubScene (SceneInfo sceneInfo)
+		public bool AddSubScene (int subSceneIndex)
 		{
 			// Check if scene is already open
-			if (sceneInfo.Matches (thisSceneInfo))
+			if (subSceneIndex == CurrentSceneIndex)
 			{
 				return false;
 			}
 		
 			foreach (SubScene subScene in subScenes)
 			{
-				if (subScene.SceneInfo.Matches (sceneInfo))
+				if (subScene.SceneIndex == subSceneIndex)
 				{
 					return false;
 				}
 			}
-		
-			sceneInfo.AddLevel ();
 
-			KickStarter.playerMenus.AfterSceneAdd ();
-			return true;
+			SceneInfo subSceneInfo = GetSceneInfo (subSceneIndex);
+			if (subSceneInfo != null)
+			{
+				subSceneInfo.Add ();
+				return true;
+			}
+
+			return false;
 		}
 
 
-		public IEnumerator AddSubSceneCoroutine (SceneInfo sceneInfo)
+		/**
+		 * <summary>Adds a new scene as a sub-scene, without affecting any other open scenes.</summary>
+		 * <param name = "subSceneName">The name of the new scene to open</param>
+		 * <returns>True if the scene was succesfully added</returns>
+		 */
+		public bool AddSubScene (string subSceneName)
 		{
-			// This is necessary in Unity 5.4+, otherwise the game locks
-			yield return new WaitForEndOfFrame ();
-			AddSubScene (sceneInfo);
+			// Check if scene is already open
+			if (subSceneName == CurrentSceneName)
+			{
+				return false;
+			}
+
+			foreach (SubScene subScene in subScenes)
+			{
+				if (subScene.SceneName == subSceneName)
+				{
+					return false;
+				}
+			}
+
+			SceneInfo subSceneInfo = GetSceneInfo (subSceneName);
+			if (subSceneInfo != null)
+			{
+				subSceneInfo.Add ();
+				return true;
+			}
+
+			return false;
 		}
 
 
@@ -555,68 +1173,97 @@ namespace AC
 		 */
 		public void RegisterSubScene (SubScene subScene)
 		{
+			if (subScene == null) return;
+
+			foreach (SubScene existingSubScene in subScenes)
+			{
+				if (subScene == existingSubScene)
+				{
+					return;
+				}
+
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						if (subScene.SceneName == existingSubScene.SceneName)
+						{
+							return;
+						}
+						break;
+
+					case ChooseSceneBy.Number:
+					default:
+						if (subScene.SceneIndex == existingSubScene.SceneIndex)
+						{
+							return;
+						}
+						break;
+				}
+			}
+
 			if (!subScenes.Contains (subScene))
 			{
 				subScenes.Add (subScene);
 
-				KickStarter.levelStorage.ReturnSubSceneData (subScene, isLoading);
-				KickStarter.stateHandler.IgnoreNavMeshCollisions ();
+				KickStarter.saveSystem.SaveNonPlayerData (false);
+
+				KickStarter.levelStorage.ReturnSubSceneData (subScene);
+				KickStarter.eventManager.Call_OnAddSubScene (subScene);
+			}
+		}
+
+
+		public void UnregisterSubScene (SubScene subScene)
+		{
+			if (subScene == null) return;
+
+			foreach (SubScene existingSubScene in subScenes)
+			{
+				if (subScene == existingSubScene)
+				{
+					subScenes.Remove (existingSubScene);
+					return;
+				}
 			}
 		}
 
 
 		/**
-		 * <summary>Gets an array of all open SubScenes.</summary>
-		 * <returns>An array of all open SubScenes</returns>
-		 */
-		public SubScene[] GetSubScenes ()
-		{
-			return subScenes.ToArray ();
-		}
-
-
-		/**
 		 * <summary>Removes a scene, without affecting any other open scenes, provided multiple scenes are open. If the active scene is removed, the last-added sub-scene will become the new active scene.</summary>
-		 * <param name = "sceneInfo">The SceneInfo of the new scene to remove</param>
+		 * <param name = "sceneIndex">The index of the new scene to remove</param>
+		 * <returns>True if the scene was succesfully removed</returns>
 		 */
-		public bool RemoveScene (SceneInfo sceneInfo)
+		public bool RemoveScene (int sceneIndex)
 		{
 			// Kill actionlists
-			KickStarter.actionListManager.KillAllFromScene (sceneInfo);
+			KickStarter.actionListManager.KillAllFromScene (sceneIndex);
 
-			if (thisSceneInfo.Matches (sceneInfo))
+			if (CurrentSceneIndex == sceneIndex)
 			{
 				// Want to close active scene
 
 				if (subScenes == null || subScenes.Count == 0)
 				{
-					ACDebug.LogWarning ("Cannot remove scene " + sceneInfo.number + ", as it is the only one open!");
+					ACDebug.LogWarning ("Cannot remove scene " + sceneIndex + ", as it is the only one open!");
 					return false;
 				}
 
 				// Save active scene
 				KickStarter.levelStorage.StoreCurrentLevelData ();
 
-				// Make the last-opened subscene the new active one
-				SubScene lastSubScene = subScenes [subScenes.Count-1];
-				KickStarter.mainCamera.gameObject.SetActive (false);
-				lastSubScene.MakeMain ();
-				subScenes.Remove (lastSubScene);
-
-				StartCoroutine (CloseScene (thisSceneInfo));
-				thisSceneInfo = lastSubScene.SceneInfo;
+				StartCoroutine (CloseScene (sceneIndex));
 				return true;
 			}
 
 			// Want to remove a sub-scene
 			for (int i=0; i<subScenes.Count; i++)
 			{
-				if (subScenes[i].SceneInfo.Matches (sceneInfo))
+				if (subScenes[i].SceneIndex == sceneIndex)
 				{
 					// Save sub scene
 					KickStarter.levelStorage.StoreSubSceneData (subScenes[i]);
 
-					StartCoroutine (CloseScene (subScenes[i].SceneInfo));
+					StartCoroutine (CloseScene (subScenes[i].SceneIndex));
 					subScenes.RemoveAt (i);
 					return true;
 				}
@@ -626,12 +1273,70 @@ namespace AC
 		}
 
 
-		private IEnumerator CloseScene (SceneInfo _sceneInfo)
+		protected IEnumerator CloseScene (int sceneIndex)
 		{
 			yield return new WaitForEndOfFrame ();
-			_sceneInfo.CloseLevel ();
-			yield return new WaitForEndOfFrame (); // Necessary in 2018.2
-			KickStarter.stateHandler.RegisterWithGameEngine ();
+			SceneInfo sceneInfo = GetSceneInfo (sceneIndex);
+			if (sceneInfo != null)
+			{
+				sceneInfo.Close (true);
+			}
+		}
+
+
+		/**
+		 * <summary>Removes a scene, without affecting any other open scenes, provided multiple scenes are open. If the active scene is removed, the last-added sub-scene will become the new active scene.</summary>
+		 * <param name = "sceneName">The name of the new scene to remove</param>
+		 * <returns>True if the scene was succesfully removed</returns>
+		 */
+		public bool RemoveScene (string sceneName)
+		{
+			// Kill actionlists
+			KickStarter.actionListManager.KillAllFromScene (sceneName);
+
+			if (CurrentSceneName == sceneName)
+			{
+				// Want to close active scene
+
+				if (subScenes == null || subScenes.Count == 0)
+				{
+					ACDebug.LogWarning ("Cannot remove scene " + sceneName + ", as it is the only one open!");
+					return false;
+				}
+
+				// Save active scene
+				KickStarter.levelStorage.StoreCurrentLevelData ();
+
+				StartCoroutine (CloseScene (sceneName));
+				return true;
+			}
+
+			// Want to remove a sub-scene
+			for (int i = 0; i < subScenes.Count; i++)
+			{
+				if (subScenes[i].SceneName == sceneName)
+				{
+					// Save sub scene
+					KickStarter.levelStorage.StoreSubSceneData (subScenes[i]);
+
+					StartCoroutine (CloseScene (subScenes[i].SceneName));
+					subScenes.RemoveAt (i);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+
+		protected IEnumerator CloseScene (string sceneName)
+		{
+			yield return new WaitForEndOfFrame ();
+			SceneInfo sceneInfo = GetSceneInfo (sceneName);
+			if (sceneInfo != null)
+			{
+				sceneInfo.Close (true);
+			}
 		}
 
 
@@ -642,19 +1347,23 @@ namespace AC
 		 */
 		public PlayerData SavePlayerData (PlayerData playerData)
 		{
-			playerData.previousScene = previousSceneInfo.number;
-			playerData.previousSceneName = previousSceneInfo.name;
-
 			System.Text.StringBuilder subSceneData = new System.Text.StringBuilder ();
+			System.Text.StringBuilder subSceneNameData = new System.Text.StringBuilder ();
 			foreach (SubScene subScene in subScenes)
 			{
-				subSceneData.Append (subScene.SceneInfo.name + SaveSystem.colon + subScene.SceneInfo.number + SaveSystem.pipe);
+				subSceneData.Append (subScene.SceneIndex + SaveSystem.pipe);
+				subSceneNameData.Append (subScene.SceneName + SaveSystem.pipe);
 			}
 			if (subSceneData.Length > 0)
 			{
 				subSceneData.Remove (subSceneData.Length-1, 1);
 			}
+			if (subSceneNameData.Length > 0)
+			{
+				subSceneNameData.Remove (subSceneNameData.Length - 1, 1);
+			}
 			playerData.openSubScenes = subSceneData.ToString ();
+			playerData.openSubSceneNames = subSceneNameData.ToString ();
 
 			return playerData;
 		}
@@ -667,287 +1376,252 @@ namespace AC
 		 */
 		public void LoadPlayerData (PlayerData playerData, bool loadSubScenes = true)
 		{
-			previousSceneInfo = new SceneInfo (playerData.previousSceneName, playerData.previousScene);
 			foreach (SubScene subScene in subScenes)
 			{
-				subScene.SceneInfo.CloseLevel ();
-			}
-			subScenes.Clear ();
-
-			if (loadSubScenes && playerData.openSubScenes != null && playerData.openSubScenes.Length > 0)
-			{
-				string[] subSceneArray = playerData.openSubScenes.Split (SaveSystem.pipe[0]);
-				foreach (string chunk in subSceneArray)
+				switch (KickStarter.settingsManager.referenceScenesInSave)
 				{
-					string[] chunkData = chunk.Split (SaveSystem.colon[0]);
-					int _number = 0;
-					int.TryParse (chunkData[0], out _number);
-					SceneInfo sceneInfo = new SceneInfo (chunkData[0], _number);
+					case ChooseSceneBy.Name:
+						{
+							SceneInfo sceneInfo = GetSceneInfo (subScene.SceneName);
+							if (sceneInfo != null)
+							{
+								sceneInfo.Close ();
+							}
+						}
+						break;
 
-					//AddSubScene (sceneInfo);
-					StartCoroutine (AddSubSceneCoroutine (sceneInfo));
+					case ChooseSceneBy.Number:
+					default:
+						{
+							SceneInfo sceneInfo = GetSceneInfo (subScene.SceneIndex);
+							if (sceneInfo != null)
+							{
+								sceneInfo.Close ();
+							}
+						}
+						break;
 				}
 			}
+			subScenes.Clear ();
+			
+			if (loadSubScenes)
+			{
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						if (!string.IsNullOrEmpty (playerData.openSubSceneNames))
+						{
+							string[] subSceneArray = playerData.openSubSceneNames.Split (SaveSystem.pipe[0]);
+							foreach (string chunk in subSceneArray)
+							{
+								string[] chunkData = chunk.Split (SaveSystem.colon[0]);
+								int _index = chunkData.Length - 1; // For backwards-compat
+								if (_index >= 0 && !string.IsNullOrEmpty (chunkData[_index]))
+								{
+									string _name = chunkData[_index];
+									AddSubScene (_name);
+								}
+							}
+						}
+						break;
 
-			KickStarter.stateHandler.RegisterWithGameEngine ();
+					case ChooseSceneBy.Number:
+					default:
+						if (!string.IsNullOrEmpty (playerData.openSubScenes))
+						{
+							string[] subSceneArray = playerData.openSubScenes.Split (SaveSystem.pipe[0]);
+							foreach (string chunk in subSceneArray)
+							{
+								string[] chunkData = chunk.Split (SaveSystem.colon[0]);
+								int _index = chunkData.Length - 1; // For backwards-compat
+								int _number = 0;
+								if (_index >= 0 && int.TryParse (chunkData[_index], out _number))
+								{
+									AddSubScene (_number);
+								}
+							}
+						}
+						break;
+				}
+			}
 		}
 
 
 		/**
-		 * <summary>Gets info about the previous scene.<</summary>
-		 * <param name = "forPlayer">If True, then the previous scene will be assumed to be the player character's last-visited scene, as opposed to the last scene that was open</param>
-		 * <returns>Info about the previous scene</returns>
+		 * <summary>Saves data used by this script in a MainData class.</summary>
+		 * <param name = "mainData">The MainData to save in.</param>
+		 * <returns>The updated MainData</returns>
 		 */
-		public SceneInfo GetPreviousSceneInfo (bool forPlayer = true)
+		public MainData SaveMainData (MainData mainData)
+		{
+			mainData.previousSceneIndex = previousGlobalSceneIndex;
+			mainData.previousSceneName = previousGlobalSceneName;
+			return mainData;
+		}
+
+
+
+		/**
+		 * <summary>Loads data used by this script from a MainData class.</summary>
+		 * <param name = "mainData">The MainData to load from.</param>
+		 */
+		public void LoadMainData (MainData mainData)
+		{
+			previousGlobalSceneIndex = mainData.previousSceneIndex;
+			previousGlobalSceneName = mainData.previousSceneName;
+		}
+
+
+		/**
+		 * <summary>Gets the previous scene index.
+		 * <param name = "forPlayer">If True, the current Player's previous scene will be returned - which may be different from the "global" index if the game makes use of player-switching</param>
+		 * <returns>The previous scene index</returns>
+		 */
+		public int GetPreviousSceneIndex (bool forPlayer = false)
 		{
 			if (forPlayer)
 			{
-				return previousSceneInfo;
+				PlayerData playerData = KickStarter.saveSystem.GetPlayerData (KickStarter.saveSystem.CurrentPlayerID);
+				if (playerData != null)
+				{
+					return playerData.previousScene;
+				}
+				return -1;
 			}
-			return previousGlobalSceneInfo;
+			return previousGlobalSceneIndex;
 		}
 
 
 		/**
-		* <summary>Gets the index within the internal list of active sub-scenes that a GameObject is in.  This is not the build index of the scene, but the order in which the scene is loaded internally</summary>
-		* <param name = "gameObject">The GameObject to get the sub-scene index for</param>
-		* <returns>The index within the internal list of active sub-scenes that a GameObject is in, starting from 1.  If the gameObject is not found, or the sub-scene is not found, it will return 0</returns>
-		*/
-		public int GetSubSceneIndexOfGameObject (GameObject gameObject)
+		 * <summary>Gets the previous scene name.
+		 * <param name = "forPlayer">If True, the current Player's previous scene will be returned - which may be different from the "global" index if the game makes use of player-switching</param>
+		 * <returns>The previous scene index</returns>
+		 */
+		public string GetPreviousSceneName (bool forPlayer = false)
 		{
-			if (gameObject != null && subScenes != null && subScenes.Count > 0)
+			if (forPlayer)
 			{
-				for (int i=0; i<subScenes.Count; i++)
+				PlayerData playerData = KickStarter.saveSystem.GetPlayerData (KickStarter.saveSystem.CurrentPlayerID);
+				if (playerData != null)
 				{
-					if (gameObject.scene == subScenes[i].SceneSettings.gameObject.scene)
-					{
-						return i+1;
-					}
+					return playerData.previousSceneName;
+				}
+				return string.Empty;
+			}
+			return previousGlobalSceneName;
+		}
+
+
+		/**
+		 * <summary>Gets a SubScene class associated with a given scene. The scene must be currently opened as a sub-scene</summary>
+		 * <param name = "sceneIndex">The index of the scene to check for</param>
+		 * <returns>The scene's associated SubScene class</returns>
+		 */
+		public SubScene GetSubScene (int sceneIndex)
+		{
+			if (sceneIndex < 0) return null;
+
+			foreach (SubScene subScene in subScenes)
+			{
+				if (subScene.SceneIndex == sceneIndex)
+				{
+					return subScene;
 				}
 			}
-
-			return 0;
-		}
-
-	}
-
-
-	/**
-	 * A container for information about a scene that can be loaded.
-	 */
-	public class SceneInfo
-	{
-
-		/** The scene's name */
-		public string name;
-		/** The scene's number. If name is left empty, this number will be used to reference the scene instead */
-		public int number;
-
-
-		/**
-		 * A Constructor for the current active scene.
-		 */
-		public SceneInfo ()
-		{
-			number = UnityVersionHandler.GetCurrentSceneNumber ();
-			name = UnityVersionHandler.GetCurrentSceneName ();
+			return null;
 		}
 
 
 		/**
-		 * <summary>The default Constructor.</summary>
-		 * <param name = "_name">The scene's name</param>
-		 * <param name = "_number">The scene's number. If name is left empty, this number will be used to reference the scene instead</param>
+		 * <summary>Gets a SubScene class associated with a given scene. The scene must be currently opened as a sub-scene</summary>
+		 * <param name = "sceneName">The name of the scene to check for</param>
+		 * <returns>The scene's associated SubScene class</returns>
 		 */
-		public SceneInfo (string _name, int _number)
+		public SubScene GetSubScene (string sceneName)
 		{
-			number = _number;
-			name = _name;
-		}
+			if (string.IsNullOrEmpty (sceneName)) return null;
 
-
-		/**
-		 * <summary>A Constructor where only the scene's name is defined.</summary>
-		 * <param name = "_name">The scene's name</param>
-		 */
-		public SceneInfo (string _name)
-		{
-			name = _name;
-			number = -1;
-		}
-
-
-		/**
-		 * <summary>A Constructor where only the scene's number is defined.</summary>
-		 * <param name = "_name">The scene's build index number</param>
-		 */
-		public SceneInfo (int _number)
-		{
-			number = _number;
-			name = string.Empty;
-		}
-
-
-		/**
-		 * <summary>A Constructor.</summary>
-		 * <param name = "chooseSeneBy">The method by which the scene is referenced (Name, Number)</param>
-		 * <param name = "_name">The scene's name</param>
-		 * <param name = "_number">The scene's number. If name is left empty, this number will be used to reference the scene instead</param>
-		 */
-		public SceneInfo (ChooseSceneBy chooseSceneBy, string _name, int _number)
-		{
-			if (chooseSceneBy == ChooseSceneBy.Number || string.IsNullOrEmpty (_name))
+			foreach (SubScene subScene in subScenes)
 			{
-				number = _number;
-				name = string.Empty;
-			}
-			else
-			{
-				name = _name;
-				number = -1;
-			}
-		}
-
-
-		public bool IsValid ()
-		{
-			if (string.IsNullOrEmpty (name) && number < 0)
-			{
-				return false;
-			}
-			return true;
-		}
-
-
-		/**
-		 * <summary>Checks if the variables in this instance of the class match another instance.</summary>
-		 * <param name = "_sceneInfo">The other SceneInfo instance to compare</param>
-		 * <returns>True if the variables in this instance of the class matches the other instance</returns>
-		 */
-		public bool Matches (SceneInfo _sceneInfo)
-		{
-			if (_sceneInfo != null)
-			{
-				if (number == _sceneInfo.number && number >= 0)
+				if (subScene.SceneName == sceneName)
 				{
-					if (!string.IsNullOrEmpty (name) && name == _sceneInfo.name)
-					{
-						return true;
-					}
-					if (string.IsNullOrEmpty (name) || string.IsNullOrEmpty (_sceneInfo.name))
-					{
-						return true;
-					}
-				}
-				else if (number == -1 || _sceneInfo.number == -1)
-				{
-					if (!string.IsNullOrEmpty (name))
-					{
-						return (name == _sceneInfo.name);
-					}
+					return subScene;
 				}
 			}
-
-			return false;
+			return null;
 		}
 
-
-		/**
-		 * <summary>Checks if this class instance represetnts the currently-active main scene</summary>
-		 * <returns>True if this class instance represetnts the currently-active main scene</returns>
-		 */
-		public bool IsCurrentActive ()
-		{
-			SceneInfo activeSceneInfo = new SceneInfo (UnityVersionHandler.GetCurrentSceneName (), UnityVersionHandler.GetCurrentSceneNumber ());
-			return Matches (activeSceneInfo);
-		}
+		#endregion
 
 
-		/*
-		 * <summary>Gets a string with info about the scene the class represents.</summary>
-		 * <returns>A string with info about the scene the class represents.</returns>
-		 */
-		public string GetLabel ()
-		{
-			if (!string.IsNullOrEmpty (name))
-			{
-				return name;
-			}
-			return number.ToString ();
-		}
+		#region GetSet
 
-
-		/**
-		 * <summary>Loads the scene normally.</summary>
-		 * <param name = "forceReload">If True, the scene will be re-loaded if it is already open.</param>
-		 */
-		public void LoadLevel (bool forceReload = false)
-		{
-			if (!string.IsNullOrEmpty (name))
-			{
-				UnityVersionHandler.OpenScene (name, forceReload);
-			}
-			else
-			{
-				UnityVersionHandler.OpenScene (number, forceReload);
-			}
-		}
-
-
-		/**
-		 * <summary>Adds the scene additively.</summary>
-		 */
-		public void AddLevel ()
-		{
-			if (!string.IsNullOrEmpty (name))
-			{
-				UnityVersionHandler.OpenScene (name, false, true);
-			}
-			else
-			{
-				UnityVersionHandler.OpenScene (number, false, true);
-			}
-		}
-
-
-		/**
-		 * <summary>Closes the scene additively.</summary>
-		 * <returns>True if the operation was successful</returns>
-		 */
-		public bool CloseLevel ()
-		{
-			if (!string.IsNullOrEmpty (name))
-			{
-				return UnityVersionHandler.CloseScene (name);
-			}
-			return UnityVersionHandler.CloseScene (number);
-		}
-
-
-		/**
-		 * <summary>Loads the scene asynchronously.</summary>
-		 * <returns>The generated AsyncOperation class</returns>
-		 */
-		public AsyncOperation LoadLevelASync ()
-		{
-			return UnityVersionHandler.LoadLevelAsync (number, name);
-		}
-
-
-		/**
-		 * Returns True if the scene data is empty
-		 */
-		public bool IsNull
+		/** All open SubScenes */
+		public List<SubScene> SubScenes
 		{
 			get
 			{
-				if (string.IsNullOrEmpty (name) && number == -1)
-				{
-					return true;
-				}
-				return false;
+				return subScenes;
 			}
 		}
+
+
+		/** The current scene index. If multiple scenes are open, this will be the main scene. */
+		public static int CurrentSceneIndex
+		{
+			get
+			{
+				#if UNITY_EDITOR && UNITY_2019_3_OR_NEWER
+				if (UnityEditor.EditorSettings.enterPlayModeOptions.HasFlag (UnityEditor.EnterPlayModeOptions.DisableSceneReload) && UnityEngine.SceneManagement.SceneManager.GetActiveScene ().buildIndex == -1)
+				{
+					return 0;
+				}
+				#endif
+				return UnityEngine.SceneManagement.SceneManager.GetActiveScene ().buildIndex;
+			}
+		}
+
+
+		/** The current scene. If multiple scenes are open, this will be the main scene. */
+		public static Scene CurrentScene
+		{
+			get
+			{
+				return UnityEngine.SceneManagement.SceneManager.GetActiveScene ();
+			}
+		}
+
+
+		/** The current scene name. If multiple scenes are open, this will be the main scene. */
+		public static string CurrentSceneName
+		{
+			get
+			{
+				return CurrentScene.name;
+			}
+		}
+
+
+		/** The index of the previous scene loaded.  This is not necessarily the current Player's previous scene - for that, use GetPreviousSceneIndex (true) */
+		public int PreviousSceneIndex
+		{
+			get
+			{
+				return previousGlobalSceneIndex;
+			}
+		}
+
+
+		/** The name of the previous scene loaded.  This is not necessarily the current Player's previous scene - for that, use GetPreviousSceneName (true) */
+		public string PreviousSceneName
+		{
+			get
+			{
+				return previousGlobalSceneName;
+			}
+		}
+
+		#endregion
 
 	}
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MusicStorage.cs"
  * 
@@ -10,6 +10,10 @@
  */
 
 using UnityEngine;
+using UnityEngine.Audio;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace AC
 {
@@ -18,13 +22,21 @@ namespace AC
 	public class MusicStorage
 	{
 
+		#region Variables
+
 		/** A unique identifier */
 		public int ID;
 		/** The music's AudioClip */
 		public AudioClip audioClip;
 		/** The relative volume to play the music at, as a decimal of the global music volume */
 		public float relativeVolume;
+		/** If assigned, the AudioMixerGroup to use when this track is played - as opposed to the default. For this to be used, the use of mixer groups must be enabled in the Settings Manager */
+		public AudioMixerGroup overrideMixerGroup = null;
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -46,6 +58,24 @@ namespace AC
 				}
 			}
 		}
+
+		#endregion
+
+
+		#if UNITY_EDITOR
+
+		public void ShowGUI (string apiPrefix, bool allowMixerGroups)
+		{
+			audioClip = (AudioClip) CustomGUILayout.ObjectField <AudioClip> ("Clip:", audioClip, false, apiPrefix + ".audioClip", "The audio clip associated with this track");
+			relativeVolume = CustomGUILayout.Slider ("Relative volume:", relativeVolume, 0f, 1f, apiPrefix + ".relativeVolume", "The volume to play this track at, relative to the global volume setting for this sound type");
+
+			if (allowMixerGroups)
+			{
+				overrideMixerGroup = (AudioMixerGroup) CustomGUILayout.ObjectField <AudioMixerGroup> ("Mixer group (override):", overrideMixerGroup, false, apiPrefix + ".overrideMixerGroup", "If set, this mixer group will be used instead of the default used by this sound type");
+			}
+		}
+
+		#endif
 
 	}
 

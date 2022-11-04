@@ -1,3 +1,5 @@
+#if UNITY_EDITOR
+
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
@@ -43,7 +45,7 @@ namespace AC
 				_target.nodes = ResizeList (_target.nodes, numNodes);
 			}
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Path properties", EditorStyles.boldLabel);
 			_target.nodePause = CustomGUILayout.FloatField ("Node wait time (s):", _target.nodePause, "", "The time, in seconds, that a character will wait at each node before continuing along the path");
 			_target.pathSpeed = (PathSpeed) CustomGUILayout.EnumPopup ("Walk or run:", _target.pathSpeed, "", "The speed at which characters will traverse a path");
@@ -54,7 +56,7 @@ namespace AC
 			}
 			_target.affectY = CustomGUILayout.Toggle ("Override gravity?", _target.affectY, "", "If True, then characters will attempt to move vertically to reach nodes");
 			_target.commandSource = (ActionListSource) CustomGUILayout.EnumPopup ("Node commands source:", _target.commandSource, "", "The source of ActionList objects that are run when nodes are reached");
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			EditorGUILayout.Space ();
 
 			// List nodes
@@ -63,7 +65,7 @@ namespace AC
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			EditorGUILayout.LabelField ("Origin node:");
 			ShowNodeCommandGUI (_target, 0);
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			for (int i=1; i<_target.nodes.Count; i++)
 			{
@@ -106,7 +108,7 @@ namespace AC
 
 				EditorGUILayout.EndHorizontal ();
 				ShowNodeCommandGUI (_target, i);
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 
 			EditorGUILayout.Space ();
@@ -119,7 +121,7 @@ namespace AC
 
 			if (numNodes > 1)
 			{
-				bool newRelativeMode = GUILayout.Toggle (_target.RelativeMode, "Lock relative positions?", "Button");
+				bool newRelativeMode = GUILayout.Toggle (_target.RelativeMode, "Lock relative positions", "Button");
 				if (newRelativeMode && _target.RelativeMode != newRelativeMode)
 				{
 					_target.LastFramePosition = _target.transform.position;
@@ -161,9 +163,9 @@ namespace AC
 				{
 					_target.nodeCommands[i].actionListAsset = ActionListAssetMenu.AssetGUI ("ActionList on reach:", _target.nodeCommands[i].actionListAsset, _target.name + "_OnReachNode_" + i.ToString (), "", "The ActionList asset to run when the node is reached");
 				
-					if (_target.nodeCommands[i].actionListAsset != null && _target.nodeCommands[i].actionListAsset.useParameters)
+					if (_target.nodeCommands[i].actionListAsset != null && _target.nodeCommands[i].actionListAsset.NumParameters > 0)
 					{
-						_target.nodeCommands[i].parameterID = SetParametersGUI (_target.nodeCommands[i].actionListAsset.parameters, _target.nodeCommands[i].parameterID);
+						_target.nodeCommands[i].parameterID = SetParametersGUI (_target.nodeCommands[i].actionListAsset.DefaultParameters, _target.nodeCommands[i].parameterID);
 					}
 				}
 
@@ -302,3 +304,5 @@ namespace AC
 	}
 
 }
+
+#endif

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionListAssetManager.cs"
  * 
@@ -19,21 +19,18 @@ namespace AC
 	 * This component keeps track of which ActionListAssets are running.
 	 * It should be placed on the PersistentEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_action_list_asset_manager.html")]
-	#endif
 	public class ActionListAssetManager : MonoBehaviour
 	{
 
-		/** Data about any ActionListAsset that has been run and we need to store information about */
-		public List<ActiveList> activeLists = new List<ActiveList>();
+		#region Variables
+
+		protected List<ActiveList> activeLists = new List<ActiveList>();
+
+		#endregion
+
 		
-		
-		public void OnAwake ()
-		{
-			activeLists.Clear ();
-		}
-		
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks if a particular ActionListAsset file is running.</summary>
@@ -73,11 +70,7 @@ namespace AC
 				{
 					if (activeLists[i].IsFor (actionListAsset))
 					{
-						if (actionListAsset.canRunMultipleInstances && removeMultipleInstances)
-						{
-							activeLists[i].Reset (false);
-						}
-
+						activeLists[i].Reset (false);
 						activeLists.RemoveAt (i);
 					}
 				}
@@ -85,21 +78,6 @@ namespace AC
 
 			addToSkipQueue = KickStarter.actionListManager.CanAddToSkipQueue (runtimeActionList, addToSkipQueue);
 			activeLists.Add (new ActiveList (runtimeActionList, addToSkipQueue, _startIndex));
-
-			if (KickStarter.playerMenus.ArePauseMenusOn (null))
-			{
-				if (runtimeActionList.actionListType == ActionListType.RunInBackground)
-				{
-					// Don't change gamestate if running in background
-					return;
-				}
-				if (runtimeActionList.actionListType == ActionListType.PauseGameplay && !runtimeActionList.unfreezePauseMenus)
-				{
-					// Don't affect the gamestate if we want to remain frozen
-					return;
-				}
-			}
-			KickStarter.actionListManager.SetCorrectGameState ();
 		}
 		
 		
@@ -181,12 +159,6 @@ namespace AC
 			}
 		}
 
-		
-		private void OnDestroy ()
-		{
-			activeLists.Clear ();
-		}
-		
 
 		/**
 		 * <summary>Records the Action indices that the associated ActionListAsset was running before being paused. This data is sent to the ActionListAsset's associated ActiveList</summary>
@@ -221,6 +193,7 @@ namespace AC
 					RuntimeActionList runtimeActionList = (RuntimeActionList) activeLists[i].actionList;
 					runtimeActionList.Pause ();
 					runtimeActionLists.Add (runtimeActionList);
+					activeLists[i].UpdateParameterData ();
 				}
 			}
 			return runtimeActionLists.ToArray ();
@@ -253,11 +226,11 @@ namespace AC
 						}
 					}
 
-					GameObject runtimeActionListObject = (GameObject) Instantiate (Resources.Load (Resource.runtimeActionList));
+					GameObject runtimeActionListObject = new GameObject ();
 					runtimeActionListObject.name = actionListAsset.name;
 					if (numInstances > 0) runtimeActionListObject.name += " " + numInstances.ToString ();
 
-					RuntimeActionList runtimeActionList = runtimeActionListObject.GetComponent <RuntimeActionList>();
+					RuntimeActionList runtimeActionList = runtimeActionListObject.AddComponent <RuntimeActionList>();
 					runtimeActionList.DownloadActions (actionListAsset, activeLists[i].GetConversationOnEnd (), activeLists[i].startIndex, false, activeLists[i].inSkipQueue, true);
 					activeLists[i].Resume (runtimeActionList, rerunPausedActions);
 					foundInstance = true;
@@ -275,19 +248,6 @@ namespace AC
 			}
 		}
 
-
-		private void PurgeLists ()
-		{
-			for (int i=0; i<activeLists.Count; i++)
-			{
-				if (!activeLists[i].IsNecessary ())
-				{
-					activeLists.RemoveAt (i);
-					i--;
-				}
-			}
-		}
-		
 		
 		/**
 		 * <summary>Generates a save-able string out of the ActionList resume data.<summary>
@@ -296,7 +256,7 @@ namespace AC
 		public string GetSaveData ()
 		{
 			PurgeLists ();
-			string assetResumeData = "";
+			string assetResumeData = string.Empty;
 			for (int i=0; i<activeLists.Count; i++)
 			{
 				string thisResumeData = activeLists[i].GetSaveData (null);
@@ -328,14 +288,89 @@ namespace AC
 				foreach (string chunk in dataArray)
 				{
 					ActiveList activeList = new ActiveList ();
-					if (activeList.LoadData (chunk))
-					{
-						activeLists.Add (activeList);
-					}
+					activeList.LoadData (chunk);
 				}
 			}
 		}
-		
+
+
+		public void AddToList (ActiveList activeList)
+		{
+			activeLists.Add (activeList);
+		}
+
+
+		public void DrawStatus ()
+		{
+			bool anyRunning = false;
+			foreach (ActiveList activeList in activeLists)
+			{
+				if (activeList.IsRunning ())
+				{
+					anyRunning = true;
+					break;
+				}
+			}
+
+			if (anyRunning)
+			{
+				GUILayout.Label ("ActionList Assets running:");
+
+				foreach (ActiveList activeList in activeLists)
+				{
+					activeList.ShowGUI ();
+				}
+			}
+		}
+
+
+		public int GetNumInstances (ActionListAsset actionListAsset)
+		{
+			int numInstances = 0;
+			foreach (ActiveList activeList in activeLists)
+			{
+				if (activeList.IsFor (actionListAsset) && activeList.IsRunning ())
+				{
+					numInstances++;
+				}
+			}
+			return numInstances;
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void PurgeLists ()
+		{
+			for (int i=0; i<activeLists.Count; i++)
+			{
+				if (!activeLists[i].IsNecessary ())
+				{
+					activeLists.RemoveAt (i);
+					i--;
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** Data about any ActionListAsset that has been run and we need to store information about */
+		public List<ActiveList> ActiveLists
+		{
+			get
+			{
+				if (activeLists == null) activeLists = new List<ActiveList> ();
+				return activeLists;
+			}
+		}
+
+		#endregion
+
 	}
-	
+
 }

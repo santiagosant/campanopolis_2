@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -26,7 +28,7 @@ namespace AC
 		public static void Init ()
 		{
 			CharacterWizardWindow window = EditorWindow.GetWindowWithRect <CharacterWizardWindow> (new Rect (0, 0, 420, 360), true, "Character Wizard", true);
-			UnityVersionHandler.SetWindowTitle (window, "Character wizard");
+			window.titleContent.text = "Character wizard";
 			window.position = new Rect (300, 200, 420, 360);
 		}
 		
@@ -156,7 +158,7 @@ namespace AC
 			GUI.Label (pageRect, "Page " + (pageNumber + 1) + " of " + (numPages + 1));
 
 			GUILayout.FlexibleSpace ();
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 		
 		
@@ -197,7 +199,6 @@ namespace AC
 				newBaseObject.AddComponent <Rigidbody>();
 				Player playerScript = newBaseObject.AddComponent <Player>();
 				playerScript.animationEngine = animationEngine;
-				newBaseObject.tag = Tags.player;
 				CapsuleCollider capsuleCollider = newBaseObject.AddComponent <CapsuleCollider>();
 				capsuleCollider.center = new Vector3 (0f, 1f, 0f);
 				capsuleCollider.height = 2f;
@@ -264,7 +265,6 @@ namespace AC
 			if (charType == CharType.Player)
 			{
 				charScript = newBaseObject.AddComponent <Player>();
-				newBaseObject.tag = Tags.player;
 			}
 			else if (charType == CharType.NPC)
 			{
@@ -273,7 +273,7 @@ namespace AC
 				if (is2D)
 				{
 					BoxCollider2D boxCollider = newCharacterOb.AddComponent <BoxCollider2D>();
-					UnityVersionHandler.SetBoxCollider2DCentre (boxCollider, new Vector2 (0f, 1f));
+					boxCollider.offset = new Vector2 (0f, 1f);
 					boxCollider.size = new Vector2 (1f, 2f);
 					boxCollider.isTrigger = true;
 				}
@@ -360,7 +360,7 @@ namespace AC
 			charScript.soundChild = sound;
 
 			baseObject = null;
-			charName = "";
+			charName = string.Empty;
 			EditorGUIUtility.PingObject (newBaseObject);
 		}
 
@@ -385,22 +385,16 @@ namespace AC
 				GUILayout.Label ("Is this a Player or an NPC?");
 				charType = (CharType) EditorGUILayout.EnumPopup (charType);
 
-				if (charType == CharType.NPC)
+				if (charType == CharType.Player && AdvGame.GetReferences ().settingsManager && AdvGame.GetReferences ().settingsManager.movementMethod == MovementMethod.FirstPerson)
 				{
-					EditorGUILayout.BeginHorizontal ();
-					GUILayout.Label ("The character's name:", GUILayout.Width (150f));
-					charName = GUILayout.TextField (charName);
-					EditorGUILayout.EndHorizontal ();
-				}
-				else
-				{
-					if (AdvGame.GetReferences ().settingsManager && AdvGame.GetReferences ().settingsManager.movementMethod == MovementMethod.FirstPerson)
-					{
-						EditorGUILayout.HelpBox ("First-person Player prefabs require no base graphic, though one can be added after creation if desired.", MessageType.Info);
-						return;
-					}
+					EditorGUILayout.HelpBox ("First-person Player prefabs require no base graphic, though one can be added after creation if desired.", MessageType.Info);
+					return;
 				}
 
+				EditorGUILayout.Space ();
+				charName = EditorGUILayout.TextField ("The " + charType.ToString () + "'s name:", charName);
+
+				EditorGUILayout.Space ();
 				GUILayout.Label ("Assign your character's base GameObject (such as a Skinned Mesh Renderer or 'idle' sprite):");
 				baseObject = (GameObject) EditorGUILayout.ObjectField (baseObject, typeof (GameObject), true);
 
@@ -501,3 +495,5 @@ namespace AC
 	}
 
 }
+
+#endif

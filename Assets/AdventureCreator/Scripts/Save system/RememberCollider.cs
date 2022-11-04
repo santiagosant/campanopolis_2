@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberCollider.cs"
  * 
@@ -15,24 +15,26 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * This script is attached to Colliders in the scene whose on/off state you wish to save.
-	 */
+	/** This script is attached to Colliders in the scene whose on/off state you wish to save. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Collider")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_collider.html")]
-	#endif
 	public class RememberCollider : Remember
 	{
+
+		#region Variables
 
 		/** Determines whether the Collider is on or off when the game begins */
 		public AC_OnOff startState = AC_OnOff.On;
 
-		private bool loadedData = false;
+		#endregion
 
-		
-		private void Awake ()
+
+		#region UnityStandards
+
+		protected override void Start ()
 		{
+			base.Start ();
+			
 			if (loadedData) return;
 
 			if (KickStarter.settingsManager && GameIsPlaying ())
@@ -50,7 +52,11 @@ namespace AC
 				}
 			}
 		}
-		
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Serialises appropriate GameObject values into a string.</summary>
@@ -86,7 +92,6 @@ namespace AC
 			ColliderData data = Serializer.LoadScriptData <ColliderData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
@@ -103,12 +108,12 @@ namespace AC
 			loadedData = true;
 		}
 
+		#endregion
+
 	}
 
 
-	/**
-	 * A data container used by the RememberCollider script.
-	 */
+	/** A data container used by the RememberCollider script. */
 	[System.Serializable]
 	public class ColliderData : RememberData
 	{
@@ -116,9 +121,7 @@ namespace AC
 		/** True if the Collider is enabled */
 		public bool isOn;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public ColliderData () { }
 
 	}

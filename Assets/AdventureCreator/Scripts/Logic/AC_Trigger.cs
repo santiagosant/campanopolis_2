@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"AC_Trigger.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 */
 	[AddComponentMenu("Adventure Creator/Logic/Trigger")]
 	[System.Serializable]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_a_c___trigger.html")]
-	#endif
 	public class AC_Trigger : ActionList
 	{
+
+		#region Variables
 
 		/** If detectionMethod = TriggerDetectionMethod.RigidbodyCollision, what the Trigger will react to (Player, SetObject, AnyObject, AnyObjectWithComponent) */
 		public TriggerDetects detects = TriggerDetects.Player;
@@ -35,8 +35,6 @@ namespace AC
 
 		/** What kind of contact the Trigger reacts to (0 = "On enter", 1 = "Continuous", 2 = "On exit") */
 		public int triggerType;
-		/** If True, then a Gizmo will be drawn in the Scene window at the Trigger's position */
-		public bool showInEditor = false;
 		/** If True, and the Player sets off the Trigger while walking towards a Hotspot Interaction, then the Player will stop, and the Interaction will be cancelled */
 		public bool cancelInteractions = false;
 		/** The state of the game under which the trigger reacts (OnlyDuringGameplay, OnlyDuringCutscenes, DuringCutscenesAndGameplay) */
@@ -46,38 +44,46 @@ namespace AC
 
 		/** If True, and detectionMethod = TriggerDetectionMethod.TransformPosition, then the Trigger will react to the active Player */
 		public bool detectsPlayer = true;
+		/** If True, and detectsPlayer = True, and player-switching is enabled, then inactive Players will be detected too */
+		public bool detectsAllPlayers = false;
 		/** The GameObjects that the Trigger reacts to, if detectionMethod = TriggerDetectionMethod.TransformPosition */
 		public List<GameObject> obsToDetect = new List<GameObject>();
 
-		private Collider2D _collider2D;
-		private Collider _collider;
-		private bool[] lastFrameWithins;
+		/** If True, then the Trigger will restart if it is triggered while already running. Otherwise, it will not restart. */
+		public bool canInterruptSelf = true;
+
+		public int gameObjectParameterID = -1;
+
+		protected Collider2D _collider2D;
+		protected Collider _collider;
+		protected List<PositionDetectObject> positionDetectObjects = new List<PositionDetectObject>();
+
+		#endregion
 
 
-		private void OnEnable ()
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
-			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+			InitTrigger ();
 
-			_collider2D = GetComponent <Collider2D>();
-			_collider = GetComponent <Collider>();
-			lastFrameWithins = (detectsPlayer) ? new bool[obsToDetect.Count + 1] : new bool[obsToDetect.Count];
-
-			if (_collider == null && _collider2D == null)
-			{
-				ACDebug.LogWarning ("Trigger '" + gameObject.name + " cannot detect collisions because it has no Collider!", this);
-			}
+			EventManager.OnPlayerSpawn += OnPlayerSpawn;
+			EventManager.OnPlayerRemove += OnPlayerRemove;
 		}
 
 
-		private void Start ()
+		protected void Start ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			if (KickStarter.stateHandler) KickStarter.stateHandler.Unregister (this);
+
+			EventManager.OnPlayerSpawn -= OnPlayerSpawn;
+			EventManager.OnPlayerRemove -= OnPlayerRemove;
 		}
 
 
@@ -85,21 +91,201 @@ namespace AC
 		{
 			if (detectionMethod == TriggerDetectionMethod.TransformPosition)
 			{
-				for (int i=0; i<obsToDetect.Count; i++)
+				for (int i=0; i<positionDetectObjects.Count; i++)
 				{
-					ProcessObject (obsToDetect[i], i);
-				}
-
-				if (detectsPlayer && KickStarter.player != null)
-				{
-					ProcessObject (KickStarter.player.gameObject, lastFrameWithins.Length - 1);
+					positionDetectObjects[i].Process (this);
 				}
 			}
 		}
 
 
-		private void Interact (GameObject collisionOb)
+		protected void OnTriggerEnter (Collider other)
 		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 0 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+		
+		
+		protected void OnTriggerEnter2D (Collider2D other)
+		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 0 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+		
+		
+		protected void OnTriggerStay (Collider other)
+		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 1 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+		
+		
+		protected void OnTriggerStay2D (Collider2D other)
+		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 1 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+		
+		
+		protected void OnTriggerExit (Collider other)
+		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 2 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+		
+		
+		protected void OnTriggerExit2D (Collider2D other)
+		{
+			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 2 && IsObjectCorrect (other.gameObject))
+			{
+				Interact (other.gameObject);
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/**
+		 * <summary>Checks if the Trigger is enabled.</summary>
+		 * <returns>True if the Trigger is enabled.</summary>
+		 */
+		public bool IsOn ()
+		{
+			if (_collider)
+			{
+				return _collider.enabled;
+			}
+			else if (_collider2D)
+			{
+				return _collider2D.enabled;
+			}
+			return false;
+		}
+		
+
+		/** Enables the Trigger. */
+		public void TurnOn ()
+		{
+			InitTrigger ();
+
+			if (_collider)
+			{
+				_collider.enabled = true;
+			}
+			else if (_collider2D)
+			{
+				_collider2D.enabled = true;
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot turn " + this.name + " on because it has no Collider component.", this);
+			}
+		}
+		
+
+		/** Disables the Trigger. */
+		public void TurnOff ()
+		{
+			InitTrigger ();
+
+			if (_collider)
+			{
+				_collider.enabled = false;
+			}
+			else if (_collider2D)
+			{
+				_collider2D.enabled = false;
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot turn " + this.name + " off because it has no Collider component.", this);
+			}
+
+			for (int i=0; i<positionDetectObjects.Count; i++)
+			{
+				positionDetectObjects[i].OnTurnOff ();
+			}
+		}
+
+
+		public override void Interact ()
+		{
+			Interact (null);
+		}
+
+
+		/**
+		 * <summary>Registers an object as one that can be detected by the Trigger, provided that detectionMethod = TriggerDetectionMethod.TransformPosition</summary>
+		 * <param name = "_gameObject">The object to detect</param>
+		 */
+		public void AddObjectToDetect (GameObject _gameObject)
+		{
+			if (_gameObject == null || obsToDetect.Contains (_gameObject))
+			{
+				return;
+			}
+
+			obsToDetect.Add (_gameObject);
+			positionDetectObjects.Add (new PositionDetectObject (_gameObject));
+		}
+
+
+		/**
+		 * <summary>Registers an object as one that cancanot be detected by the Trigger, provided that detectionMethod = TriggerDetectionMethod.TransformPosition</summary>
+		 * <param name = "_gameObject">The object to no longer detect</param>
+		 */
+		public void RemoveObjectToDetect (GameObject _gameObject)
+		{
+			if (_gameObject == null || !obsToDetect.Contains (_gameObject))
+			{
+				return;
+			}
+
+			obsToDetect.Remove (_gameObject);
+
+			for (int i = 0; i < positionDetectObjects.Count; i++)
+			{
+				if (positionDetectObjects[i].IsForObject (_gameObject))
+				{
+					positionDetectObjects.RemoveAt (i);
+					i = 0;
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void Interact (GameObject collisionOb)
+		{
+			if (!enabled) return;
+
+			if (AreActionsRunning ())
+			{
+				if (canInterruptSelf)
+				{
+					Kill ();
+				}
+				else
+				{
+					return;
+				}
+			}
+
 			if (cancelInteractions)
 			{
 				KickStarter.playerInteraction.StopMovingToHotspot ();
@@ -109,147 +295,44 @@ namespace AC
 			{
 				KickStarter.playerInteraction.DeselectHotspot (false);
 			}
-			
-			// Set correct parameter
-			if (useParameters && parameters != null && parameters.Count >= 1)
-			{
-				if (parameters[0].parameterType == ParameterType.GameObject)
-				{
-					parameters[0].gameObject = collisionOb;
-				}
-				else
-				{
-					ACDebug.Log ("Cannot set the value of parameter 0 ('" + parameters[0].label + "') as it is not of the type 'Game Object'.", this);
-				}
-			}
 
 			KickStarter.eventManager.Call_OnRunTrigger (this, collisionOb);
 
-			Interact ();
-		}
-		
-		
-		private void OnTriggerEnter (Collider other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 0 && IsObjectCorrect (other.gameObject))
+			// Set correct parameter
+			if (collisionOb)
 			{
-				Interact (other.gameObject);
-			}
-		}
-		
-		
-		private void OnTriggerEnter2D (Collider2D other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 0 && IsObjectCorrect (other.gameObject))
-			{
-				Interact (other.gameObject);
-			}
-		}
-		
-		
-		private void OnTriggerStay (Collider other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 1 && IsObjectCorrect (other.gameObject))
-			{
-				Interact (other.gameObject);
-			}
-		}
-		
-		
-		private void OnTriggerStay2D (Collider2D other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 1 && IsObjectCorrect (other.gameObject))
-			{
-				Interact (other.gameObject);
-			}
-		}
-		
-		
-		private void OnTriggerExit (Collider other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 2 && IsObjectCorrect (other.gameObject))
-			{
-				Interact (other.gameObject);
-			}
-		}
-		
-		
-		private void OnTriggerExit2D (Collider2D other)
-		{
-			if (detectionMethod == TriggerDetectionMethod.RigidbodyCollision && triggerType == 2 && IsObjectCorrect (other.gameObject))
-			{
-				Interact (other.gameObject);
-			}
-		}
-
-
-		/**
-		 * <summary>Checks if the Trigger is enabled.</summary>
-		 * <returns>True if the Trigger is enabled.</summary>
-		 */
-		public bool IsOn ()
-		{
-			if (GetComponent <Collider>())
-			{
-				return GetComponent <Collider>().enabled;
-			}
-			else if (GetComponent <Collider2D>())
-			{
-				return GetComponent <Collider2D>().enabled;
-			}
-			return false;
-		}
-		
-
-		/**
-		 * <summary>Enables the Trigger.</summary>
-		 */
-		public void TurnOn ()
-		{
-			if (GetComponent <Collider>())
-			{
-				GetComponent <Collider>().enabled = true;
-			}
-			else if (GetComponent <Collider2D>())
-			{
-				GetComponent <Collider2D>().enabled = true;
-			}
-			else
-			{
-				ACDebug.LogWarning ("Cannot turn " + this.name + " on because it has no Collider component.", this);
-			}
-		}
-		
-
-		/**
-		 * <summary>Disables the Trigger.</summary>
-		 */
-		public void TurnOff ()
-		{
-			if (GetComponent <Collider>())
-			{
-				GetComponent <Collider>().enabled = false;
-			}
-			else if (GetComponent <Collider2D>())
-			{
-				GetComponent <Collider2D>().enabled = false;
-			}
-			else
-			{
-				ACDebug.LogWarning ("Cannot turn " + this.name + " off because it has no Collider component.", this);
-			}
-
-			if (lastFrameWithins != null)
-			{
-				for (int i=0; i<lastFrameWithins.Length; i++)
+				if (source == ActionListSource.InScene)
 				{
-					lastFrameWithins[i] = false;
+					if (useParameters && parameters != null && parameters.Count >= 1)
+					{
+						if (parameters[0].parameterType == ParameterType.GameObject)
+						{
+							parameters[0].gameObject = collisionOb;
+						}
+						else
+						{
+							ACDebug.Log ("Cannot set the value of parameter 0 ('" + parameters[0].label + "') as it is not of the type 'Game Object'.", this);
+						}
+					}
+				}
+				else if (source == ActionListSource.AssetFile
+						&& assetFile != null
+						&& assetFile.NumParameters > 0
+						&& gameObjectParameterID >= 0)
+				{
+					ActionParameter param = (syncParamValues)
+											? assetFile.GetParameter (gameObjectParameterID)
+											: GetParameter (gameObjectParameterID);
+					
+					if (param != null) param.SetValue (collisionOb);
 				}
 			}
+
+			base.Interact ();
 		}
-		
-		
-		private bool IsObjectCorrect (GameObject obToCheck)
+
+
+		protected bool IsObjectCorrect (GameObject obToCheck)
 		{
 			if (KickStarter.stateHandler == null || KickStarter.stateHandler.gameState == GameState.Paused || obToCheck == null)
 			{
@@ -270,7 +353,7 @@ namespace AC
 				return false;
 			}
 
-			if (KickStarter.stateHandler != null && KickStarter.stateHandler.AreTriggersDisabled ())
+			if (KickStarter.stateHandler && KickStarter.stateHandler.AreTriggersDisabled ())
 			{
 				return false;
 			}
@@ -280,154 +363,64 @@ namespace AC
 				return true;
 			}
 
-			if (detects == TriggerDetects.Player)
+			switch (detects)
 			{
-				if (obToCheck.CompareTag (Tags.player))
-				{
-					return true;
-				}
-			}
-			else if (detects == TriggerDetects.SetObject)
-			{
-				if (obToDetect != null && obToCheck == obToDetect)
-				{
-					return true;
-				}
-			}
-			else if (detects == TriggerDetects.AnyObjectWithComponent)
-			{
-				if (!string.IsNullOrEmpty (detectComponent))
-				{
-					string[] allComponents = detectComponent.Split (";"[0]);
-					foreach (string component in allComponents)
+				case TriggerDetects.Player:
+					if (KickStarter.player && obToCheck == KickStarter.player.gameObject)
 					{
-						if (!string.IsNullOrEmpty (component) && obToCheck.GetComponent (component))
+						return true;
+					}
+					break;
+
+				case TriggerDetects.SetObject:
+					if (obToDetect && obToCheck == obToDetect)
+					{
+						return true;
+					}
+					break;
+
+				case TriggerDetects.AnyObjectWithComponent:
+					if (!string.IsNullOrEmpty (detectComponent))
+					{
+						string[] allComponents = detectComponent.Split (";"[0]);
+						foreach (string component in allComponents)
 						{
-							return true;
+							if (!string.IsNullOrEmpty (component) && obToCheck.GetComponent (component))
+							{
+								return true;
+							}
 						}
 					}
-				}
-			}
-			else if (detects == TriggerDetects.AnyObjectWithTag)
-			{
-				if (!string.IsNullOrEmpty (detectComponent))
-				{
-					string[] allComponents = detectComponent.Split (";"[0]);
-					foreach (string component in allComponents)
+					break;
+
+				case TriggerDetects.AnyObjectWithTag:
+					if (!string.IsNullOrEmpty (detectComponent))
 					{
-						if (!string.IsNullOrEmpty (component) && obToCheck.tag == component)
+						string[] allComponents = detectComponent.Split (";"[0]);
+						foreach (string component in allComponents)
 						{
-							return true;
+							if (!string.IsNullOrEmpty (component) && obToCheck.tag == component)
+							{
+								return true;
+							}
 						}
 					}
-				}
-			}
-			else if (detects == TriggerDetects.AnyObject)
-			{
-				return true;
+					break;
+
+				case TriggerDetects.AnyObject:
+					return true;
+
+				default:
+					break;
 			}
 			
 			return false;
 		}
 
 
-		#if UNITY_EDITOR
-		
-		private void OnDrawGizmos ()
+		protected bool CheckForPoint (Vector3 position)
 		{
-			if (showInEditor)
-			{
-				DrawGizmos ();
-			}
-		}
-		
-		
-		private void OnDrawGizmosSelected ()
-		{
-			DrawGizmos ();
-		}
-		
-		
-		private void DrawGizmos ()
-		{
-			Color gizmoColor = new Color (1f, 0.3f, 0f, 0.8f);
-
-			if (GetComponent <PolygonCollider2D>())
-			{
-				AdvGame.DrawPolygonCollider (transform, GetComponent <PolygonCollider2D>(), gizmoColor);
-			}
-			else if (GetComponent <MeshCollider>())
-			{
-				AdvGame.DrawMeshCollider (transform, GetComponent <MeshCollider>().sharedMesh, gizmoColor);
-			}
-			else if (GetComponent <SphereCollider>())
-			{
-				AdvGame.DrawSphereCollider (transform, GetComponent <SphereCollider>(), gizmoColor);
-			}
-			else if (GetComponent <BoxCollider2D>() != null || GetComponent <BoxCollider>() != null)
-			{
-				AdvGame.DrawCubeCollider (transform, gizmoColor);
-			}
-		}
-
-		#endif
-
-
-		private void ProcessObject (GameObject objectToCheck, int i)
-		{
-			if (objectToCheck != null)
-			{
-				bool isInside = CheckForPoint (objectToCheck.transform.position);
-				if (DetermineValidity (isInside, i))
-				{
-					if (IsObjectCorrect (objectToCheck))
-					{
-						Interact (objectToCheck);
-					}
-				}
-			}
-		}
-
-
-		private bool DetermineValidity (bool thisFrameWithin, int i)
-		{
-			bool isValid = false;
-
-			switch (triggerType)
-			{
-				case 0:
-					// OnEnter
-					if (thisFrameWithin && !lastFrameWithins[i])
-					{
-						isValid = true;
-					}
-					break;
-
-				case 1:
-					// Continuous
-					isValid = thisFrameWithin;
-					break;
-
-				case 2:
-					// OnExit
-					if (!thisFrameWithin && lastFrameWithins[i])
-					{
-						isValid = true;
-					}
-					break;
-
-				default:
-					break;
-			}
-
-			lastFrameWithins[i] = thisFrameWithin;
-			return isValid;
-		}
-
-
-		private bool CheckForPoint (Vector3 position)
-		{
-			if (_collider2D != null)
+			if (_collider2D)
 			{
 				if (_collider2D.enabled)
 				{
@@ -436,13 +429,259 @@ namespace AC
 				return false;
 			}
 
-			if (_collider != null && _collider.enabled)
+			if (_collider && _collider.enabled)
 			{
 				return _collider.bounds.Contains (position);
 			}
 
 			return false;
 		}
+
+
+		protected void OnPlayerSpawn (Player player)
+		{
+			if (detectionMethod == TriggerDetectionMethod.TransformPosition && detectsPlayer && detectsAllPlayers)
+			{
+				foreach (PositionDetectObject positionDetectObject in positionDetectObjects)
+				{
+					if (positionDetectObject.IsForObject (player.gameObject))
+					{
+						return;
+					}
+				}
+
+				positionDetectObjects.Add (new PositionDetectObject (player));
+			}
+		}
+
+
+		protected void OnPlayerRemove (Player player)
+		{
+			if (detectionMethod == TriggerDetectionMethod.TransformPosition && detectsPlayer && detectsAllPlayers)
+			{
+				for (int i=0; i<positionDetectObjects.Count; i++)
+				{
+					if (positionDetectObjects[i].IsForObject (player.gameObject))
+					{
+						positionDetectObjects.RemoveAt (i);
+					}
+				}
+			}
+		}
+
+
+		protected void InitTrigger ()
+		{
+			if (KickStarter.stateHandler) KickStarter.stateHandler.Register (this);
+
+			_collider2D = GetComponent <Collider2D>();
+			_collider = GetComponent <Collider>();
+
+			if (detectionMethod == TriggerDetectionMethod.TransformPosition)
+			{
+				positionDetectObjects.Clear ();
+				foreach (GameObject obToDetect in obsToDetect)
+				{
+					if (obToDetect != null)
+					{
+						positionDetectObjects.Add (new PositionDetectObject (obToDetect));
+					}
+				}
+
+				if (detectsPlayer)
+				{
+					if (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow || !detectsAllPlayers)
+					{
+						positionDetectObjects.Add (new PositionDetectObject (-1));
+					}
+					else if (detectsAllPlayers && KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+					{
+						Player[] players = FindObjectsOfType<Player>();
+						foreach (Player player in players)
+						{
+							positionDetectObjects.Add (new PositionDetectObject (player));
+						}
+					}
+				}
+			}
+
+			if (_collider == null && _collider2D == null)
+			{
+				ACDebug.LogWarning ("Trigger '" + gameObject.name + " cannot detect collisions because it has no Collider!", this);
+			}
+		}
+
+		#endregion
+
+
+		#if UNITY_EDITOR
+		
+		protected void OnDrawGizmos ()
+		{
+			if (KickStarter.sceneSettings && KickStarter.sceneSettings.visibilityTriggers && UnityEditor.Selection.activeGameObject != gameObject)
+			{
+				DrawGizmos ();
+			}
+		}
+		
+		
+		protected void OnDrawGizmosSelected ()
+		{
+			DrawGizmos ();
+		}
+		
+		
+		protected void DrawGizmos ()
+		{
+			Color gizmoColor = ACEditorPrefs.TriggerGizmoColor;
+
+			PolygonCollider2D polygonCollider2D = GetComponent <PolygonCollider2D>();
+			if (polygonCollider2D)
+			{
+				AdvGame.DrawPolygonCollider (transform, polygonCollider2D, gizmoColor);
+			}
+			else
+			{
+				MeshCollider meshCollider = GetComponent <MeshCollider>();
+				if (meshCollider)
+				{
+					AdvGame.DrawMeshCollider(transform, meshCollider.sharedMesh, gizmoColor);
+				}
+				else
+				{
+					SphereCollider sphereCollider = GetComponent <SphereCollider>();
+					if (sphereCollider)
+					{
+						AdvGame.DrawSphereCollider (transform, sphereCollider, gizmoColor);
+					}
+					else
+					{
+						CapsuleCollider capsuleCollider = GetComponent <CapsuleCollider>();
+						if (capsuleCollider)
+						{
+							AdvGame.DrawCapsule (transform, capsuleCollider.center, capsuleCollider.radius, capsuleCollider.height, gizmoColor);
+						}
+						else
+						{
+							CharacterController characterController = GetComponent <CharacterController>();
+							if (characterController)
+							{
+								AdvGame.DrawCapsule (transform, characterController.center, characterController.radius, characterController.height, gizmoColor);
+							}
+							else
+							{
+								if (GetComponent<BoxCollider>() || GetComponent<BoxCollider2D>())
+								{
+									AdvGame.DrawCubeCollider(transform, gizmoColor);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		#endif
+
+
+		#region PrivateStructs
+
+		protected class PositionDetectObject
+		{
+
+			private GameObject obToDetect;
+			private bool lastFrameWithin;
+			private int playerID;
+			
+
+			public PositionDetectObject (GameObject _obToDetect)
+			{
+				obToDetect = _obToDetect;
+				lastFrameWithin = false;
+				playerID = -2;
+			}
+
+
+			public PositionDetectObject (Player _player)
+			{
+				obToDetect = _player.gameObject;
+				lastFrameWithin = false;
+				playerID = _player.ID;
+			}
+
+
+			public PositionDetectObject (int _playerID)
+			{
+				obToDetect = null;
+				lastFrameWithin = false;
+				playerID = _playerID;
+			}
+
+
+			public void OnTurnOff ()
+			{
+				lastFrameWithin = false;
+			}
+
+
+			public bool IsForObject (GameObject gameObject)
+			{ 
+				return (obToDetect == gameObject);
+			}
+
+
+			public void Process (AC_Trigger trigger)
+			{
+				if (playerID == -1 && KickStarter.player)
+				{
+					obToDetect = KickStarter.player.gameObject;
+				}
+				if (obToDetect)
+				{
+					bool isInside = trigger.CheckForPoint (obToDetect.transform.position);
+					if (DetermineValidity (isInside, trigger.triggerType))
+					{
+						if (trigger.IsObjectCorrect (obToDetect))
+						{
+							trigger.Interact (obToDetect);
+						}
+					}
+					lastFrameWithin = isInside;
+				}
+			}
+
+
+			private bool DetermineValidity (bool thisFrameWithin, int triggerType)
+			{
+				switch (triggerType)
+				{
+					case 0:
+						// OnEnter
+						if (thisFrameWithin && !lastFrameWithin)
+						{
+							return true;
+						}
+						return false;
+
+					case 1:
+						// Continuous
+						return thisFrameWithin;
+
+					case 2:
+						// OnExit
+						if (!thisFrameWithin && lastFrameWithin)
+						{
+							return true;
+						}
+						return false;
+
+					default:
+						return false;
+				}
+			}
+		}
+
+		#endregion
 
 	}
 	

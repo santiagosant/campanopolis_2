@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MainCameraPlayableBehaviour.cs"
  * 
@@ -9,7 +9,7 @@
  * 
  */
 
-#if UNITY_2017_1_OR_NEWER
+#if !ACIgnoreTimeline
 
 using UnityEngine;
 using UnityEngine.Playables;
@@ -28,6 +28,8 @@ namespace AC
 
 		public _Camera gameCamera;
 		public float shakeIntensity;
+		public bool callCustomEvents;
+		public bool setsCameraAfterRunning;
 
 		#endregion
 

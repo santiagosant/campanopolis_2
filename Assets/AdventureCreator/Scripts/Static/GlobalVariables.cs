@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"GlobalVariables.cs"
  * 
@@ -18,9 +18,7 @@ namespace AC
 	/**
 	 * A class that can manipulate and retrieve the game's Global Variables at runtime.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_global_variables.html")]
-	#endif
 	public class GlobalVariables : MonoBehaviour
 	{
 
@@ -88,6 +86,7 @@ namespace AC
 		 * <summary>Returns a global variable.</summary>
 		 * <param name = "_id">The ID number of the variable</param>
 		 * <param name = "synchronise">If True, then the variable's value will be synchronised with any external link it may have.</param>
+		 * <returns>The global variable, or null if it was not found</returns>
 		 */
 		public static GVar GetVariable (int _id, bool synchronise = false)
 		{
@@ -96,6 +95,32 @@ namespace AC
 				foreach (GVar _var in KickStarter.runtimeVariables.globalVars)
 				{
 					if (_var.id == _id)
+					{
+						if (synchronise)
+						{
+							_var.Download (VariableLocation.Global);
+						}
+						return _var;
+					}
+				}
+			}
+			return null;
+		}
+
+
+		/**
+		 * <summary>Returns a global variable.</summary>
+		 * <param name = "_name">The name of the variable</param>
+		 * <param name = "synchronise">If True, then the variable's value will be synchronised with any external link it may have.</param>
+		 * <returns>The global variable, or null if it was not found</returns>
+		 */
+		public static GVar GetVariable (string _name, bool synchronise = false)
+		{
+			if (KickStarter.runtimeVariables)
+			{
+				foreach (GVar _var in KickStarter.runtimeVariables.globalVars)
+				{
+					if (_var.label == _name)
 					{
 						if (synchronise)
 						{
@@ -120,7 +145,7 @@ namespace AC
 			GVar var = GetVariable (_id, synchronise);
 			if (var != null)
 			{
-				return var.val;
+				return var.IntegerValue;
 			}
 
 			ACDebug.LogWarning ("Variable with ID=" + _id + " not found!");
@@ -139,11 +164,7 @@ namespace AC
 			GVar var = GetVariable (_id, synchronise);
 			if (var != null)
 			{
-				if (var.val == 1)
-				{
-					return true;
-				}
-				return false;
+				return var.BooleanValue;
 			}
 
 			ACDebug.LogWarning ("Variable with ID=" + _id + " not found!");
@@ -182,7 +203,7 @@ namespace AC
 			GVar var = GetVariable (_id, synchronise);
 			if (var != null)
 			{
-				return var.floatVal;
+				return var.FloatValue;
 			}
 			
 			ACDebug.LogWarning ("Variable with ID=" + _id + " not found!");
@@ -201,7 +222,7 @@ namespace AC
 			GVar var = GetVariable (_id, synchronise);
 			if (var != null)
 			{
-				return var.vector3Val;
+				return var.Vector3Value;
 			}
 			
 			ACDebug.LogWarning ("Variable with ID=" + _id + " not found!");
@@ -221,7 +242,7 @@ namespace AC
 			GVar var = GetVariable (_id, synchronise);
 			if (var != null)
 			{
-				return var.GetPopUpForIndex (var.val, languageNumber);
+				return var.GetPopUpForIndex (var.IntegerValue, languageNumber);
 			}
 			
 			ACDebug.LogWarning ("Variable with ID=" + _id + " not found!");
@@ -240,7 +261,7 @@ namespace AC
 			GVar var = GetVariable (_id);
 			if (var != null)
 			{
-				var.val = _value;
+				var.IntegerValue = _value;
 
 				if (synchronise)
 				{
@@ -261,15 +282,8 @@ namespace AC
 			GVar var = GetVariable (_id);
 			if (var != null)
 			{
-				if (_value)
-				{
-					var.val = 1;
-				}
-				else
-				{
-					var.val = 0;
-				}
-				
+				var.BooleanValue = _value;
+
 				if (synchronise)
 				{
 					var.Upload (VariableLocation.Global);
@@ -289,7 +303,7 @@ namespace AC
 			GVar var = GetVariable (_id);
 			if (var != null)
 			{
-				var.textVal = _value;
+				var.SetStringValue (_value);
 				
 				if (synchronise)
 				{
@@ -310,8 +324,8 @@ namespace AC
 			GVar var = GetVariable (_id);
 			if (var != null)
 			{
-				var.floatVal = _value;
-				
+				var.FloatValue = _value;
+
 				if (synchronise)
 				{
 					var.Upload (VariableLocation.Global);
@@ -331,8 +345,8 @@ namespace AC
 			GVar var = GetVariable (_id);
 			if (var != null)
 			{
-				var.vector3Val = _value;
-				
+				var.Vector3Value = _value;
+
 				if (synchronise)
 				{
 					var.Upload (VariableLocation.Global);

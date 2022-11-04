@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Ambience.cs"
  * 
@@ -18,28 +18,30 @@ namespace AC
 	/**
 	 * This script handles the playback of Ambience when played using the 'Sound: Play ambience' Action.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_ambience.html")]
-	#endif
 	public class Ambience : Soundtrack
 	{
+
+		#region Variables
+
+		private int timeSamplesBackup = -1;
+
+		#endregion
+
+
+		#region UnityStandards
 
 		protected new void Awake ()
 		{
 			soundType = SoundType.SFX;
-			playWhilePaused = false;
+			playWhilePaused = KickStarter.settingsManager.playAmbienceWhilePaused;
 			base.Awake ();
 		}
 
+		#endregion
 
-		protected override List<MusicStorage> Storages
-		{
-			get
-			{
-				return KickStarter.settingsManager.ambienceStorages;
-			}
-		}
 
+		#region PublicFunctions
 
 		public override MainData SaveMainData (MainData mainData)
 		{
@@ -49,14 +51,8 @@ namespace AC
 			mainData.ambienceTimeSamples = 0;
 			mainData.lastAmbienceTimeSamples = LastTimeSamples;
 
-			if (GetCurrentTrackID () >= 0)
-			{
-				MusicStorage musicStorage = GetSoundtrack (GetCurrentTrackID ());
-				if (musicStorage != null && musicStorage.audioClip != null && audioSource.clip == musicStorage.audioClip && IsPlaying ())
-				{
-					mainData.ambienceTimeSamples = audioSource.timeSamples;
-				}
-			}
+			mainData.ambienceTimeSamples = (timeSamplesBackup >= 0) ? timeSamplesBackup : GetTimeSamplesToSave ();
+			timeSamplesBackup = -1;
 
 			mainData.oldAmbienceTimeSamples = CreateOldTimesampleString ();
 
@@ -68,6 +64,73 @@ namespace AC
 		{
 			LoadMainData (mainData.ambienceTimeSamples, mainData.oldAmbienceTimeSamples, mainData.lastAmbienceTimeSamples, mainData.lastAmbienceQueueData, mainData.ambienceQueueData);
 		}
+
+
+		/** Prepares save data that cannot be generated while threading */
+		public void PrepareSaveBeforeThreading ()
+		{
+			timeSamplesBackup = GetTimeSamplesToSave ();
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected int GetTimeSamplesToSave ()
+		{
+			if (GetCurrentTrackID () >= 0)
+			{
+				MusicStorage musicStorage = GetSoundtrack (GetCurrentTrackID ());
+				if (musicStorage != null && musicStorage.audioClip != null && audioSource.clip == musicStorage.audioClip && IsPlaying ())
+				{
+					return audioSource.timeSamples;
+				}
+			}
+			return 0;
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		protected override List<MusicStorage> Storages
+		{
+			get
+			{
+				return KickStarter.settingsManager.ambienceStorages;
+			}
+		}
+
+
+		protected override float LoadFadeTime
+		{
+			get
+			{
+				return KickStarter.settingsManager.loadAmbienceFadeTime;
+			}
+		}
+
+
+		protected override bool CrossfadeWhenLoading
+		{
+			get
+			{
+				return KickStarter.settingsManager.crossfadeAmbienceWhenLoading;
+			}
+		}
+
+
+		protected override bool RestartTrackWhenLoading
+		{
+			get
+			{
+				return KickStarter.settingsManager.restartAmbienceTrackWhenLoading;
+			}
+		}
+
+		#endregion
 
 	}
 

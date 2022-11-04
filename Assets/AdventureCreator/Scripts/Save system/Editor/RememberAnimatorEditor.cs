@@ -1,5 +1,6 @@
-﻿using UnityEditor;
-using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -12,14 +13,11 @@ namespace AC
 		{
 			RememberAnimator _target = (RememberAnimator) target;
 			_target.ShowGUI ();
-
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			SharedGUI ();
-			#else
-			EditorGUILayout.HelpBox ("This component is only compatible with Unity 5 or later.", MessageType.Info);
-			#endif
 		}
 		
 	}
 	
 }
+
+#endif

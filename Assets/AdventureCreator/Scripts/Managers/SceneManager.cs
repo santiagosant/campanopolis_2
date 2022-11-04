@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SceneManager.cs"
  * 
@@ -38,7 +38,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		private string[] cameraPerspective_list = { "2D", "2.5D", "3D" };
+		private readonly string[] cameraPerspective_list = { "2D", "2.5D", "3D" };
 		private bool tempOverrideCameraPerspective;
 		private CameraPerspective tempCameraPerspective;
 		private MovingTurning tempMovingTurning = MovingTurning.Unity2D;
@@ -60,6 +60,8 @@ namespace AC
 		private bool showVisibility = true;
 		private bool showPrefabs = true;
 		private bool showAttributes = true;
+		
+		private Texture2D hotspotIcon, triggerIcon, collisionIcon, markerIcon, playerStartIcon, navMeshIcon;
 
 
 		private static string assetFolder
@@ -71,12 +73,10 @@ namespace AC
 		}
 
 
-		/**
-		 * Shows the GUI.
-		 */
-		public void ShowGUI ()
+		/** Shows the GUI. */
+		public void ShowGUI (Rect windowRect)
 		{
-			ShowSettingsGUI ();
+			ShowSettingsGUI (windowRect);
 
 			if (GUI.changed)
 			{
@@ -91,16 +91,54 @@ namespace AC
 		}
 
 
-		private void ShowSettingsGUI ()
+		private void ShowSettingsGUI (Rect windowRect)
 		{
 			string sceneName = MultiSceneChecker.EditActiveScene ();
-			if (sceneName != "")
+			if (!string.IsNullOrEmpty (sceneName) && UnityEngine.SceneManagement.SceneManager.sceneCount > 1)
 			{
 				EditorGUILayout.LabelField ("Editing scene: '" + sceneName + "'", EditorStyles.boldLabel);
 				EditorGUILayout.Space ();
 				GetPrefabsInScene ();
 			}
 
+			SceneStructureGUI ();
+
+			if (AdvGame.GetReferences ().settingsManager == null)
+			{
+				EditorGUILayout.HelpBox ("No Settings Manager defined - cannot display full Editor without it!", MessageType.Warning);
+				return;
+			}
+			
+			if (KickStarter.sceneSettings == null)
+			{
+				return;
+			}
+
+			EditorGUILayout.Space ();
+
+			SceneSettingsGUI ();
+
+			EditorGUILayout.Space ();
+
+			CutscenesGUI ();
+
+			EditorGUILayout.Space ();
+
+			SceneAttributesGUI ();
+
+			EditorGUILayout.Space ();
+
+			VisibilityGUI (windowRect);
+
+			EditorGUILayout.Space ();
+
+			ListPrefabs (windowRect);
+		}
+
+
+		private void SceneStructureGUI ()
+		{
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showStructure = CustomGUILayout.ToggleHeader (showStructure, "Basic structure");
 			if (showStructure)
 			{
@@ -133,12 +171,12 @@ namespace AC
 				}
 
 				EditorGUILayout.BeginHorizontal ();
-				GUILayout.Label ("Organise scene objects:");
-				if (GUILayout.Button ("With folders"))
+				GUILayout.Label ("Organise scene:");
+				if (GUILayout.Button ("With folders", EditorStyles.miniButtonLeft))
 				{
 					InitialiseObjects ();
 				}
-				if (GUILayout.Button ("Without folders"))
+				if (GUILayout.Button ("Without folders", EditorStyles.miniButtonRight))
 				{
 					InitialiseObjects (false);
 				}
@@ -146,6 +184,7 @@ namespace AC
 
 				if (KickStarter.sceneSettings == null)
 				{
+					CustomGUILayout.EndVertical ();
 					return;
 				}
 
@@ -175,18 +214,13 @@ namespace AC
 				}
 				EditorGUILayout.EndHorizontal ();
 			}
+			CustomGUILayout.EndVertical ();
+		}
 
-			if (AdvGame.GetReferences ().settingsManager == null)
-			{
-				EditorGUILayout.HelpBox ("No Settings Manager defined - cannot display full Editor without it!", MessageType.Warning);
-				return;
-			}
-			
-			if (KickStarter.sceneSettings == null)
-			{
-				return;
-			}
 
+		private void SceneSettingsGUI ()
+		{
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showSettings = CustomGUILayout.ToggleHeader (showSettings, "Scene settings");
 			if (showSettings)
 			{
@@ -207,15 +241,9 @@ namespace AC
 				{
 					if (GUILayout.Button ("Create", GUILayout.MaxWidth (60f)))
 					{
-						PlayerStart newPlayerStart = null;
-						if (SceneSettings.IsUnity2D ())
-						{
-							newPlayerStart = AddPrefab ("Navigation", "PlayerStart2D", true, false, true).GetComponent <PlayerStart>();
-						}
-						else
-						{
-							newPlayerStart = AddPrefab ("Navigation", "PlayerStart", true, false, true).GetComponent <PlayerStart>();
-						}
+						PlayerStart newPlayerStart = (SceneSettings.IsUnity2D ())
+													? AddPrefab ("Navigation", "PlayerStart2D", true, false, true).GetComponent <PlayerStart>()
+													: AddPrefab ("Navigation", "PlayerStart", true, false, true).GetComponent <PlayerStart>();
 
 						newPlayerStart.gameObject.name = "Default PlayerStart";
 						KickStarter.sceneSettings.defaultPlayerStart = newPlayerStart;
@@ -315,7 +343,13 @@ namespace AC
 					EditorGUILayout.EndToggleGroup ();
 				}
 			}
+			CustomGUILayout.EndVertical ();
+		}
 
+
+		private void CutscenesGUI ()
+		{
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showCutscenes = CustomGUILayout.ToggleHeader (showCutscenes, "Scene cutscenes");
 			if (showCutscenes)
 			{
@@ -382,79 +416,54 @@ namespace AC
 				}
 				EditorGUILayout.EndHorizontal ();
 			}
+			CustomGUILayout.EndVertical ();
+		}
 
-			SceneAttributesGUI ();
+		
+		private void VisibilityGUI (Rect windowRect)
+		{
+			if (KickStarter.sceneSettings == null) return;
 
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showVisibility = CustomGUILayout.ToggleHeader (showVisibility, "Visibility");
 			if (showVisibility)
 			{
-				GUILayout.BeginHorizontal ();
-				Texture2D icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/AC_Trigger.png", typeof (Texture2D));
-				GUILayout.Label (new GUIContent (" Triggers", icon), GUILayout.Width (120f), GUILayout.Height (20f));
-				if (GUILayout.Button ("On", EditorStyles.miniButtonLeft, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetTriggerVisibility (true);
-				}
-				if (GUILayout.Button ("Off", EditorStyles.miniButtonRight, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetTriggerVisibility (false);
-				}
-				GUILayout.EndHorizontal ();
-				
-				GUILayout.BeginHorizontal ();
-				icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/_Collision.png", typeof (Texture2D));
-				GUILayout.Label (new GUIContent (" Collision", icon), GUILayout.Width (120f), GUILayout.Height (20f));
-				if (GUILayout.Button ("On", EditorStyles.miniButtonLeft, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetCollisionVisiblity (true);
-				}
-				if (GUILayout.Button ("Off", EditorStyles.miniButtonRight, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetCollisionVisiblity (false);
-				}
-				GUILayout.EndHorizontal ();
-				
-				GUILayout.BeginHorizontal ();
-				icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/Hotspot.png", typeof (Texture2D));
-				GUILayout.Label (new GUIContent (" Hotspots", icon), GUILayout.Width (120f), GUILayout.Height (20f));
-				if (GUILayout.Button ("On", EditorStyles.miniButtonLeft, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetHotspotVisibility (true);
-				}
-				if (GUILayout.Button ("Off", EditorStyles.miniButtonRight, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetHotspotVisibility (false);
-				}
-				GUILayout.EndHorizontal ();
+				GUILayoutOption[] options = new GUILayoutOption[2] { GUILayout.Width (((windowRect.width - 10f) / 3f) - 11f), GUILayout.Height (20f) };
+				EditorGUI.BeginChangeCheck ();
 
-				GUILayout.BeginHorizontal ();
-				icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/Marker.png", typeof (Texture2D));
-				GUILayout.Label (new GUIContent (" Markers", icon), GUILayout.Width (120f), GUILayout.Height (20f));
-				if (GUILayout.Button ("On", EditorStyles.miniButtonLeft, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetMarkerVisibility (true);
+				EditorGUILayout.BeginHorizontal ();
+				if (hotspotIcon == null) hotspotIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/Hotspot.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityHotspots = GUILayout.Toggle (KickStarter.sceneSettings.visibilityHotspots, (hotspotIcon) ? new GUIContent (" Hotspots", hotspotIcon) : new GUIContent ("Hotspots"), options);
+
+				if (triggerIcon == null) triggerIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/AC_Trigger.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityTriggers = GUILayout.Toggle (KickStarter.sceneSettings.visibilityTriggers, (triggerIcon) ? new GUIContent (" Triggers", triggerIcon) : new GUIContent ("Triggers"), options);
+
+				if (collisionIcon == null) collisionIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/_Collision.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityCollision = GUILayout.Toggle (KickStarter.sceneSettings.visibilityCollision, (collisionIcon) ? new GUIContent (" Collision", collisionIcon) : new GUIContent ("Collision"), options);
+				EditorGUILayout.EndHorizontal ();
+
+				EditorGUILayout.BeginHorizontal ();
+				if (markerIcon == null) markerIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/Marker.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityMarkers = GUILayout.Toggle (KickStarter.sceneSettings.visibilityMarkers, (markerIcon) ? new GUIContent (" Markers", markerIcon) : new GUIContent ("Markers"), options);
+
+				if (playerStartIcon == null) playerStartIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/PlayerStart.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityPlayerStarts = GUILayout.Toggle (KickStarter.sceneSettings.visibilityPlayerStarts, (playerStartIcon) ? new GUIContent (" PlayerStarts", playerStartIcon) : new GUIContent ("PlayerStarts"), options);
+
+				if (navMeshIcon == null) navMeshIcon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/NavigationMesh.png", typeof (Texture2D));
+				KickStarter.sceneSettings.visibilityNavMesh = GUILayout.Toggle (KickStarter.sceneSettings.visibilityNavMesh, (navMeshIcon) ? new GUIContent (" NavMesh", navMeshIcon) : new GUIContent ("NavMesh"), options);
+				EditorGUILayout.EndHorizontal ();
+
+				if (EditorGUI.EndChangeCheck ())
+				{		
+					SceneView.RepaintAll ();
+					Marker[] markers = FindObjectsOfType<Marker>();
+					foreach (Marker marker in markers)
+					{
+						marker.DrawGizmos ();
+					}
 				}
-				if (GUILayout.Button ("Off", EditorStyles.miniButtonRight, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					SetMarkerVisibility (false);
-				}
-				GUILayout.EndHorizontal ();
-				
-				GUILayout.BeginHorizontal ();
-				icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/NavigationMesh.png", typeof (Texture2D));
-				GUILayout.Label (new GUIContent (" NavMesh", icon), GUILayout.Width (120f), GUILayout.Height (20f));
-				if (GUILayout.Button ("On", EditorStyles.miniButtonLeft, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					KickStarter.navigationManager.navigationEngine.SetVisibility (true);
-				}
-				if (GUILayout.Button ("Off", EditorStyles.miniButtonRight, GUILayout.MaxWidth (120f), GUILayout.Height (20f)))
-				{
-					KickStarter.navigationManager.navigationEngine.SetVisibility (false);
-				}
-				GUILayout.EndHorizontal ();
 			}
-
-			ListPrefabs ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
@@ -471,6 +480,7 @@ namespace AC
 				return;
 			}
 
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showAttributes = CustomGUILayout.ToggleHeader (showAttributes, "Scene attributes");
 			if (showAttributes)
 			{
@@ -483,8 +493,6 @@ namespace AC
 					InvVar[] sceneAttributes = AdvGame.GetReferences ().settingsManager.sceneAttributes.ToArray ();
 					if (AdvGame.GetReferences ().settingsManager.sceneAttributes.Count > 0)
 					{
-						EditorGUILayout.BeginVertical (CustomStyles.thinBox);
-
 						RebuildProperties (sceneAttributes);
 
 						// UI for setting property values
@@ -492,41 +500,10 @@ namespace AC
 						{
 							foreach (InvVar attribute in KickStarter.sceneSettings.attributes)
 							{
-								string label = attribute.label + ":";
-								if (attribute.label.Length == 0)
-								{
-									label = "Property " + attribute.id.ToString () + ":";
-								}
 								string apiPrefix = "AC.KickStarter.sceneSettings.GetAttribute (" + attribute.id + ")";
-								
-								if (attribute.type == VariableType.Boolean)
-								{
-									if (attribute.val != 1)
-									{
-										attribute.val = 0;
-									}
-									string[] boolType = {"False", "True"};
-									attribute.val = CustomGUILayout.Popup (label, attribute.val, boolType, apiPrefix + ".GetProperty (" + attribute.id + ").val");
-								}
-								else if (attribute.type == VariableType.Integer)
-								{
-									attribute.val = CustomGUILayout.IntField (label, attribute.val, apiPrefix + ".GetProperty (" + attribute.id + ").val");
-								}
-								else if (attribute.type == VariableType.PopUp)
-								{
-									attribute.val = CustomGUILayout.Popup (label, attribute.val, attribute.popUps, apiPrefix + ".GetProperty (" + attribute.id + ").val");
-								}
-								else if (attribute.type == VariableType.String)
-								{
-									attribute.textVal = CustomGUILayout.TextField (label, attribute.textVal, apiPrefix + ".GetProperty (" + attribute.id + ").textVal");
-								}
-								else if (attribute.type == VariableType.Float)
-								{
-									attribute.floatVal = CustomGUILayout.FloatField (label, attribute.floatVal, apiPrefix + ".GetProperty (" + attribute.id + ").floatVal");
-								}
+								attribute.ShowGUI (apiPrefix);
 							}
 
-							EditorGUILayout.EndVertical ();
 						}
 						else
 						{
@@ -540,6 +517,7 @@ namespace AC
 					}
 				}
 			}
+			CustomGUILayout.EndVertical ();
 		}
 
 
@@ -668,16 +646,16 @@ namespace AC
 							
 							string camPrefabfileName = assetFolder + "Automatic" + Path.DirectorySeparatorChar.ToString () + "MainCamera.prefab";
 							GameObject camPrefab = (GameObject) AssetDatabase.LoadAssetAtPath (camPrefabfileName, typeof (GameObject));
-							Texture2D prefabFadeTexture = camPrefab.GetComponent <MainCamera>().GetFadeTexture ();
-							
-							oldMainCam.GetComponent <MainCamera>().Initialise (prefabFadeTexture);
-							
-							PutInFolder (GameObject.FindWithTag (Tags.mainCamera), "_Cameras");
+							if (camPrefab)
+							{
+								Texture2D prefabFadeTexture = camPrefab.GetComponent <MainCamera>().GetFadeTexture ();
+								oldMainCam.GetComponent <MainCamera>().SetDefaultFadeTexture (prefabFadeTexture);
+							}
 							ACDebug.Log ("'" + oldMainCam.name + "' has been converted to an Adventure Creator MainCamera.");
 						}
 						else
 						{
-							ACDebug.Log ("Untagged MainCamera '" + oldMainCam.name + "'.");
+							ACDebug.Log ("Untagged MainCamera '" + oldMainCam.name + "'.", oldMainCam);
 							oldMainCam.tag = Tags.untagged;
 							oldMainCam.GetComponent <Camera>().enabled = false;
 							if (camName == "Main Camera") oldMainCam.gameObject.name += " (Untagged)";
@@ -685,7 +663,7 @@ namespace AC
 					}
 					else
 					{
-						ACDebug.Log ("Untagged MainCamera '" + oldMainCam.name + "', as it had no Camera component.");
+						ACDebug.Log ("Untagged MainCamera '" + oldMainCam.name + "', as it had no Camera component.", oldMainCam);
 						oldMainCam.tag = Tags.untagged;
 					}
 				}
@@ -701,7 +679,25 @@ namespace AC
 			}
 			
 			// Create Game engine
-			AddPrefab ("Automatic", "GameEngine", false, false, false);
+			GameObject gameEngineOb = AddPrefab ("Automatic", "GameEngine", false, false, false);
+			if (gameEngineOb == null && !UnityVersionHandler.ObjectIsInActiveScene ("GameEngine"))
+			{
+				gameEngineOb = new GameObject ("GameEngine");
+				gameEngineOb.AddComponent<MenuSystem> ();
+				gameEngineOb.AddComponent<Dialog> ();
+				gameEngineOb.AddComponent<PlayerInput> ();
+				gameEngineOb.AddComponent<PlayerInteraction> ();
+				gameEngineOb.AddComponent<PlayerMovement> ();
+				gameEngineOb.AddComponent<PlayerCursor> ();
+				gameEngineOb.AddComponent<PlayerQTE> ();
+				gameEngineOb.AddComponent<SceneSettings> ();
+				gameEngineOb.AddComponent<NavigationManager> ();
+				gameEngineOb.AddComponent<ActionListManager> ();
+				gameEngineOb.AddComponent<LocalVariables> ();
+				gameEngineOb.AddComponent<MenuPreview> ();
+				gameEngineOb.AddComponent<EventManager> ();
+				gameEngineOb.AddComponent<KickStarter> ();
+			}
 
 			// Camera perspective override
 			if (reallyDoOverrideCameraPerspective)
@@ -746,8 +742,12 @@ namespace AC
 					playerStartPrefab += "2D";
 				}
 
-				PlayerStart playerStart = AddPrefab ("Navigation", playerStartPrefab, true, false, true).GetComponent <PlayerStart>();
-				KickStarter.sceneSettings.defaultPlayerStart = playerStart;
+				GameObject playerStartOb = AddPrefab ("Navigation", playerStartPrefab, true, false, true);
+				if (playerStartOb)
+				{
+					PlayerStart playerStart = playerStartOb.GetComponent<PlayerStart> ();
+					KickStarter.sceneSettings.defaultPlayerStart = playerStart;
+				}
 			}
 			
 			// Pathfinding method
@@ -760,63 +760,24 @@ namespace AC
 			tempOverrideCameraPerspective = false;
 		}
 		
-		
-		private void SetHotspotVisibility (bool isVisible)
-		{
-			Hotspot[] hotspots = FindObjectsOfType (typeof (Hotspot)) as Hotspot[];
-			Undo.RecordObjects (hotspots, "Hotspot visibility");
-			
-			foreach (Hotspot hotspot in hotspots)
-			{
-				hotspot.showInEditor = isVisible;
-				EditorUtility.SetDirty (hotspot);
-			}
-		}
-		
-		
-		private void SetCollisionVisiblity (bool isVisible)
-		{
-			_Collision[] colls = FindObjectsOfType (typeof (_Collision)) as _Collision[];
-			Undo.RecordObjects (colls, "Collision visibility");
-			
-			foreach (_Collision coll in colls)
-			{
-				coll.showInEditor = isVisible;
-				EditorUtility.SetDirty (coll);
-			}
-		}
-		
-		
-		private void SetTriggerVisibility (bool isVisible)
-		{
-			AC_Trigger[] triggers = FindObjectsOfType (typeof (AC_Trigger)) as AC_Trigger[];
-			Undo.RecordObjects (triggers, "Trigger visibility");
-			
-			foreach (AC_Trigger trigger in triggers)
-			{
-				trigger.showInEditor = isVisible;
-				EditorUtility.SetDirty (trigger);
-			}
-		}
 
-
-		private void SetMarkerVisibility (bool isVisible)
-		{
-			Marker[] markers = FindObjectsOfType (typeof (Marker)) as Marker[];
-			Undo.RecordObjects (markers, "Marker visibility");
-			
-			foreach (Marker marker in markers)
-			{
-				marker.GetComponent <Renderer>().enabled = isVisible;
-			}
-		}
-		
-		
 		private static void RenameObject (GameObject ob, string resourceName)
 		{
-			ob.name = AdvGame.GetName (resourceName);
+			int slash = resourceName.IndexOf ("/");
+			string newName;
+
+			if (slash > 0)
+			{
+				newName = resourceName.Remove (0, slash + 1);
+			}
+			else
+			{
+				newName = resourceName;
+			}
+
+			ob.name = newName;
 		}
-		
+
 
 		/**
 		 * <summary>Adds an Adventure Creator prefab to the scene.</summary>
@@ -836,7 +797,7 @@ namespace AC
 				GameObject newOb = (GameObject) PrefabUtility.InstantiatePrefab (AssetDatabase.LoadAssetAtPath (fileName, typeof (GameObject)));
 				if (newOb == null)
 				{
-					ACDebug.LogError ("Error creating new object '" + prefabName + "' from filepath '" + fileName + "'.");
+					ACDebug.LogWarning ("Error creating new object '" + prefabName + "' from filepath '" + fileName + "'.");
 					return null;
 				}
 				newOb.name = "Temp";
@@ -969,17 +930,20 @@ namespace AC
 			{
 				DeclareScenePrefabs ();
 			}
-			
-			if (scenePrefabs.Count < activeScenePrefab)
+			if (scenePrefabs.Count <= activeScenePrefab)
 			{
 				activeScenePrefab = 0;
 			}
 			
-			return scenePrefabs[activeScenePrefab];
+			if (scenePrefabs.Count > 0)
+			{
+				return scenePrefabs[activeScenePrefab];
+			}
+			return null;
 		}
 		
 		
-		private void ListPrefabs ()
+		private void ListPrefabs (Rect windowRect)
 		{
 			if (scenePrefabs == null || GUI.changed)
 			{
@@ -987,16 +951,26 @@ namespace AC
 				GetPrefabsInScene ();
 			}
 
+			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showPrefabs = CustomGUILayout.ToggleHeader (showPrefabs, "Scene prefabs");
 			if (showPrefabs)
 			{
-				EditorGUILayout.BeginVertical ("Button", GUILayout.MaxWidth (380f));
-				
+				#if NEW_PREFABS
+				GameObject prefabRoot = UnityVersionHandler.GetPrefabStageRoot ();
+				if (prefabRoot)
+				{
+					EditorGUILayout.HelpBox ("Currently editing prefab " + prefabRoot.name + " - new objects added here will be added to this prefab.", MessageType.Info);
+				}
+				#endif
+
 				GUILayout.BeginHorizontal ();
 				GUIContent prefabHeader = new GUIContent ("  " + GetActiveScenePrefab ().subCategory, GetActiveScenePrefab ().icon);
 				EditorGUILayout.LabelField (prefabHeader, EditorStyles.boldLabel, GUILayout.Height (40f));
-				
-				EditorGUILayout.HelpBox (GetActiveScenePrefab ().helpText, MessageType.Info);
+
+				if (windowRect.width > 300f)
+				{
+					EditorGUILayout.HelpBox (GetActiveScenePrefab ().helpText, MessageType.Info);
+				}
 				GUILayout.EndHorizontal ();
 				
 				EditorGUILayout.Space ();
@@ -1013,10 +987,10 @@ namespace AC
 					if (newPrefabName != null && newPrefabName != "" && newPrefabName.Length > 0)
 					{
 						newOb.name = newPrefabName;
-						newPrefabName = "";
+						newPrefabName = string.Empty;
 					}
 
-					RegisterNewObject (newOb);
+					RegisterNewObject (newOb, true);
 					PutInFolder (newOb, GetActiveScenePrefab ().sceneFolder);
 					
 					if (CanWrapHotspot () && positionHotspotOverMesh)
@@ -1050,53 +1024,55 @@ namespace AC
 				{
 					GetPrefabsInScene ();
 				}
-				
-				EditorGUILayout.Space ();
-				EditorGUILayout.LabelField ("Existing " + GetActiveScenePrefab ().subCategory + " objects:");
-				EditorGUILayout.BeginHorizontal ();
-				selectedSceneObject = EditorGUILayout.Popup (selectedSceneObject, prefabTextArray);
-				
-				if (GUILayout.Button ("Select", EditorStyles.miniButtonLeft))
+
+				if (prefabTextArray.Length > 0)
 				{
-					if (Type.GetType ("AC." + GetActiveScenePrefab ().componentName) != null)
+					EditorGUILayout.Space ();
+					EditorGUILayout.LabelField ("Existing " + GetActiveScenePrefab ().subCategory + " objects:");
+					EditorGUILayout.BeginHorizontal ();
+					selectedSceneObject = EditorGUILayout.Popup (selectedSceneObject, prefabTextArray);
+				
+					if (GUILayout.Button ("Select", EditorStyles.miniButtonLeft))
 					{
-						MonoBehaviour[] objects = FindObjectsOfType (Type.GetType ("AC." + GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
-						if (objects != null && objects.Length > selectedSceneObject && objects[selectedSceneObject].gameObject != null)
+						if (Type.GetType ("AC." + GetActiveScenePrefab ().componentName) != null)
 						{
-							Selection.activeGameObject = objects[selectedSceneObject].gameObject;
+							MonoBehaviour[] objects = FindObjectsOfType (Type.GetType ("AC." + GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
+							if (objects != null && objects.Length > selectedSceneObject && objects[selectedSceneObject].gameObject != null)
+							{
+								Selection.activeGameObject = objects[selectedSceneObject].gameObject;
+							}
 						}
-					}
-					else if (GetActiveScenePrefab ().componentName != "")
-					{
-						MonoBehaviour[] objects = FindObjectsOfType (Type.GetType (GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
-						if (objects != null && objects.Length > selectedSceneObject && objects[selectedSceneObject].gameObject != null)
+						else if (!string.IsNullOrEmpty (GetActiveScenePrefab ().componentName))
 						{
-							Selection.activeGameObject = objects[selectedSceneObject].gameObject;
+							MonoBehaviour[] objects = FindObjectsOfType (Type.GetType (GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
+							if (objects != null && objects.Length > selectedSceneObject && objects[selectedSceneObject].gameObject != null)
+							{
+								Selection.activeGameObject = objects[selectedSceneObject].gameObject;
+							}
 						}
-					}
 					
-				}
-				if (GUILayout.Button ("Refresh", EditorStyles.miniButtonRight))
-				{
-					GetPrefabsInScene ();
+					}
+					if (GUILayout.Button ("Refresh", EditorStyles.miniButtonRight))
+					{
+						GetPrefabsInScene ();
+					}
+
+					EditorGUILayout.EndHorizontal ();
 				}
 
-				EditorGUILayout.EndHorizontal ();
-				EditorGUILayout.EndVertical ();
-
-				EditorGUILayout.Space ();
-				ListAllPrefabs ("Camera");
-				ListAllPrefabs ("Logic");
-				ListAllPrefabs ("Moveable");
-				ListAllPrefabs ("Navigation");
+				ListAllPrefabs ("Camera", windowRect);
+				ListAllPrefabs ("Logic", windowRect);
+				ListAllPrefabs ("Moveable", windowRect);
+				ListAllPrefabs ("Navigation", windowRect);
 			}
+			CustomGUILayout.EndVertical ();
 		}
 		
 		
-		private void ListAllPrefabs (string _category)
+		private void ListAllPrefabs (string _category, Rect windowRect)
 		{
-			GUILayout.BeginVertical ( CustomStyles.thinBox, GUILayout.MaxWidth (380f), GUILayout.ExpandHeight (true));
-		
+			EditorGUILayout.Space ();
+
 			GUISkin testSkin = (GUISkin) Resources.Load ("SceneManagerSkin");
 			GUI.skin = testSkin;
 			bool isEven = false;
@@ -1105,15 +1081,26 @@ namespace AC
 			
 			EditorGUILayout.BeginHorizontal ();
 			
+			float buttonWidth = windowRect.width / 2f - 17f;
+
 			foreach (ScenePrefab prefab in scenePrefabs)
 			{
 				if (prefab.category == _category)
 				{
 					isEven = !isEven;
-					
-					if (prefab.icon)
+
+					if (prefab.icon && buttonWidth > 65f)
 					{
-						if (GUILayout.Button (new GUIContent (" " + prefab.subCategory, prefab.icon)))
+						if (GUILayout.Button (new GUIContent (" " + prefab.subCategory, prefab.icon), GUILayout.Width (buttonWidth)))
+						{
+							GUI.skin = null;
+							ClickPrefabButton (prefab);
+							GUI.skin = testSkin;
+						}
+					}
+					else if (prefab.icon)
+					{
+						if (GUILayout.Button (new GUIContent (prefab.icon), GUILayout.Width (buttonWidth)))
 						{
 							GUI.skin = null;
 							ClickPrefabButton (prefab);
@@ -1135,22 +1122,35 @@ namespace AC
 						EditorGUILayout.EndHorizontal ();
 						EditorGUILayout.BeginHorizontal ();
 					}
+					else
+					{
+					//	GUILayout.FlexibleSpace ();
+					}
 				}
 			}
 			
 			EditorGUILayout.EndHorizontal ();
-			GUILayout.EndVertical ();
+			//GUILayout.EndVertical ();
 			
 			GUI.skin = null;
 		}
 
 
-		private static void RegisterNewObject (GameObject newOb)
+		private static void RegisterNewObject (GameObject newOb, bool canAddToPrefab = false)
 		{
 			#if NEW_PREFABS
 			PrefabUtility.UnpackPrefabInstance (newOb, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
 			#endif
 			Undo.RegisterCreatedObjectUndo (newOb, "Created " + newOb.name);
+
+			if (canAddToPrefab)
+			{
+				GameObject prefabRoot = UnityVersionHandler.GetPrefabStageRoot ();
+				if (prefabRoot)
+				{
+					newOb.transform.SetParent (prefabRoot.transform);
+				}
+			}
 		}
 		
 		
@@ -1162,7 +1162,7 @@ namespace AC
 				string fileName = assetFolder + _prefab.prefabPath + ".prefab";
 				GameObject newOb = (GameObject) PrefabUtility.InstantiatePrefab (AssetDatabase.LoadAssetAtPath (fileName, typeof (GameObject)));
 
-				RegisterNewObject (newOb);
+				RegisterNewObject (newOb, true);
 				
 				if (newOb.GetComponent <GameCamera2D>())
 				{
@@ -1309,16 +1309,17 @@ namespace AC
 		}
 		
 
-		/**
-		 * Populates the list of 'Existing prefabs' for the currently-selected prefab button in the Scene Manager GUI.
-		 */
+		/** Populates the list of 'Existing prefabs' for the currently-selected prefab button in the Scene Manager GUI. */
 		public void GetPrefabsInScene ()
 		{
 			List<string> titles = new List<string>();
 			MonoBehaviour[] objects;
 			int i=1;
 
-			if (Type.GetType ("AC." + GetActiveScenePrefab ().componentName) != null)
+			ScenePrefab activeScenePrefab = GetActiveScenePrefab ();
+			if (activeScenePrefab == null) return;
+
+			if (Type.GetType ("AC." + activeScenePrefab.componentName) != null)
 			{
 				objects = FindObjectsOfType (Type.GetType ("AC." + GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
 				foreach (MonoBehaviour _object in objects)
@@ -1330,7 +1331,7 @@ namespace AC
 					}
 				}
 			}
-			else if (GetActiveScenePrefab ().componentName != "")
+			else if (!string.IsNullOrEmpty (activeScenePrefab.componentName))
 			{
 				objects = FindObjectsOfType (Type.GetType (GetActiveScenePrefab ().componentName)) as MonoBehaviour [];
 				foreach (MonoBehaviour _object in objects)
@@ -1361,7 +1362,7 @@ namespace AC
 	/**
 	 * A data container for an Adventure Creator prefab, used by SceneManager to provide a list of possible prefabs the user can instantiate.
 	 */
-	public struct ScenePrefab
+	public class ScenePrefab
 	{
 
 		/** The prefab's category */
@@ -1399,7 +1400,7 @@ namespace AC
 			helpText = _helpText;
 			componentName = _componentName;
 			
-			if (_graphicName != "")
+			if (!string.IsNullOrEmpty (_graphicName))
 			{
 				icon = (Texture2D) AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Graphics/PrefabIcons/" + _graphicName +  ".png", typeof (Texture2D));
 			}

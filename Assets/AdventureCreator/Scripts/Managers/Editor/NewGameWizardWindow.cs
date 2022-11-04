@@ -1,11 +1,10 @@
-﻿#if UNITY_2017_1_OR_NEWER
-#define CAN_USE_TIMELINE
-#endif
+﻿#if UNITY_EDITOR
 
 #if UNITY_ANDROID || UNITY_IOS
 #define ON_MOBILE
 #endif
 
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 
@@ -48,14 +47,14 @@ namespace AC
 		{
 			NewGameWizardWindow window = EditorWindow.GetWindowWithRect <NewGameWizardWindow> (new Rect (0, 0, 420, 360), true, "New Game Wizard", true);
 			window.GetReferences ();
-			UnityVersionHandler.SetWindowTitle (window, "New Game wizard");
+			window.titleContent.text = "New Game wizard";
 			window.position = new Rect (300, 200, 420, 360);
 		}
 		
 		
 		private void GetReferences ()
 		{
-			references = (References) Resources.Load (Resource.references);
+			references = Resource.References;
 		}
 
 
@@ -70,7 +69,7 @@ namespace AC
 			GUILayout.BeginVertical (CustomStyles.thinBox, GUILayout.ExpandWidth (true), GUILayout.ExpandHeight (true));
 
 			GUILayout.Label (GetTitle (), CustomStyles.managerHeader);
-			if (GetTitle () != "")
+			if (!string.IsNullOrEmpty (GetTitle ()))
 			{
 				EditorGUILayout.Separator ();
 				GUILayout.Space (10f);
@@ -111,13 +110,13 @@ namespace AC
 				if (GUILayout.Button ("Restart", EditorStyles.miniButtonLeft))
 				{
 					pageNumber = 0;
-					gameName = "";
+					gameName = string.Empty;
 				}
 			}
 			GUI.enabled = true;
 			if (pageNumber < numPages - 1)
 			{
-				if (pageNumber == 1 && gameName == "")
+				if (pageNumber == 1 && string.IsNullOrEmpty (gameName))
 				{
 					GUI.enabled = false;
 				}
@@ -159,7 +158,7 @@ namespace AC
 			GUI.Label (pageRect, "Page " + (pageNumber + 1) + " of " + (numPages + 1));
 
 			GUILayout.FlexibleSpace ();
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 		}
 
 
@@ -190,7 +189,7 @@ namespace AC
 				return "Complete";
 			}
 
-			return "";
+			return string.Empty;
 		}
 
 
@@ -223,71 +222,72 @@ namespace AC
 			{
 				ShowProgress (0f);
 
-				ScriptableObject t = CustomAssetUtility.CreateAsset<SceneManager> ("SceneManager", managerPath);
+				SceneManager newSceneManager = CustomAssetUtility.CreateAsset<SceneManager> ("SceneManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/SceneManager.asset", gameName + "_SceneManager");
-				references.sceneManager = (SceneManager) t;
+				references.sceneManager = newSceneManager;
 
 				ShowProgress (0.1f);
 
-				t = CustomAssetUtility.CreateAsset<SettingsManager> ("SettingsManager", managerPath);
+				SettingsManager newSettingsManager = CustomAssetUtility.CreateAsset<SettingsManager> ("SettingsManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/SettingsManager.asset", gameName + "_SettingsManager");
-				references.settingsManager = (SettingsManager) t;
 
-				references.settingsManager.saveFileName = gameName;
-				references.settingsManager.cameraPerspective = cameraPerspective;
-				references.settingsManager.movingTurning = movingTurning;
-				references.settingsManager.movementMethod = movementMethod;
-				references.settingsManager.inputMethod = inputMethod;
-				references.settingsManager.interactionMethod = interactionMethod;
-				references.settingsManager.hotspotDetection = hotspotDetection;
+				newSettingsManager.saveFileName = gameName;
+				newSettingsManager.separateEditorSaveFiles = true;
+				newSettingsManager.cameraPerspective = cameraPerspective;
+				newSettingsManager.movingTurning = movingTurning;
+				newSettingsManager.movementMethod = movementMethod;
+				newSettingsManager.inputMethod = inputMethod;
+				newSettingsManager.interactionMethod = interactionMethod;
+				newSettingsManager.hotspotDetection = hotspotDetection;
 				if (cameraPerspective == CameraPerspective.TwoPointFiveD)
 				{
-					references.settingsManager.forceAspectRatio = true;
+					newSettingsManager.aspectRatioEnforcement = AspectRatioEnforcement.Fixed;
 				}
+				references.settingsManager = newSettingsManager;
 
 				ShowProgress (0.2f);
 
-				t = CustomAssetUtility.CreateAsset<ActionsManager> ("ActionsManager", managerPath);
+				ActionsManager newActionsManager = CustomAssetUtility.CreateAsset<ActionsManager> ("ActionsManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/ActionsManager.asset", gameName + "_ActionsManager");
-				references.actionsManager = (ActionsManager) t;
-				AdventureCreator.RefreshActions ();
 				ActionsManager defaultActionsManager = AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Default/Default_ActionsManager.asset", typeof(ActionsManager)) as ActionsManager;
 				if (defaultActionsManager != null)
 				{
-					references.actionsManager.defaultClass = defaultActionsManager.defaultClass;
-					references.actionsManager.defaultClassName = defaultActionsManager.defaultClassName;
+					newActionsManager.defaultClass = defaultActionsManager.defaultClass;
+					newActionsManager.defaultClassName = defaultActionsManager.defaultClassName;
 				}
+				references.actionsManager = newActionsManager;
+				AdventureCreator.RefreshActions ();
 
 				ShowProgress (0.3f);
 
-				t = CustomAssetUtility.CreateAsset<VariablesManager> ("VariablesManager", managerPath);
+				VariablesManager newVariablesManager = CustomAssetUtility.CreateAsset<VariablesManager> ("VariablesManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/VariablesManager.asset", gameName + "_VariablesManager");
-				references.variablesManager = (VariablesManager) t;
+				references.variablesManager = newVariablesManager;
 
 				ShowProgress (0.4f);
 
-				t = CustomAssetUtility.CreateAsset<InventoryManager> ("InventoryManager", managerPath);
+				InventoryManager newInventoryManager = CustomAssetUtility.CreateAsset<InventoryManager> ("InventoryManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/InventoryManager.asset", gameName + "_InventoryManager");
-				references.inventoryManager = (InventoryManager) t;
+				references.inventoryManager = newInventoryManager;
 
 				ShowProgress (0.5f);
 
-				t = CustomAssetUtility.CreateAsset<SpeechManager> ("SpeechManager", managerPath);
+				SpeechManager newSpeechManager = CustomAssetUtility.CreateAsset<SpeechManager> ("SpeechManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/SpeechManager.asset", gameName + "_SpeechManager");
-				references.speechManager = (SpeechManager) t;
-				references.speechManager.ClearLanguages ();
+				newSpeechManager.ClearLanguages ();
+				references.speechManager = newSpeechManager;
 
 				ShowProgress (0.6f);
 
-				t = CustomAssetUtility.CreateAsset<CursorManager> ("CursorManager", managerPath);
+				CursorManager newCursorManager = CustomAssetUtility.CreateAsset<CursorManager> ("CursorManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/CursorManager.asset", gameName + "_CursorManager");
-				references.cursorManager = (CursorManager) t;
+				references.cursorManager = newCursorManager;
 
 				ShowProgress (0.7f);
 
-				t = CustomAssetUtility.CreateAsset<MenuManager> ("MenuManager", managerPath);
+				MenuManager newMenuManager = CustomAssetUtility.CreateAsset<MenuManager> ("MenuManager", managerPath);
 				AssetDatabase.RenameAsset ("Assets/" + managerPath + "/MenuManager.asset", gameName + "_MenuManager");
-				references.menuManager = (MenuManager) t;
+				references.menuManager = (MenuManager) newMenuManager;
 
 				CursorManager defaultCursorManager = AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Default/Default_CursorManager.asset", typeof(CursorManager)) as CursorManager;
 				if (wizardMenu == WizardMenu.Blank)
@@ -296,46 +296,56 @@ namespace AC
 					{
 						CursorIcon useIcon = new CursorIcon ();
 						useIcon.Copy (defaultCursorManager.cursorIcons[0], false);
-						references.cursorManager.cursorIcons.Add (useIcon);
-						EditorUtility.SetDirty (references.cursorManager);
+						newCursorManager.cursorIcons.Add (useIcon);
+
+						if (defaultCursorManager.uiCursorPrefab)
+						{
+							CreateUICursorPrefab (defaultCursorManager.uiCursorPrefab, newCursorManager, "Assets/" + gameName + "/" + defaultCursorManager.uiCursorPrefab.name + ".prefab");
+						}
+
+						EditorUtility.SetDirty (newCursorManager);
 					}
 				}
 				else
 				{
-					if (defaultCursorManager != null)
+					System.IO.Directory.CreateDirectory (Application.dataPath + "/" + gameName + "/UI");
+
+					if (defaultCursorManager)
 					{
 						foreach (CursorIcon defaultIcon in defaultCursorManager.cursorIcons)
 						{
 							CursorIcon newIcon = new CursorIcon ();
 							newIcon.Copy (defaultIcon, false);
-							references.cursorManager.cursorIcons.Add (newIcon);
+							newCursorManager.cursorIcons.Add (newIcon);
+						}
+
+						if (defaultCursorManager.uiCursorPrefab)
+						{
+							CreateUICursorPrefab (defaultCursorManager.uiCursorPrefab, newCursorManager, "Assets/" + gameName + "/UI/" + defaultCursorManager.uiCursorPrefab.name + ".prefab");
 						}
 
 						CursorIconBase pointerIcon = new CursorIconBase ();
 						pointerIcon.Copy (defaultCursorManager.pointerIcon);
-						references.cursorManager.pointerIcon = pointerIcon;
+						newCursorManager.pointerIcon = pointerIcon;
+
+						newCursorManager.lookCursor_ID = defaultCursorManager.lookCursor_ID;
 					}
 					else
 					{
 						ACDebug.LogWarning ("Cannot find Default_CursorManager asset to copy from!");
 					}
 						
-					references.cursorManager.allowMainCursor = true;
-					EditorUtility.SetDirty (references.cursorManager);
+					newCursorManager.allowMainCursor = true;
+					EditorUtility.SetDirty (newCursorManager);
 
 					MenuManager defaultMenuManager = AssetDatabase.LoadAssetAtPath (Resource.MainFolderPath + "/Default/Default_MenuManager.asset", typeof(MenuManager)) as MenuManager;
 					if (defaultMenuManager != null)
 					{
 						#if UNITY_EDITOR
-						references.menuManager.drawOutlines = defaultMenuManager.drawOutlines;
-						references.menuManager.drawInEditor = defaultMenuManager.drawInEditor;
+						newMenuManager.drawOutlines = defaultMenuManager.drawOutlines;
+						newMenuManager.drawInEditor = defaultMenuManager.drawInEditor;
 						#endif
-						references.menuManager.pauseTexture = defaultMenuManager.pauseTexture;
-
-						if (wizardMenu != WizardMenu.Blank)
-						{
-							System.IO.Directory.CreateDirectory (Application.dataPath + "/" + gameName + "/UI");
-						}
+						newMenuManager.pauseTexture = defaultMenuManager.pauseTexture;
 
 						foreach (Menu defaultMenu in defaultMenuManager.menus)
 						{
@@ -361,21 +371,21 @@ namespace AC
 								newMenu.autoSelectFirstVisibleElement = autoSelectUI;
 							}
 
-							if (defaultMenu.canvas)
+							if (defaultMenu.PrefabCanvas)
 							{
-								string oldPath = AssetDatabase.GetAssetPath (defaultMenu.canvas.gameObject);
-								string newPath = "Assets/" + gameName + "/UI/" + defaultMenu.canvas.name + ".prefab";
+								string oldPath = AssetDatabase.GetAssetPath (defaultMenu.PrefabCanvas.gameObject);
+								string newPath = "Assets/" + gameName + "/UI/" + defaultMenu.PrefabCanvas.name + ".prefab";
 
 								if (AssetDatabase.CopyAsset (oldPath, newPath))
 								{
 									AssetDatabase.ImportAsset (newPath);
 									GameObject canvasObNewPrefab = (GameObject) AssetDatabase.LoadAssetAtPath (newPath, typeof(GameObject));
-									newMenu.canvas = canvasObNewPrefab.GetComponent <Canvas>();
+									newMenu.PrefabCanvas = canvasObNewPrefab.GetComponent <Canvas>();
 								}
 								else
 								{
-									newMenu.canvas = null;
-									ACDebug.LogWarning ("Could not copy asset " + oldPath + " to " + newPath, defaultMenu.canvas.gameObject);
+									newMenu.PrefabCanvas = null;
+									ACDebug.LogWarning ("Could not copy asset " + oldPath + " to " + newPath, defaultMenu.PrefabCanvas.gameObject);
 								}
 								newMenu.rectTransform = null;
 							}
@@ -384,7 +394,7 @@ namespace AC
 							{
 								if (newElement != null)
 								{
-									AssetDatabase.AddObjectToAsset (newElement, references.menuManager);
+									AssetDatabase.AddObjectToAsset (newElement, newMenuManager);
 									newElement.hideFlags = HideFlags.HideInHierarchy;
 								}
 								else
@@ -395,10 +405,10 @@ namespace AC
 
 							if (newMenu != null)
 							{
-								AssetDatabase.AddObjectToAsset (newMenu, references.menuManager);
+								AssetDatabase.AddObjectToAsset (newMenu, newMenuManager);
 								newMenu.hideFlags = HideFlags.HideInHierarchy;
 
-								references.menuManager.menus.Add (newMenu);
+								newMenuManager.menus.Add (newMenu);
 							}
 							else
 							{
@@ -406,15 +416,110 @@ namespace AC
 							}
 						}
 
-						EditorUtility.SetDirty (references.menuManager);
+						EditorUtility.SetDirty (newMenuManager);
 
-						#if CAN_USE_TIMELINE
-						if (references.speechManager != null)
+						if (newMenuManager.menus.Count != defaultMenuManager.menus.Count)
 						{
-							references.speechManager.previewMenuName = "Subtitles";
-							EditorUtility.SetDirty (references.speechManager);
+							ACDebug.LogWarning ("Menu mismatch detected - not all Menus were created by the New Game Wizard - you may wish to delete the new Managers and run the Wizard again.");
 						}
-						#endif
+
+						if (newSpeechManager != null)
+						{
+							newSpeechManager.previewMenuName = "Subtitles";
+							EditorUtility.SetDirty (newSpeechManager);
+						}
+
+						if (wizardMenu != WizardMenu.Blank)
+						{
+							System.IO.Directory.CreateDirectory (Application.dataPath + "/" + gameName + "/UI/ActionLists");
+						}
+
+						string actionListPath = gameName + "/UI/ActionLists";
+
+						ActionListAsset asset_quitButton = CreateActionList_QuitButton (actionListPath);
+						ActionListAsset asset_deselectInventory = CreateActionList_DeselectInventory (actionListPath);
+						Menu pauseMenu = newMenuManager.GetMenuWithName ("Pause");
+						if (pauseMenu)
+						{
+							pauseMenu.actionListOnTurnOn = asset_deselectInventory;
+
+							MenuElement quitElement = pauseMenu.GetElementWithName ("QuitButton");
+							if (quitElement && quitElement is MenuButton)
+							{
+								MenuButton quitButton = quitElement as MenuButton;
+								quitButton.actionList = asset_quitButton;
+							}
+						}
+
+						ActionListAsset asset_createNewProfile = CreateActionList_CreateNewProfile (actionListPath);
+						ActionListAsset asset_deleteActiveProfile = CreateActionList_DeleteActiveProfile (actionListPath);
+						ActionListAsset asset_setupProfilesMenu = CreateActionList_SetupProfilesMenu (actionListPath);
+						Menu profilesMenu = newMenuManager.GetMenuWithName ("Profiles");
+						if (profilesMenu)
+						{
+							profilesMenu.actionListOnTurnOn = asset_setupProfilesMenu;
+
+							MenuElement newElement = profilesMenu.GetElementWithName ("NewButton");
+							if (newElement && newElement is MenuButton)
+							{
+								MenuButton newButton = newElement as MenuButton;
+								newButton.actionList = asset_createNewProfile;
+							}
+
+							MenuElement deleteElement = profilesMenu.GetElementWithName ("DeleteActiveProfileButton");
+							if (deleteElement && deleteElement is MenuButton)
+							{
+								MenuButton deleteButton = deleteElement as MenuButton;
+								deleteButton.actionList = asset_deleteActiveProfile;
+							}
+						}
+
+						ActionListAsset asset_closeCrafting = CreateActionList_CloseCrafting (actionListPath);
+						ActionListAsset asset_doCrafting = CreateActionList_DoCrafting (actionListPath);
+						Menu craftingMenu = newMenuManager.GetMenuWithName ("Crafting");
+						if (craftingMenu)
+						{
+							MenuElement closeElement = craftingMenu.GetElementWithName ("CloseButton");
+							if (closeElement && closeElement is MenuButton)
+							{
+								MenuButton closeButton = closeElement as MenuButton;
+								closeButton.actionList = asset_closeCrafting;
+							}
+
+							MenuElement createElement = craftingMenu.GetElementWithName ("CreateButton");
+							if (createElement && createElement is MenuButton)
+							{
+								MenuButton createButton = createElement as MenuButton;
+								createButton.actionList = asset_doCrafting;
+							}
+						}
+
+						ActionListAsset asset_hideSelectedObjective = CreateActionList_HideSelectedObjective (actionListPath);
+						ActionListAsset asset_showSelectedObjective = CreateActionList_ShowSelectedObjective (actionListPath);
+						Menu objectivesMenu = newMenuManager.GetMenuWithName ("Objectives");
+						if (objectivesMenu)
+						{
+							objectivesMenu.actionListOnTurnOn = asset_hideSelectedObjective;
+
+							MenuElement objectivesElement = objectivesMenu.GetElementWithName ("ObjectivesList");
+							if (objectivesElement && objectivesElement is MenuInventoryBox)
+							{
+								MenuInventoryBox objectivesList = objectivesElement as MenuInventoryBox;
+								objectivesList.actionListOnClick = asset_showSelectedObjective;
+							}
+						}
+
+						ActionListAsset asset_takeAllContainerItems = CreateActionList_TakeAllContainerItems (actionListPath);
+						Menu containerMenu = newMenuManager.GetMenuWithName ("Container");
+						if (containerMenu)
+						{
+							MenuElement takeElement = containerMenu.GetElementWithName ("TakeAllButton");
+							if (takeElement && takeElement is MenuButton)
+							{
+								MenuButton takeButton = takeElement as MenuButton;
+								takeButton.actionList = asset_takeAllContainerItems;
+							}
+						}
 					}
 					else
 					{
@@ -423,20 +528,20 @@ namespace AC
 				}
 
 				EditorUtility.ClearProgressBar ();
-				ManagerPackage newManagerPackage = CreateManagerPackage (gameName);
+				ManagerPackage newManagerPackage = CreateManagerPackage (gameName, newSceneManager, newSettingsManager, newActionsManager, newVariablesManager, newInventoryManager, newSpeechManager, newCursorManager, newMenuManager);
 
 				AssetDatabase.SaveAssets ();
 
 				if (newManagerPackage == null || !newManagerPackage.IsFullyAssigned ())
 				{
-					EditorUtility.DisplayDialog ("Wizard failed", "The New Game Wizard failed to generate a new 'Manager Package' file with all eight Managers assigned. Pleae verify that your Assets directory is writable and try again.", "OK");
+					EditorUtility.DisplayDialog ("Wizard failed", "The New Game Wizard failed to generate a new 'Manager Package' file with all eight Managers assigned. Check your '/Assets/" + gameName + "/Managers' directory - the Managers may have been created, and just need assigning in the ManagerPackage asset Inspector, found in '/Assets/" + gameName + "'.", "OK");
 				}
 				else if (GameObject.FindObjectOfType <KickStarter>() == null)
 				{
 					bool initScene = EditorUtility.DisplayDialog ("Organise scene?", "Process complete.  Would you like to organise the scene objects to begin working?  This can be done at any time within the Scene Manager.", "Yes", "No");
 					if (initScene)
 					{
-						references.sceneManager.InitialiseObjects ();
+						newSceneManager.InitialiseObjects ();
 					}
 				}
 			}
@@ -445,6 +550,27 @@ namespace AC
 				ACDebug.LogWarning ("Could not create Manager. Does the subdirectory " + managerPath + " exist?");
 				Debug.LogException (e, this);
 				pageNumber --;
+			}
+		}
+
+
+		private void CreateUICursorPrefab (GameObject uiCursorPrefab, CursorManager newCursorManager, string newPath)
+		{
+			if (uiCursorPrefab)
+			{
+				string oldPath = AssetDatabase.GetAssetPath (uiCursorPrefab.gameObject);
+
+				if (AssetDatabase.CopyAsset (oldPath, newPath))
+				{
+					AssetDatabase.ImportAsset(newPath);
+					GameObject uiCursorNewPrefab = (GameObject) AssetDatabase.LoadAssetAtPath (newPath, typeof (GameObject));
+					newCursorManager.uiCursorPrefab = uiCursorNewPrefab;
+				}
+				else
+				{
+					newCursorManager.uiCursorPrefab = null;
+					ACDebug.LogWarning("Could not copy asset " + oldPath + " to " + newPath);
+				}
 			}
 		}
 
@@ -658,7 +784,7 @@ namespace AC
 				movementMethod = (MovementMethod) EditorGUILayout.EnumPopup ("Movement method:", movementMethod);
 				inputMethod = (InputMethod) EditorGUILayout.EnumPopup ("Input method:", inputMethod);
 				interactionMethod = (AC_InteractionMethod) EditorGUILayout.EnumPopup ("Interaction method:", interactionMethod);
-				hotspotDetection = (HotspotDetection) EditorGUILayout.EnumPopup ("Hotspot detection method:", hotspotDetection);
+				hotspotDetection = (HotspotDetection) EditorGUILayout.EnumPopup ("Hotspot detection:", hotspotDetection);
 
 				wizardMenu = (WizardMenu) EditorGUILayout.EnumPopup ("GUI type:", wizardMenu);
 			}
@@ -667,25 +793,30 @@ namespace AC
 			{
 				GUILayout.Label ("Your game's Managers have been set up!");
 				GUILayout.Space (5f);
-				GUILayout.Label ("Your next step is to create and set your Player prefab, which you can do using the Character Wizard.");
+				GUILayout.Label ("Now you can use the AC Game Editor to start building your game.  For a step-by-step guide, follow the link below:");
+
+				if (GUILayout.Button ("Tutorial: The Game Editor window", CustomStyles.linkCentre))
+				{
+					Application.OpenURL (Resource.introTutorialLink);
+				}
 			}
 		}
 
 
-		private ManagerPackage CreateManagerPackage (string folder)
+		private ManagerPackage CreateManagerPackage (string folder, SceneManager sceneManager, SettingsManager settingsManager, ActionsManager actionsManager, VariablesManager variablesManager, InventoryManager inventoryManager, SpeechManager speechManager, CursorManager cursorManager, MenuManager menuManager)
 		{
 			ManagerPackage managerPackage = CustomAssetUtility.CreateAsset<ManagerPackage> ("ManagerPackage", folder);
 			AssetDatabase.RenameAsset ("Assets/" + folder + "/ManagerPackage.asset", folder + "_ManagerPackage");
 
-			managerPackage.sceneManager = references.sceneManager;
-			managerPackage.settingsManager = references.settingsManager;
-			managerPackage.actionsManager = references.actionsManager;
-			managerPackage.variablesManager = references.variablesManager;
+			managerPackage.sceneManager = sceneManager;
+			managerPackage.settingsManager = settingsManager;
+			managerPackage.actionsManager = actionsManager;
+			managerPackage.variablesManager = variablesManager;
 
-			managerPackage.inventoryManager = references.inventoryManager;
-			managerPackage.speechManager = references.speechManager;
-			managerPackage.cursorManager = references.cursorManager;
-			managerPackage.menuManager = references.menuManager;
+			managerPackage.inventoryManager = inventoryManager;
+			managerPackage.speechManager = speechManager;
+			managerPackage.cursorManager = cursorManager;
+			managerPackage.menuManager = menuManager;
 
 			managerPackage.AssignManagers ();
 			EditorUtility.SetDirty (managerPackage);
@@ -696,6 +827,179 @@ namespace AC
 			return managerPackage;
 		}
 
+
+		private ActionListAsset CreateActionList_CloseCrafting (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionInventoryCrafting.CreateNew (ActionInventoryCrafting.ActionCraftingMethod.ClearRecipe),
+				ActionMenuState.CreateNew_TurnOffMenu ("Crafting"),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("CloseCrafting", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+			
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_CreateNewProfile (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionManageProfiles.CreateNew_CreateProfile (),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("CreateNewProfile", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_DeleteActiveProfile (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionManageProfiles.CreateNew_DeleteProfile (DeleteProfileType.ActiveProfile, string.Empty, string.Empty, 0),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("DeleteActiveProfile", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_DeselectInventory (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionInventorySelect.CreateNew_DeselectActive (),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("DeselectInventory", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_DoCrafting (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionInventoryCrafting.CreateNew (ActionInventoryCrafting.ActionCraftingMethod.CreateRecipe),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("DoCrafting", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_HideSelectedObjective (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedTitle", false),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedStateType", false),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedDescription", false),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedTexture", false),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("HideSelectedObjective", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_QuitButton (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionEndGame.CreateNew_QuitGame (),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("QuitButton", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_SetupProfilesMenu (string folderPath)
+		{
+			ActionSaveCheck saveCheck1 = ActionSaveCheck.CreateNew_NumberOfProfiles (1, IntCondition.MoreThan);
+
+			ActionMenuState hideDeleteButton = ActionMenuState.CreateNew_SetElementVisibility ("Profiles", "DeleteActiveProfileButton", false);
+
+			ActionMenuState showDeleteButton = ActionMenuState.CreateNew_SetElementVisibility ("Profiles", "DeleteActiveProfileButton", true);
+			ActionSaveCheck saveCheck2 = ActionSaveCheck.CreateNew_NumberOfProfiles (10, IntCondition.LessThan);
+
+			ActionMenuState hideNewButton = ActionMenuState.CreateNew_SetElementVisibility ("Profiles", "NewButton", false);
+
+			ActionMenuState showNewButton = ActionMenuState.CreateNew_SetElementVisibility ("Profiles", "NewButton", true);
+
+			List<Action> actions = new List<Action>
+			{
+				saveCheck1,
+				hideDeleteButton,
+				showDeleteButton,
+				saveCheck2,
+				hideNewButton,
+				showNewButton,
+			};
+
+			saveCheck1.SetOutputs (new ActionEnd (showDeleteButton), new ActionEnd (hideDeleteButton));
+			hideDeleteButton.SetOutput (new ActionEnd (true));
+			showDeleteButton.SetOutput (new ActionEnd (saveCheck2));
+			saveCheck2.SetOutputs (new ActionEnd (showNewButton), new ActionEnd (hideNewButton));
+			hideNewButton.SetOutput (new ActionEnd (true));
+			showNewButton.SetOutput (new ActionEnd (true));
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("SetupProfilesMenu", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_ShowSelectedObjective (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedTitle", true),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedStateType", true),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedDescription", true),
+				ActionMenuState.CreateNew_SetElementVisibility ("Objectives", "SelectedTexture", true),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("ShowSelectedObjective", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
+
+		private ActionListAsset CreateActionList_TakeAllContainerItems (string folderPath)
+		{
+			List<Action> actions = new List<Action>
+			{
+				ActionContainerSet.CreateNew_RemoveAll (null, true),
+				ActionMenuState.CreateNew_TurnOffMenu ("Crafting"),
+			};
+
+			ActionListAsset newAsset = ActionListAsset.CreateFromActions ("TakeAllContainerItems", folderPath, actions);
+			newAsset.actionListType = ActionListType.RunInBackground;
+
+			return newAsset;
+		}
+
 	}
 
 }
+
+#endif

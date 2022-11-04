@@ -1,11 +1,11 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SetInteractionParameters.cs"
  * 
- *	A component used to set all of an Interactions parameters when run as the result of interacting with a Hotspot.
+ *	A component used to set all of an Interaction's parameters when run as the result of interacting with a Hotspot.
  * 
  */
 
@@ -19,34 +19,32 @@ using UnityEditor;
 namespace AC
 {
 
-	/** A component used to set all of an Interactions parameters when run as the result of interacting with a Hotspot. */
+	/** A component used to set all of an Interaction's parameters when run as the result of interacting with a Hotspot. */
 	[AddComponentMenu("Adventure Creator/Hotspots/Set Interaction parameters")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_set_interaction_parameters.html")]
-	#endif
 	public class SetInteractionParameters : SetParametersBase
 	{
 
 		#region Variables
 
-		[SerializeField] private Hotspot hotspot = null;
-		[SerializeField] private InteractionType interactionType = InteractionType.Use;
-		private enum InteractionType { Use, Examine, Inventory, UnhandledInventory };
+		[SerializeField] protected Hotspot hotspot = null;
+		[SerializeField] protected InteractionType interactionType = InteractionType.Use;
+		protected enum InteractionType { Use, Examine, Inventory, UnhandledInventory };
 
-		[SerializeField] private int buttonIndex = 0;
+		[SerializeField] protected int buttonIndex = 0;
 
 		#endregion
 
 
 		#region UnityStandards
 
-		private void OnEnable ()
+		protected void OnEnable ()
 		{
 			EventManager.OnHotspotInteract += OnHotspotInteract;
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			EventManager.OnHotspotInteract -= OnHotspotInteract;
 		}
@@ -56,7 +54,7 @@ namespace AC
 
 		#region CustomEvents
 
-		private void OnHotspotInteract (Hotspot hotspot, Button button)
+		protected void OnHotspotInteract (Hotspot hotspot, Button button)
 		{
 			if (this.hotspot == hotspot && button != null)
 			{
@@ -106,7 +104,7 @@ namespace AC
 			}
 
 			hotspot = (Hotspot) EditorGUILayout.ObjectField ("Hotspot:", hotspot, typeof (Hotspot), true);
-			if (hotspot != null)
+			if (hotspot)
 			{
 				interactionType = (InteractionType) EditorGUILayout.EnumPopup ("Interaction type:", interactionType);
 
@@ -117,14 +115,17 @@ namespace AC
 						string[] labelArray = new string[hotspot.useButtons.Count];
 						for (int i=0; i<hotspot.useButtons.Count; i++)
 						{
-							string label = (KickStarter.cursorManager != null)
+							string label = (KickStarter.cursorManager)
 											? i.ToString () + ": " + KickStarter.cursorManager.GetLabelFromID (hotspot.useButtons[i].iconID, 0)
 											: i.ToString ();
 							labelArray[i] = label;
 						}
 
 						buttonIndex = EditorGUILayout.Popup ("Interaction:", buttonIndex, labelArray);
-						ShowParametersGUI (hotspot.useButtons[buttonIndex], labelArray[buttonIndex]);
+						if (buttonIndex < hotspot.useButtons.Count)
+						{
+							ShowParametersGUI (hotspot.useButtons[buttonIndex], labelArray[buttonIndex]);
+						}
 						return;
 					}
 				}
@@ -135,7 +136,7 @@ namespace AC
 						string[] labelArray = new string[hotspot.invButtons.Count];
 						for (int i=0; i<hotspot.invButtons.Count; i++)
 						{
-							string label = (KickStarter.inventoryManager != null)
+							string label = (KickStarter.inventoryManager)
 											? i.ToString () + ": " + KickStarter.inventoryManager.GetLabel (hotspot.invButtons[i].invID)
 											: i.ToString ();
 							labelArray[i] = label;
@@ -162,13 +163,13 @@ namespace AC
 		}
 
 
-		private void ShowParametersGUI (Button button, string label)
+		protected void ShowParametersGUI (Button button, string label)
 		{
-			if (hotspot.interactionSource == InteractionSource.InScene && button.interaction != null)
+			if (hotspot.interactionSource == InteractionSource.InScene && button.interaction)
 			{
 				ShowParametersGUI (button.interaction);
 			}
-			else if (hotspot.interactionSource == InteractionSource.AssetFile && button.assetFile != null)
+			else if (hotspot.interactionSource == InteractionSource.AssetFile && button.assetFile)
 			{
 				ShowParametersGUI (button.assetFile);
 			}
@@ -179,16 +180,16 @@ namespace AC
 		}
 
 
-		private void ShowParametersGUI (Interaction interaction)
+		protected void ShowParametersGUI (Interaction interaction)
 		{
 			if (interaction == null) return;
 
-			if (interaction.source == ActionListSource.AssetFile && interaction.assetFile != null && interaction.assetFile.useParameters && interaction.assetFile.parameters != null && interaction.assetFile.parameters.Count > 0)
+			if (interaction.source == ActionListSource.AssetFile && interaction.assetFile && interaction.assetFile.NumParameters > 0)
 			{
 				ShowActionListReference (interaction.assetFile);
-				ShowParametersGUI (interaction.assetFile.parameters, interaction.syncParamValues);
+				ShowParametersGUI (interaction.assetFile.DefaultParameters, interaction.syncParamValues);
 			}
-			else if (interaction.source == ActionListSource.InScene && interaction.useParameters && interaction.parameters != null && interaction.parameters.Count > 0)
+			else if (interaction.source == ActionListSource.InScene && interaction.NumParameters > 0)
 			{
 				ShowActionListReference (interaction);
 				ShowParametersGUI (interaction.parameters, false);
@@ -200,14 +201,14 @@ namespace AC
 		}
 
 
-		private void ShowParametersGUI (ActionListAsset actionListAsset)
+		protected void ShowParametersGUI (ActionListAsset actionListAsset)
 		{
 			if (actionListAsset == null) return;
 
-			if (actionListAsset.useParameters && actionListAsset.parameters != null && actionListAsset.parameters.Count > 0)
+			if (actionListAsset.NumParameters > 0)
 			{
 				ShowActionListReference (actionListAsset);
-				ShowParametersGUI (actionListAsset.parameters, true);
+				ShowParametersGUI (actionListAsset.DefaultParameters, true);
 			}
 			else
 			{
@@ -216,9 +217,9 @@ namespace AC
 		}
 
 
-		private void ShowActionListReference (Interaction interaction)
+		protected void ShowActionListReference (Interaction interaction)
 		{
-			if (interaction != null)
+			if (interaction)
 			{
 				EditorGUILayout.BeginHorizontal ();
 				EditorGUILayout.LabelField ("Interaction: " + interaction);
@@ -231,9 +232,9 @@ namespace AC
 		}
 
 
-		private void ShowActionListReference (ActionListAsset actionListAsset)
+		protected void ShowActionListReference (ActionListAsset actionListAsset)
 		{
-			if (actionListAsset != null)
+			if (actionListAsset)
 			{
 				EditorGUILayout.BeginHorizontal ();
 				EditorGUILayout.LabelField ("Asset file: " + actionListAsset);
@@ -248,7 +249,9 @@ namespace AC
 		#endif
 
 
-		private void ProcessButton (AC.Button button)
+		#region ProtectedFunctions
+
+		protected void ProcessButton (AC.Button button)
 		{
 			if (hotspot.interactionSource == InteractionSource.AssetFile)
 			{
@@ -259,6 +262,8 @@ namespace AC
 				AssignParameterValues (button.interaction);
 			}
 		}
+
+		#endregion
 
 	}
 

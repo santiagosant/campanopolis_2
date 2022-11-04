@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberHotspot.cs"
  * 
@@ -15,29 +15,33 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * Attach this script to Hotspot objects in the scene whose state you wish to save.
-	 */
+	/** Attach this script to Hotspot objects in the scene whose state you wish to save. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Hotspot")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_hotspot.html")]
-	#endif
 	public class RememberHotspot : Remember
 	{
 
+		#region Variables
+
 		/** Determines whether the Hotspot is on or off when the game begins */
 		public AC_OnOff startState = AC_OnOff.On;
+		private Hotspot ownHotspot;
 
-		private bool loadedData = false;
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected override void Start ()
 		{
+			base.Start ();
+
 			if (loadedData) return;
 
 			if (OwnHotspot != null &&
 				KickStarter.settingsManager &&
-				GameIsPlaying ())
+				GameIsPlaying () &&
+				isActiveAndEnabled)
 			{
 				if (startState == AC_OnOff.On)
 				{
@@ -50,6 +54,10 @@ namespace AC
 			}
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Serialises appropriate GameObject values into a string.</summary>
@@ -61,7 +69,7 @@ namespace AC
 			hotspotData.objectID = constantID;
 			hotspotData.savePrevented = savePrevented;
 
-			if (OwnHotspot != null)
+			if (OwnHotspot)
 			{
 				hotspotData.isOn = OwnHotspot.IsOn ();
 				hotspotData.buttonStates = ButtonStatesToString (OwnHotspot);
@@ -83,7 +91,6 @@ namespace AC
 			HotspotData data = Serializer.LoadScriptData <HotspotData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
@@ -97,7 +104,7 @@ namespace AC
 				gameObject.layer = LayerMask.NameToLayer (KickStarter.settingsManager.deactivatedLayer);
 			}
 
-			if (OwnHotspot != null)
+			if (OwnHotspot)
 			{
 				if (data.isOn)
 				{
@@ -110,7 +117,7 @@ namespace AC
 
 				StringToButtonStates (OwnHotspot, data.buttonStates);
 
-				if (data.hotspotName != "")
+				if (!string.IsNullOrEmpty (data.hotspotName))
 				{
 					OwnHotspot.SetName (data.hotspotName, data.displayLineID);
 				}
@@ -120,6 +127,10 @@ namespace AC
 			loadedData = true;
 		}
 
+		#endregion
+
+
+		#region PrivateFunctions
 
 		private void StringToButtonStates (Hotspot hotspot, string stateString)
 		{
@@ -135,11 +146,11 @@ namespace AC
 				// Look interactions
 				if (hotspot.provideLookInteraction && hotspot.lookButton != null)
 				{
-					hotspot.lookButton.isDisabled = SetButtonDisabledValue (typesArray [0]);
+					hotspot.SetButtonState (hotspot.lookButton, !SetButtonDisabledValue (typesArray [0]));
 				}
 			}
 
-			if (hotspot.provideUseInteraction)
+			if (hotspot.provideUseInteraction && hotspot.useButtons.Count > 0)
 			{
 				string[] usesArray = typesArray[1].Split (","[0]);
 				
@@ -149,12 +160,13 @@ namespace AC
 					{
 						break;
 					}
-					hotspot.useButtons[i].isDisabled = SetButtonDisabledValue (usesArray [i]);
+
+					hotspot.SetButtonState (hotspot.useButtons[i], !SetButtonDisabledValue (usesArray [i]));
 				}
 			}
 
 			// Inventory interactions
-			if (hotspot.provideInvInteraction && typesArray.Length > 2)
+			if (hotspot.provideInvInteraction && typesArray.Length > 2 && hotspot.invButtons.Count > 0)
 			{
 				string[] invArray = typesArray[2].Split (","[0]);
 				
@@ -165,7 +177,7 @@ namespace AC
 						break;
 					}
 					
-					hotspot.invButtons[i].isDisabled = SetButtonDisabledValue (invArray [i]);
+					hotspot.SetButtonState (hotspot.invButtons[i], !SetButtonDisabledValue (invArray [i]));
 				}
 			}
 		}
@@ -187,6 +199,10 @@ namespace AC
 					stateString.Append ("0");
 				}
 			}
+			else
+			{
+				stateString.Append ("0");
+			}
 
 			stateString.Append (SaveSystem.pipe);
 
@@ -202,6 +218,15 @@ namespace AC
 						stateString.Append (",");
 					}
 				}
+
+				if (hotspot.useButtons.Count == 0)
+				{
+					stateString.Append ("0");
+				}
+			}
+			else
+			{
+				stateString.Append ("0");
 			}
 				
 			stateString.Append (SaveSystem.pipe);
@@ -218,6 +243,15 @@ namespace AC
 						stateString.Append (",");
 					}
 				}
+
+				if (hotspot.invButtons.Count == 0)
+				{
+					stateString.Append ("0");
+				}
+			}
+			else
+			{
+				stateString.Append ("0");
 			}
 			
 			return stateString.ToString ();
@@ -245,8 +279,11 @@ namespace AC
 			return true;
 		}
 
+		#endregion
 
-		private Hotspot ownHotspot;
+
+		#region GetSet
+		
 		private Hotspot OwnHotspot
 		{
 			get
@@ -259,12 +296,12 @@ namespace AC
 			}
 		}
 
+		#endregion
+
 	}
 
 
-	/**
-	 * A data container used by the RememberHotspot script.
-	 */
+	/** A data container used by the RememberHotspot script. */
 	[System.Serializable]
 	public class HotspotData : RememberData
 	{
@@ -278,9 +315,7 @@ namespace AC
 		/** The Hotspot's display name */
 		public string hotspotName;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public HotspotData () { }
 	}
 

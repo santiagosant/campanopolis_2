@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharRender.cs"
  * 
@@ -27,6 +27,7 @@ namespace AC
 		public int parameterID = -1;
 		public int constantID = 0;
 		public bool isPlayer;
+		public int playerID = -1;
 		public Char _char;
 		protected Char runtimeChar;
 
@@ -40,8 +41,10 @@ namespace AC
 
 		public RenderLock renderLock_scale;
 		public int scale;
+		public int scaleParameterID = -1;
 
 		public RenderLock renderLock_direction;
+		public int directionParameterID = -1;
 		public CharDirection direction;
 
 		public RenderLock renderLock_sortingMap;
@@ -49,33 +52,43 @@ namespace AC
 		public SortingMap sortingMap;
 		public int sortingMapConstantID = 0;
 		public int sortingMapParameterID = -1;
-		private SortingMap runtimeSortingMap;
 
-		
-		public ActionCharRender ()
+		protected SortingMap runtimeSortingMap;
+
+		public bool setNewDirections = false;
+		public SpriteDirectionData spriteDirectionData = new SpriteDirectionData (true, true);
+
+
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Change rendering"; }}
+		public override string Description { get { return "Overrides a Character's scale, sorting order, sprite direction or Sorting Map. This is intended mainly for 2D games."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Change rendering";
-			description = "Overrides a Character's scale, sorting order, sprite direction or Sorting Map. This is intended mainly for 2D games.";
-		}
-
-
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
-			runtimeChar = AssignFile <Char> (parameters, parameterID, constantID, _char);
 			if (isPlayer)
 			{
-				runtimeChar = KickStarter.player;
+				runtimeChar = AssignPlayer (playerID, parameters, parameterID);
+			}
+			else
+			{
+				runtimeChar = AssignFile <Char> (parameters, parameterID, constantID, _char);
 			}
 
 			sortingOrder = AssignInteger (parameters, sortingOrderParameterID, sortingOrder);
 			sortingLayer = AssignString (parameters, sortingLayerParameterID, sortingLayer);
 			runtimeSortingMap = AssignFile <SortingMap> (parameters, sortingMapParameterID, sortingMapConstantID, sortingMap);
+			scale = AssignInteger (parameters, scaleParameterID, scale);
+
+			if (directionParameterID >= 0)
+			{
+				int _directionInt = AssignInteger (parameters, directionParameterID, 0);
+				direction = (CharDirection) _directionInt;
+			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeChar != null)
 			{
@@ -107,18 +120,37 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
 			if (isPlayer)
 			{
-				if (Application.isPlaying)
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					if (parameterID < 0 && playerID >= 0)
+					{
+						PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (playerID);
+						_char = (playerPrefab != null) ? playerPrefab.playerOb : null;
+					}
+					else
+					{
+						_char = KickStarter.settingsManager.GetDefaultPlayer ();
+					}
+				}
+				else if (Application.isPlaying)
 				{
 					_char = KickStarter.player;
 				}
 				else
 				{
-					_char = AdvGame.GetReferences ().settingsManager.GetDefaultPlayer ();
+					_char = KickStarter.settingsManager.GetDefaultPlayer ();
 				}
 			}
 			else
@@ -156,7 +188,7 @@ namespace AC
 					}
 					else if (mapType == SortingMapType.SortingLayer)
 					{
-						sortingLayerParameterID = Action.ChooseParameterGUI ("New layer:", parameters, sortingLayerParameterID, ParameterType.String);
+						sortingLayerParameterID = Action.ChooseParameterGUI ("New layer:", parameters, sortingLayerParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 						if (sortingLayerParameterID < 0)
 						{
 							sortingLayer = EditorGUILayout.TextField ("New layer:", sortingLayer);
@@ -167,6 +199,10 @@ namespace AC
 				if (_char.GetAnimEngine ())
 				{
 					_char.GetAnimEngine ().ActionCharRenderGUI (this, parameters);
+
+					#if !AC_ActionListPrefabs
+					if (GUI.changed && this) EditorUtility.SetDirty (this);
+					#endif
 				}
 			}
 			else
@@ -175,17 +211,16 @@ namespace AC
 			}
 
 			EditorGUILayout.Space ();
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (!isPlayer)
 			{
 				if (saveScriptsToo)
 				{
-					if (!isPlayer && _char != null && _char.GetComponent <NPC>())
+					if (!isPlayer && _char != null && !_char.IsPlayer)
 					{
 						AddSaveScript <RememberNPC> (_char);
 					}
@@ -208,7 +243,33 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (_char && _char.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			if (sortingMapParameterID < 0)
+			{
+				if (sortingMap && sortingMap.gameObject == _gameObject) return true;
+				if (sortingMapConstantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -232,7 +293,7 @@ namespace AC
 		 */
 		public static ActionCharRender CreateNew_Mecanim (AC.Char characterToAffect, RenderLock sortingLock, int newSortingOrder, RenderLock scaleLock, int newScale)
 		{
-			ActionCharRender newAction = (ActionCharRender) CreateInstance <ActionCharRender>();
+			ActionCharRender newAction = CreateNew<ActionCharRender> ();
 			newAction._char = characterToAffect;
 
 			newAction.renderLock_sorting = sortingLock;
@@ -257,7 +318,7 @@ namespace AC
 		 */
 		public static ActionCharRender CreateNew_Mecanim (AC.Char characterToAffect, RenderLock sortingLock, string newSortingLayer, RenderLock scaleLock, int newScale)
 		{
-			ActionCharRender newAction = (ActionCharRender) CreateInstance <ActionCharRender>();
+			ActionCharRender newAction = CreateNew<ActionCharRender> ();
 			newAction._char = characterToAffect;
 			newAction.renderLock_sorting = sortingLock;
 			newAction.mapType = SortingMapType.SortingLayer;
@@ -285,7 +346,7 @@ namespace AC
 		 */
 		public static ActionCharRender CreateNew_Sprites (AC.Char characterToAffect, RenderLock sortingLock, int newSortingOrder, RenderLock scaleLock, int newScale, RenderLock directionLock, CharDirection newDirection, RenderLock sortingMapLock, SortingMap newSortingMap)
 		{
-			ActionCharRender newAction = (ActionCharRender) CreateInstance <ActionCharRender>();
+			ActionCharRender newAction = CreateNew<ActionCharRender> ();
 			newAction._char = characterToAffect;
 
 			newAction.renderLock_sorting = sortingLock;
@@ -297,7 +358,7 @@ namespace AC
 
 			newAction.renderLock_direction = directionLock;
 			newAction.direction = newDirection;
-			newAction.renderLock_sortingMap = sortingLock;
+			newAction.renderLock_sortingMap = sortingMapLock;
 			newAction.sortingMap = newSortingMap;
 
 			return newAction;
@@ -319,7 +380,7 @@ namespace AC
 		 */
 		public static ActionCharRender CreateNew_Sprites (AC.Char characterToAffect, RenderLock sortingLock, string newSortingLayer, RenderLock scaleLock, int newScale, RenderLock directionLock, CharDirection newDirection, RenderLock sortingMapLock, SortingMap newSortingMap)
 		{
-			ActionCharRender newAction = (ActionCharRender) CreateInstance <ActionCharRender>();
+			ActionCharRender newAction = CreateNew<ActionCharRender> ();
 			newAction._char = characterToAffect;
 			newAction.renderLock_sorting = sortingLock;
 			newAction.mapType = SortingMapType.SortingLayer;
@@ -330,7 +391,7 @@ namespace AC
 
 			newAction.renderLock_direction = directionLock;
 			newAction.direction = newDirection;
-			newAction.renderLock_sortingMap = sortingLock;
+			newAction.renderLock_sortingMap = sortingMapLock;
 			newAction.sortingMap = newSortingMap;
 
 			return newAction;

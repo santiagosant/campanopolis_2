@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMenuCheck.cs"
  * 
@@ -19,7 +19,7 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionMenuCheck : ActionCheck
+	public class ActionMenuCheck : ActionCheck, IMenuReferencer
 	{
 		
 		public enum MenuCheckType { MenuIsVisible, MenuIsLocked, ElementIsVisible };
@@ -31,20 +31,16 @@ namespace AC
 		public string elementToCheck = "";
 		public int elementToCheckParameterID = -1;
 
-		private LocalVariables localVariables;
-		private string _menuToCheck, _elementToCheck;
+		protected LocalVariables localVariables;
+		protected string _menuToCheck, _elementToCheck;
 
 		
-		public ActionMenuCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Menu;
-			title = "Check state";
-			description = "Queries the visibility of menu elements, and the enabled or locked state of menus.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Menu; }}
+		public override string Title { get { return "Check state"; }}
+		public override string Description { get { return "Queries the visibility of menu elements, and the enabled or locked state of menus."; }}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -59,7 +55,7 @@ namespace AC
 		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuToCheck = AssignString (parameters, menuToCheckParameterID, menuToCheck);
 			elementToCheck = AssignString (parameters, elementToCheckParameterID, elementToCheck);
@@ -69,7 +65,7 @@ namespace AC
 		}
 
 
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			AC.Menu _menu = PlayerMenus.GetMenuWithName (_menuToCheck);
 			if (_menu != null)
@@ -98,13 +94,13 @@ namespace AC
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			checkType = (MenuCheckType) EditorGUILayout.EnumPopup ("State to check:", checkType);
 			
 			if (checkType == MenuCheckType.MenuIsVisible || checkType == MenuCheckType.MenuIsLocked)
 			{
-				menuToCheckParameterID = Action.ChooseParameterGUI ("Menu to check:", parameters, menuToCheckParameterID, ParameterType.String);
+				menuToCheckParameterID = Action.ChooseParameterGUI ("Menu to check:", parameters, menuToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (menuToCheckParameterID < 0)
 				{
 					menuToCheck = EditorGUILayout.TextField ("Menu to check:", menuToCheck);
@@ -112,13 +108,13 @@ namespace AC
 			}
 			else if (checkType == MenuCheckType.ElementIsVisible)
 			{
-				menuToCheckParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToCheckParameterID, ParameterType.String);
+				menuToCheckParameterID = Action.ChooseParameterGUI ("Menu containing element:", parameters, menuToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (menuToCheckParameterID < 0)
 				{
 					menuToCheck = EditorGUILayout.TextField ("Menu containing element:", menuToCheck);
 				}
 
-				elementToCheckParameterID = Action.ChooseParameterGUI ("Element to check:", parameters, elementToCheckParameterID, ParameterType.String);
+				elementToCheckParameterID = Action.ChooseParameterGUI ("Element to check:", parameters, elementToCheckParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (elementToCheckParameterID < 0)
 				{
 					elementToCheck = EditorGUILayout.TextField ("Element to check:", elementToCheck);
@@ -136,6 +132,33 @@ namespace AC
 			}
 			return labelAdd;
 		}
+
+
+		public int GetNumMenuReferences (string menuName, string elementName = "")
+		{
+			if (menuToCheckParameterID < 0 && menuName == menuToCheck)
+			{
+				switch (checkType)
+				{
+					case MenuCheckType.MenuIsLocked:
+					case MenuCheckType.MenuIsVisible:
+						if (string.IsNullOrEmpty (elementName))
+						{
+							return 1;
+						}
+						break;
+
+					case MenuCheckType.ElementIsVisible:
+						if (elementToCheckParameterID < 0 && !string.IsNullOrEmpty (elementName) && elementToCheck == elementName)
+						{
+							return 1;
+						}
+						break;
+				}
+			}
+			
+			return 0;
+		}
 		
 		#endif
 
@@ -147,7 +170,7 @@ namespace AC
 		 */
 		public static ActionMenuCheck CreateNew_MenuIsLocked (string menuName)
 		{
-			ActionMenuCheck newAction = (ActionMenuCheck) CreateInstance <ActionMenuCheck>();
+			ActionMenuCheck newAction = CreateNew<ActionMenuCheck> ();
 			newAction.checkType = MenuCheckType.MenuIsLocked;
 			newAction.menuToCheck = menuName;
 			return newAction;
@@ -161,7 +184,7 @@ namespace AC
 		 */
 		public static ActionMenuCheck CreateNew_MenuIsOn (string menuName)
 		{
-			ActionMenuCheck newAction = (ActionMenuCheck) CreateInstance <ActionMenuCheck>();
+			ActionMenuCheck newAction = CreateNew<ActionMenuCheck> ();
 			newAction.checkType = MenuCheckType.MenuIsVisible;
 			newAction.menuToCheck = menuName;
 			return newAction;
@@ -176,7 +199,7 @@ namespace AC
 		 */
 		public static ActionMenuCheck CreateNew_ElementIsVisible (string menuName, string elementName)
 		{
-			ActionMenuCheck newAction = (ActionMenuCheck) CreateInstance <ActionMenuCheck>();
+			ActionMenuCheck newAction = CreateNew<ActionMenuCheck> ();
 			newAction.checkType = MenuCheckType.ElementIsVisible;
 			newAction.menuToCheck = menuName;
 			newAction.elementToCheck = elementName;

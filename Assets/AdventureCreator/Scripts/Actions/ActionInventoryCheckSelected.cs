@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionInventoryCheckSelected.cs"
  * 
@@ -20,48 +20,42 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionInventoryCheckSelected : ActionCheck
+	public class ActionInventoryCheckSelected : ActionCheck, IItemReferencerAction
 	{
 		
 		public int parameterID = -1;
 		public int invID;
 		public int binID;
-		public bool checkNothing = false; // Deprecated
+		[SerializeField] private bool checkNothing = false; // Deprecated
 		public bool includeLast = false;
 
-		[SerializeField] private SelectedCheckMethod selectedCheckMethod = SelectedCheckMethod.SpecificItem;
+		[SerializeField] protected SelectedCheckMethod selectedCheckMethod = SelectedCheckMethod.SpecificItem;
 		public enum SelectedCheckMethod { SpecificItem, InSpecificCategory, NoneSelected };
 
 		#if UNITY_EDITOR
-		private InventoryManager inventoryManager;
+		protected InventoryManager inventoryManager;
 		#endif
 
 
-		public ActionInventoryCheckSelected ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Inventory;
-			title = "Check selected";
-			description = "Queries whether or not the chosen item, or no item, is currently selected.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Inventory; }}
+		public override string Title { get { return "Check selected"; }}
+		public override string Description { get { return "Queries whether or not the chosen item, or no item, is currently selected."; }}
 
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			invID = AssignInvItemID (parameters, parameterID, invID);
-
-			Upgrade ();
 		}
 		
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (KickStarter.runtimeInventory)
 			{
 				switch (selectedCheckMethod)
 				{
 					case SelectedCheckMethod.NoneSelected:
-						if (KickStarter.runtimeInventory.SelectedItem == null)
+						if (!InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance))
 						{
 							return true;
 						}
@@ -70,14 +64,14 @@ namespace AC
 					case SelectedCheckMethod.SpecificItem:
 						if (includeLast)
 						{
-							if (KickStarter.runtimeInventory.LastSelectedItem != null && KickStarter.runtimeInventory.LastSelectedItem.id == invID)
+							if (InvInstance.IsValid (KickStarter.runtimeInventory.LastSelectedInstance) && KickStarter.runtimeInventory.LastSelectedInstance.ItemID == invID)
 							{
 								return true;
 							}
 						}
 						else
 						{
-							if (KickStarter.runtimeInventory.SelectedItem != null && KickStarter.runtimeInventory.SelectedItem.id == invID)
+							if (InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance) && KickStarter.runtimeInventory.SelectedInstance.ItemID == invID)
 							{
 								return true;
 							}
@@ -87,14 +81,14 @@ namespace AC
 					case SelectedCheckMethod.InSpecificCategory:
 						if (includeLast)
 						{
-							if (KickStarter.runtimeInventory.LastSelectedItem != null && KickStarter.runtimeInventory.LastSelectedItem.binID == binID)
+							if (InvInstance.IsValid (KickStarter.runtimeInventory.LastSelectedInstance) && KickStarter.runtimeInventory.LastSelectedInstance.InvItem.binID == binID)
 							{
 								return true;
 							}
 						}
 						else
 						{
-							if (KickStarter.runtimeInventory.SelectedItem != null && KickStarter.runtimeInventory.SelectedItem.binID == binID)
+							if (InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance) && KickStarter.runtimeInventory.SelectedInstance.InvItem.binID == binID)
 							{
 								return true;
 							}
@@ -106,22 +100,22 @@ namespace AC
 		}
 
 
-		private void Upgrade ()
+		public override void Upgrade ()
 		{
 			if (checkNothing)
 			{
 				selectedCheckMethod = SelectedCheckMethod.NoneSelected;
 				checkNothing = false;
 			}
+
+			base.Upgrade ();
 		}
 		
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			Upgrade ();
-
 			if (inventoryManager == null)
 			{
 				inventoryManager = AdvGame.GetReferences ().inventoryManager;
@@ -147,7 +141,7 @@ namespace AC
 					{
 						foreach (InvBin _bin in inventoryManager.bins)
 						{
-							labelList.Add (_bin.label);
+							labelList.Add (_bin.id.ToString () + ": " + _bin.label);
 							
 							// If a category has been removed, make sure selected is still valid
 							if (_bin.id == binID)
@@ -160,12 +154,12 @@ namespace AC
 						
 						if (binNumber == -1)
 						{
-							ACDebug.LogWarning ("Previously chosen category no longer exists!");
-							binID = 0;
+							if (binID > 0) LogWarning ("Previously chosen category no longer exists!");
+							binNumber = 0;
 						}
 						
 						binNumber = EditorGUILayout.Popup ("Inventory category:", binNumber, labelList.ToArray());
-						binID = inventoryManager.items[binNumber].id;
+						binID = inventoryManager.bins[binNumber].id;
 
 						includeLast = EditorGUILayout.Toggle ("Include last-selected?", includeLast);
 					}
@@ -204,7 +198,7 @@ namespace AC
 						
 						if (invNumber == -1)
 						{
-							ACDebug.LogWarning ("Previously chosen item no longer exists!");
+							if (invID > 0) LogWarning ("Previously chosen item no longer exists!");
 							invID = 0;
 						}
 						
@@ -233,7 +227,7 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			switch (selectedCheckMethod)
 			{
@@ -262,15 +256,26 @@ namespace AC
 		}
 
 
-		public override int GetInventoryReferences (List<ActionParameter> parameters, int _invID)
+		public int GetNumItemReferences (int _itemID, List<ActionParameter> actionParameters)
 		{
-			if (selectedCheckMethod == SelectedCheckMethod.SpecificItem && invID == _invID)
+			if (selectedCheckMethod == SelectedCheckMethod.SpecificItem && invID == _itemID)
 			{
 				return 1;
 			}
 			return 0;
 		}
-		
+
+
+		public int UpdateItemReferences (int oldItemID, int newItemID, List<ActionParameter> parameters)
+		{
+			if (selectedCheckMethod == SelectedCheckMethod.SpecificItem && invID == oldItemID)
+			{
+				invID = newItemID;
+				return 1;
+			}
+			return 0;
+		}
+
 		#endif
 
 
@@ -282,7 +287,7 @@ namespace AC
 		 */
 		public static ActionInventoryCheckSelected CreateNew_SpecificItem (int itemID, bool includeLastSelected = false)
 		{
-			ActionInventoryCheckSelected newAction = (ActionInventoryCheckSelected) CreateInstance <ActionInventoryCheckSelected>();
+			ActionInventoryCheckSelected newAction = CreateNew<ActionInventoryCheckSelected> ();
 			newAction.selectedCheckMethod = SelectedCheckMethod.SpecificItem;
 			newAction.invID = itemID;
 			newAction.includeLast = includeLastSelected;
@@ -298,7 +303,7 @@ namespace AC
 		 */
 		public static ActionInventoryCheckSelected CreateNew_InSpecificCategory (int categoryID, bool includeLastSelected = false)
 		{
-			ActionInventoryCheckSelected newAction = (ActionInventoryCheckSelected) CreateInstance <ActionInventoryCheckSelected>();
+			ActionInventoryCheckSelected newAction = CreateNew<ActionInventoryCheckSelected> ();
 			newAction.selectedCheckMethod = SelectedCheckMethod.InSpecificCategory;
 			newAction.binID = categoryID;
 			newAction.includeLast = includeLastSelected;
@@ -312,7 +317,7 @@ namespace AC
 		 */
 		public static ActionInventoryCheckSelected CreateNew_NoneSelected ()
 		{
-			ActionInventoryCheckSelected newAction = (ActionInventoryCheckSelected) CreateInstance <ActionInventoryCheckSelected>();
+			ActionInventoryCheckSelected newAction = CreateNew<ActionInventoryCheckSelected> ();
 			newAction.selectedCheckMethod = SelectedCheckMethod.NoneSelected;
 			return newAction;
 		}

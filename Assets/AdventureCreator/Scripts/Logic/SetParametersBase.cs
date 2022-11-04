@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SetInteractionBase.cs"
  * 
@@ -31,47 +31,6 @@ namespace AC
 		#endregion
 
 
-		#region ProtectedFunctions
-
-		/**
-		 * <summary>Updates an ActionLists's parameter values with its own</summary>
-		 * <param name = "_actionList">The ActionList to update</param>
-		 */
-		protected void AssignParameterValues (ActionList _actionList, int runIndex = 0)
-		{
-			if (_actionList != null && _actionList.source == ActionListSource.InScene && _actionList.useParameters && _actionList.parameters != null)
-			{
-				BulkAssignParameterValues (_actionList.parameters, GetFromParameters (runIndex), false, false);
-			}
-			else if (_actionList != null && _actionList.source == ActionListSource.AssetFile && _actionList.assetFile != null && _actionList.assetFile.useParameters && _actionList.assetFile.parameters != null)
-			{
-				if (_actionList.syncParamValues)
-				{
-					BulkAssignParameterValues (_actionList.assetFile.parameters, GetFromParameters (runIndex), false, true);
-				}
-				else
-				{
-					BulkAssignParameterValues (_actionList.parameters, GetFromParameters (runIndex), true, false);
-				}
-			}
-		}
-
-
-		/**
-		 * <summary>Updates an ActionList asset's parameter values with its own</summary>
-		 * <param name = "_actionListAsset">The ActionList asset to update</param>
-		 */
-		protected void AssignParameterValues (ActionListAsset _actionListAsset, int runIndex = 0)
-		{
-			if (_actionListAsset != null && _actionListAsset.useParameters && _actionListAsset.parameters != null)
-			{
-				BulkAssignParameterValues (_actionListAsset.parameters, GetFromParameters (runIndex), false, true);
-			}
-		}
-
-		#endregion
-
-
 		#region PublicFunctions
 
 		/**
@@ -95,6 +54,80 @@ namespace AC
 		#endregion
 
 
+		#region ProtectedFunctions
+
+		/**
+		 * <summary>Updates an ActionLists's parameter values with its own</summary>
+		 * <param name = "_actionList">The ActionList to update</param>
+		 */
+		protected void AssignParameterValues (ActionList _actionList, int runIndex = 0)
+		{
+			if (_actionList && _actionList.source == ActionListSource.InScene && _actionList.useParameters && _actionList.parameters != null)
+			{
+				BulkAssignParameterValues (_actionList.parameters, GetFromParameters (runIndex), false, false);
+			}
+			else if (_actionList && _actionList.source == ActionListSource.AssetFile && _actionList.assetFile && _actionList.assetFile.NumParameters > 0)
+			{
+				if (_actionList.syncParamValues)
+				{
+					BulkAssignParameterValues (_actionList.assetFile.GetParameters (), GetFromParameters (runIndex), false, true);
+				}
+				else
+				{
+					BulkAssignParameterValues (_actionList.parameters, GetFromParameters (runIndex), true, false);
+				}
+			}
+		}
+
+
+		/**
+		 * <summary>Updates an ActionList asset's parameter values with its own</summary>
+		 * <param name = "_actionListAsset">The ActionList asset to update</param>
+		 */
+		protected void AssignParameterValues (ActionListAsset _actionListAsset, int runIndex = 0)
+		{
+			if (_actionListAsset && _actionListAsset.NumParameters > 0)
+			{
+				BulkAssignParameterValues (_actionListAsset.GetParameters (), GetFromParameters (runIndex), false, true);
+			}
+		}
+
+
+		protected List<ActionParameter> GetFromParameters (int index)
+		{
+			if (index <= 0)
+			{
+				return initialGUIData.fromParameters;
+			}
+			return successiveGUIData[index-1].fromParameters;
+		}
+
+
+		protected List<ActionListAsset> GetAssetsFromParameterGUIData (SetParametersBase.GUIData guiData, List<ActionListAsset> existingList)
+		{
+			if (guiData.fromParameters != null)
+			{
+				foreach (ActionParameter parameter in guiData.fromParameters)
+				{
+					if (parameter.parameterType == ParameterType.UnityObject)
+					{
+						if (parameter.objectValue)
+						{
+							if (parameter.objectValue is ActionListAsset)
+							{
+								ActionListAsset _actionListAsset = (ActionListAsset) parameter.objectValue;
+								existingList.Add (_actionListAsset);
+							}
+						}
+					}
+				}
+			}
+			return existingList;
+		}
+
+		#endregion
+
+
 		#region StaticFunctions
 
 		/**
@@ -110,91 +143,97 @@ namespace AC
 			{
 				if (fromParameters.Count > i)
 				{
-					if (externalParameters[i].parameterType == ParameterType.String)
+					switch (externalParameters[i].parameterType)
 					{
-						externalParameters[i].SetValue (fromParameters[i].stringValue);
-					}
-					else if (externalParameters[i].parameterType == ParameterType.Float)
-					{
-						externalParameters[i].SetValue (fromParameters[i].floatValue);
-					}
-					else if (externalParameters[i].parameterType == ParameterType.UnityObject)
-					{
-						externalParameters[i].SetValue (fromParameters[i].objectValue);
-					}
-					else if (externalParameters[i].parameterType == ParameterType.Vector3)
-					{
-						externalParameters[i].SetValue (fromParameters[i].vector3Value);
-					}
-					else if (externalParameters[i].parameterType == ParameterType.ComponentVariable)
-					{
-						externalParameters[i].SetValue (fromParameters[i].variables, fromParameters[i].intValue);
-					}
-					else if (externalParameters[i].parameterType != ParameterType.GameObject)
-					{
-						externalParameters[i].SetValue (fromParameters[i].intValue);
-					}
-					else
-					{
-						// GameObject
+						case ParameterType.String:
+							externalParameters[i].SetValue (fromParameters[i].stringValue);
+							break;
 
-						if (sendingToAsset)
-						{
-							if (_isAssetFile)
+						case ParameterType.Float:
+							externalParameters[i].SetValue (fromParameters[i].floatValue);
+							break;
+
+						case ParameterType.UnityObject:
+							externalParameters[i].SetValue (fromParameters[i].objectValue);
+							break;
+
+						case ParameterType.Vector3:
+							externalParameters[i].SetValue (fromParameters[i].vector3Value);
+							break;
+
+						case ParameterType.ComponentVariable:
+							Variables variables = fromParameters[i].variables;
+							if (variables == null && fromParameters[i].constantID != 0)
 							{
-								if (fromParameters[i].gameObject != null)
-								{
-									// Referencing a prefab
+								variables = ConstantID.GetComponent<Variables> (fromParameters[i].constantID);
+							}
+							externalParameters[i].SetValue (variables, fromParameters[i].intValue);
+							break;
 
-									if (fromParameters[i].gameObjectParameterReferences == GameObjectParameterReferences.ReferencePrefab)
+						case ParameterType.GameObject:
+							externalParameters[i].gameObjectParameterReferences = fromParameters[i].gameObjectParameterReferences;
+							if (sendingToAsset)
+							{
+								if (_isAssetFile)
+								{
+									if (fromParameters[i].gameObject)
 									{
-										externalParameters[i].SetValue (fromParameters[i].gameObject);
+										// Referencing a prefab
+
+										if (fromParameters[i].gameObjectParameterReferences == GameObjectParameterReferences.ReferencePrefab)
+										{
+											externalParameters[i].SetValue (fromParameters[i].gameObject);
+										}
+										else if (fromParameters[i].gameObjectParameterReferences == GameObjectParameterReferences.ReferenceSceneInstance)
+										{
+											int idToSend = 0;
+											if (fromParameters[i].gameObject && fromParameters[i].gameObject.GetComponent <ConstantID>())
+											{
+												idToSend = fromParameters[i].gameObject.GetComponent <ConstantID>().constantID;
+											}
+											else
+											{
+												ACDebug.LogWarning (fromParameters[i].gameObject.name + " requires a ConstantID script component!", fromParameters[i].gameObject);
+											}
+											externalParameters[i].SetValue (fromParameters[i].gameObject, idToSend);
+										}
 									}
-									else if (fromParameters[i].gameObjectParameterReferences == GameObjectParameterReferences.ReferenceSceneInstance)
+									else
 									{
-										int idToSend = 0;
-										if (fromParameters[i].gameObject && fromParameters[i].gameObject.GetComponent <ConstantID>())
-										{
-											idToSend = fromParameters[i].gameObject.GetComponent <ConstantID>().constantID;
-										}
-										else
-										{
-											ACDebug.LogWarning (fromParameters[i].gameObject.name + " requires a ConstantID script component!", fromParameters[i].gameObject);
-										}
-										externalParameters[i].SetValue (fromParameters[i].gameObject, idToSend);
+										externalParameters[i].SetValue (fromParameters[i].intValue);
 									}
+								}
+								else if (fromParameters[i].gameObject)
+								{
+									int idToSend = 0;
+									if (fromParameters[i].gameObject && fromParameters[i].gameObject.GetComponent <ConstantID>())
+									{
+										idToSend = fromParameters[i].gameObject.GetComponent <ConstantID>().constantID;
+									}
+									else
+									{
+										ACDebug.LogWarning (fromParameters[i].gameObject.name + " requires a ConstantID script component!", fromParameters[i].gameObject);
+									}
+									externalParameters[i].SetValue (fromParameters[i].gameObject, idToSend);
 								}
 								else
 								{
 									externalParameters[i].SetValue (fromParameters[i].intValue);
 								}
 							}
-							else if (fromParameters[i].gameObject != null)
+							else if (fromParameters[i].gameObject)
 							{
-								int idToSend = 0;
-								if (fromParameters[i].gameObject && fromParameters[i].gameObject.GetComponent <ConstantID>())
-								{
-									idToSend = fromParameters[i].gameObject.GetComponent <ConstantID>().constantID;
-								}
-								else
-								{
-									ACDebug.LogWarning (fromParameters[i].gameObject.name + " requires a ConstantID script component!", fromParameters[i].gameObject);
-								}
-								externalParameters[i].SetValue (fromParameters[i].gameObject, idToSend);
+								externalParameters[i].SetValue (fromParameters[i].gameObject);
 							}
 							else
 							{
 								externalParameters[i].SetValue (fromParameters[i].intValue);
 							}
-						}
-						else if (fromParameters[i].gameObject != null)
-						{
-							externalParameters[i].SetValue (fromParameters[i].gameObject);
-						}
-						else
-						{
+							break;
+
+						default:
 							externalParameters[i].SetValue (fromParameters[i].intValue);
-						}
+							break;
 					}
 				}
 			}
@@ -207,8 +246,10 @@ namespace AC
 		 * <param name = "guiData">Data about the parameters to get the values from</param>
 		 * <returns>Updated data about the parameters to get the values from</param>
 		 */
-		public static GUIData SyncLists (List<ActionParameter> externalParameters, GUIData guiData)
+		public static GUIData SyncLists (List<ActionParameter> externalParameters, GUIData originalGUIData)
 		{
+			GUIData guiData = new GUIData (originalGUIData); // Fixes issue where values are reset when Object Selection window opens
+
 			List<ActionParameter> newLocalParameters = new List<ActionParameter>();
 			List<int> newParameterIDs = new List<int>();
 
@@ -238,7 +279,7 @@ namespace AC
 
 				if (!foundMatch)
 				{
-					newLocalParameters.Add (new ActionParameter (externalParameter.ID));
+					newLocalParameters.Add (new ActionParameter (externalParameter, true));
 					newParameterIDs.Add (-1);
 				}
 			}
@@ -304,6 +345,21 @@ namespace AC
 				}
 			}
 
+
+			#if UNITY_EDITOR
+
+			public bool ReferencesObjectOrID (GameObject gameObject, int id)
+			{
+				foreach (ActionParameter fromParameter in fromParameters)
+				{
+					if (fromParameter.gameObject && fromParameter.gameObject == gameObject) return true;
+					if (fromParameter.intValue == id) return true;
+				}
+				return false;
+			}
+
+			#endif
+
 		}
 
 
@@ -313,195 +369,258 @@ namespace AC
 		{
 			guiData = SyncLists (externalParameters, guiData);
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			for (int i=0; i<externalParameters.Count; i++)
 			{
 				string label = externalParameters[i].label;
+				string tooltip = externalParameters[i].description;
 				int linkedID = (i < guiData.parameterIDs.Count)
 								? guiData.parameterIDs[i]
 								: -1;
 
-				//guiData.fromParameters[i].ID = externalParameters[i].ID;
 				guiData.fromParameters[i].parameterType = externalParameters[i].parameterType;
-				if (externalParameters[i].parameterType == ParameterType.GameObject)
+
+				switch (externalParameters[i].parameterType)
 				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.GameObject);
-					if (linkedID < 0)
-					{
-						if (isAssetFile)
+					case ParameterType.GameObject:
 						{
-							guiData.fromParameters[i].gameObject = (GameObject) EditorGUILayout.ObjectField (label + ":", guiData.fromParameters[i].gameObject, typeof (GameObject), true);
-							if (guiData.fromParameters[i].gameObject != null)
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.GameObject);
+							if (linkedID < 0)
 							{
-								if (!UnityVersionHandler.IsPrefabFile (guiData.fromParameters[i].gameObject))
+								if (isAssetFile)
 								{
-									guiData.fromParameters[i].intValue = Action.FieldToID (guiData.fromParameters[i].gameObject, guiData.fromParameters[i].intValue, false, isAssetFile);
-									guiData.fromParameters[i].gameObject = Action.IDToField (guiData.fromParameters[i].gameObject, guiData.fromParameters[i].intValue, true, false, isAssetFile);
+									guiData.fromParameters[i].gameObject = (GameObject) CustomGUILayout.ObjectField <GameObject> (label + ":", guiData.fromParameters[i].gameObject, true, string.Empty, tooltip);
+									if (guiData.fromParameters[i].gameObject)
+									{
+										if (!UnityVersionHandler.IsPrefabFile (guiData.fromParameters[i].gameObject))
+										{
+											guiData.fromParameters[i].intValue = Action.FieldToID (guiData.fromParameters[i].gameObject, guiData.fromParameters[i].intValue, false, isAssetFile);
+											guiData.fromParameters[i].gameObject = Action.IDToField (guiData.fromParameters[i].gameObject, guiData.fromParameters[i].intValue, true, false, isAssetFile);
+											guiData.fromParameters[i].gameObjectParameterReferences = GameObjectParameterReferences.ReferenceSceneInstance;
+										}
+										else
+										{
+											// A prefab, ask if we want to affect the prefab or the scene-based instance?
+											guiData.fromParameters[i].gameObjectParameterReferences = (GameObjectParameterReferences) EditorGUILayout.EnumPopup ("GameObject parameter:", guiData.fromParameters[i].gameObjectParameterReferences);
+										}
+									}
+									else
+									{
+										guiData.fromParameters[i].intValue = CustomGUILayout.IntField (label + " (ID #):", guiData.fromParameters[i].intValue, string.Empty, tooltip);
+									}
 								}
 								else
 								{
-									// A prefab, ask if we want to affect the prefab or the scene-based instance?
-									guiData.fromParameters[i].gameObjectParameterReferences = (GameObjectParameterReferences) EditorGUILayout.EnumPopup ("GameObject parameter:", guiData.fromParameters[i].gameObjectParameterReferences);
+									// Gameobject
+									guiData.fromParameters[i].gameObject = (GameObject) CustomGUILayout.ObjectField <GameObject> (label + ":", guiData.fromParameters[i].gameObject, true, string.Empty, tooltip);
+									guiData.fromParameters[i].intValue = 0;
+									if (guiData.fromParameters[i].gameObject && guiData.fromParameters[i].gameObject.GetComponent <ConstantID>() == null)
+									{
+										UnityVersionHandler.AddConstantIDToGameObject <ConstantID> (guiData.fromParameters[i].gameObject);
+									}
+								}
+							}
+						}
+						break;
+
+					case ParameterType.UnityObject:
+						{
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.UnityObject);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].objectValue = (Object) CustomGUILayout.ObjectField <Object> (label + ":", guiData.fromParameters[i].objectValue, true, string.Empty, tooltip);
+							}
+						}
+						break;
+
+					case ParameterType.GlobalVariable:
+						{
+							if (AdvGame.GetReferences () && AdvGame.GetReferences ().variablesManager)
+							{
+								linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.GlobalVariable, -1, tooltip);
+								if (linkedID < 0)
+								{
+									VariablesManager variablesManager = AdvGame.GetReferences ().variablesManager;
+									guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", variablesManager.vars, guiData.fromParameters[i].intValue, tooltip);
+								}	
+							}
+							else
+							{
+								EditorGUILayout.HelpBox ("A Variables Manager is required to pass Global Variables.", MessageType.Warning);
+							}
+						}
+						break;
+
+					case ParameterType.InventoryItem:
+						{
+							if (AdvGame.GetReferences () && AdvGame.GetReferences ().inventoryManager)
+							{
+								linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.InventoryItem, -1, tooltip);
+								if (linkedID < 0)
+								{
+									InventoryManager inventoryManager = AdvGame.GetReferences ().inventoryManager;
+									guiData.fromParameters[i].intValue = ActionRunActionList.ShowInvItemSelectorGUI (label + ":", inventoryManager.items, guiData.fromParameters[i].intValue, tooltip);
 								}
 							}
 							else
 							{
-								guiData.fromParameters[i].intValue = EditorGUILayout.IntField (label + " (ID #):", guiData.fromParameters[i].intValue);
+								EditorGUILayout.HelpBox ("An Inventory Manager is required to pass Inventory items.", MessageType.Warning);
 							}
 						}
-						else
+						break;
+
+					case ParameterType.Document:
 						{
-							// Gameobject
-							guiData.fromParameters[i].gameObject = (GameObject) EditorGUILayout.ObjectField (label + ":", guiData.fromParameters[i].gameObject, typeof (GameObject), true);
-							guiData.fromParameters[i].intValue = 0;
-							if (guiData.fromParameters[i].gameObject != null && guiData.fromParameters[i].gameObject.GetComponent <ConstantID>() == null)
+							if (AdvGame.GetReferences () && AdvGame.GetReferences ().inventoryManager)
 							{
-								UnityVersionHandler.AddConstantIDToGameObject <ConstantID> (guiData.fromParameters[i].gameObject);
+								linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Document, -1, tooltip);
+								if (linkedID < 0)
+								{
+									InventoryManager inventoryManager = AdvGame.GetReferences ().inventoryManager;
+									guiData.fromParameters[i].intValue = ActionRunActionList.ShowDocumentSelectorGUI (label + ":", inventoryManager.documents, guiData.fromParameters[i].intValue, tooltip);
+								}
+							}
+							else
+							{
+								EditorGUILayout.HelpBox ("An Inventory Manager is required to pass Documents.", MessageType.Warning);
 							}
 						}
-					}	
-				}
-				else if (externalParameters[i].parameterType == ParameterType.UnityObject)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.UnityObject);
-					if (linkedID < 0)
-					{
-						guiData.fromParameters[i].objectValue = (Object) EditorGUILayout.ObjectField (label + ":", guiData.fromParameters[i].objectValue, typeof (Object), true);
-					}	
-				}
-				else if (externalParameters[i].parameterType == ParameterType.GlobalVariable)
-				{
-					if (AdvGame.GetReferences () && AdvGame.GetReferences ().variablesManager)
-					{
-						linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.GlobalVariable);
-						if (linkedID < 0)
-						{
-							VariablesManager variablesManager = AdvGame.GetReferences ().variablesManager;
-							guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", variablesManager.vars, guiData.fromParameters[i].intValue);
-						}	
-					}
-					else
-					{
-						EditorGUILayout.HelpBox ("A Variables Manager is required to pass Global Variables.", MessageType.Warning);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.InventoryItem)
-				{
-					if (AdvGame.GetReferences () && AdvGame.GetReferences ().inventoryManager)
-					{
-						linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.InventoryItem);
-						if (linkedID < 0)
-						{
-							InventoryManager inventoryManager = AdvGame.GetReferences ().inventoryManager;
-							guiData.fromParameters[i].intValue = ActionRunActionList.ShowInvItemSelectorGUI (label + ":", inventoryManager.items, guiData.fromParameters[i].intValue);
-						}
-					}
-					else
-					{
-						EditorGUILayout.HelpBox ("An Inventory Manager is required to pass Inventory items.", MessageType.Warning);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.Document)
-				{
-					if (AdvGame.GetReferences () && AdvGame.GetReferences ().inventoryManager)
-					{
-						linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Document);
-						if (linkedID < 0)
-						{
-							InventoryManager inventoryManager = AdvGame.GetReferences ().inventoryManager;
-							guiData.fromParameters[i].intValue = ActionRunActionList.ShowDocumentSelectorGUI (label + ":", inventoryManager.documents, guiData.fromParameters[i].intValue);
-						}
-					}
-					else
-					{
-						EditorGUILayout.HelpBox ("An Inventory Manager is required to pass Documents.", MessageType.Warning);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.LocalVariable)
-				{
-					if (KickStarter.localVariables)
-					{
-						linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.LocalVariable);
-						if (linkedID < 0)
-						{
-							guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", KickStarter.localVariables.localVars, guiData.fromParameters[i].intValue);
-						}
-					}
-					else
-					{
-						EditorGUILayout.HelpBox ("A GameEngine prefab is required to pass Local Variables.", MessageType.Warning);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.String)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.String);
-					if (linkedID < 0)
-					{
-						EditorGUILayout.BeginHorizontal ();
-						EditorGUILayout.LabelField (label + ":", GUILayout.Width (145f));
-						EditorStyles.textField.wordWrap = true;
-						guiData.fromParameters[i].stringValue = EditorGUILayout.TextArea (guiData.fromParameters[i].stringValue, GUILayout.MaxWidth (400f));
-						EditorGUILayout.EndHorizontal ();
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.Float)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Float);
-					if (linkedID < 0)
-					{
-						guiData.fromParameters[i].floatValue = EditorGUILayout.FloatField (label + ":", guiData.fromParameters[i].floatValue);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.Integer)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Integer);
-					if (linkedID < 0)
-					{
-						guiData.fromParameters[i].intValue = EditorGUILayout.IntField (label + ":", guiData.fromParameters[i].intValue);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.Vector3)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Vector3);
-					if (linkedID < 0)
-					{
-						guiData.fromParameters[i].vector3Value = EditorGUILayout.Vector3Field (label + ":", guiData.fromParameters[i].vector3Value);
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.Boolean)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Boolean);
-					if (linkedID < 0)
-					{
-						BoolValue boolValue = BoolValue.False;
-						if (guiData.fromParameters[i].intValue == 1)
-						{
-							boolValue = BoolValue.True;
-						}
+						break;
 
-						boolValue = (BoolValue) EditorGUILayout.EnumPopup (label + ":", boolValue);
+					case ParameterType.LocalVariable:
+						{
+							if (KickStarter.localVariables)
+							{
+								linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.LocalVariable, -1, tooltip);
+								if (linkedID < 0)
+								{
+									guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", KickStarter.localVariables.localVars, guiData.fromParameters[i].intValue, tooltip);
+								}
+							}
+							else
+							{
+								EditorGUILayout.HelpBox ("A GameEngine prefab is required to pass Local Variables.", MessageType.Warning);
+							}
+						}
+						break;
 
-						if (boolValue == BoolValue.True)
+					case ParameterType.String:
 						{
-							guiData.fromParameters[i].intValue = 1;
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.String, -1, tooltip);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].stringValue = CustomGUILayout.TextArea (label, guiData.fromParameters[i].stringValue, string.Empty, tooltip);
+							}
 						}
-						else
+						break;
+
+					case ParameterType.Float:
 						{
-							guiData.fromParameters[i].intValue = 0;
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Float, -1, tooltip);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].floatValue = CustomGUILayout.FloatField (label + ":", guiData.fromParameters[i].floatValue, string.Empty, tooltip);
+							}
 						}
-					}
-				}
-				else if (externalParameters[i].parameterType == ParameterType.ComponentVariable)
-				{
-					linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.ComponentVariable);
-					if (linkedID < 0)
-					{
-						guiData.fromParameters[i].variables = (Variables) EditorGUILayout.ObjectField ("'" + label + "' component:", guiData.fromParameters[i].variables, typeof (Variables), true);
-						if (guiData.fromParameters[i].variables != null)
+						break;
+
+					case ParameterType.Integer:
 						{
-							guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", guiData.fromParameters[i].variables.vars, guiData.fromParameters[i].intValue);
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Integer, -1, tooltip);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].intValue = CustomGUILayout.IntField (label + ":", guiData.fromParameters[i].intValue, string.Empty, tooltip);
+							}
 						}
-					}
+						break;
+
+					case ParameterType.Vector3:
+						{
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Vector3, -1, tooltip);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].vector3Value = CustomGUILayout.Vector3Field (label + ":", guiData.fromParameters[i].vector3Value, string.Empty, tooltip);
+							}
+						}
+						break;
+
+					case ParameterType.Boolean:
+						{
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.Boolean, -1, tooltip);
+							if (linkedID < 0)
+							{
+								BoolValue boolValue = BoolValue.False;
+								if (guiData.fromParameters[i].intValue == 1)
+								{
+									boolValue = BoolValue.True;
+								}
+
+								boolValue = (BoolValue) CustomGUILayout.EnumPopup (label + ":", boolValue, string.Empty, tooltip);
+
+								if (boolValue == BoolValue.True)
+								{
+									guiData.fromParameters[i].intValue = 1;
+								}
+								else
+								{
+									guiData.fromParameters[i].intValue = 0;
+								}
+							}
+						}
+						break;
+
+					case ParameterType.ComponentVariable:
+						{
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.ComponentVariable);
+							if (linkedID < 0)
+							{
+								guiData.fromParameters[i].variables = (Variables) EditorGUILayout.ObjectField ("'" + label + "' component:", guiData.fromParameters[i].variables, typeof (Variables), true);
+								guiData.fromParameters[i].constantID = FieldToID<Variables> (isAssetFile, guiData.fromParameters[i].variables, guiData.fromParameters[i].constantID);
+								guiData.fromParameters[i].variables = IDToField<Variables> (isAssetFile, guiData.fromParameters[i].variables, guiData.fromParameters[i].constantID, false);
+								if (guiData.fromParameters[i].variables != null)
+								{
+									guiData.fromParameters[i].intValue = ActionRunActionList.ShowVarSelectorGUI (label + ":", guiData.fromParameters[i].variables.vars, guiData.fromParameters[i].intValue);
+								}
+							}
+						}
+						break;
+
+					case ParameterType.PopUp:
+						{
+							linkedID = Action.ChooseParameterGUI (label + ":", ownParameters, linkedID, ParameterType.PopUp, -1, tooltip);
+							if (linkedID < 0)
+							{
+								if (guiData.fromParameters[i].intValue < 0)
+								{
+									guiData.fromParameters[i].intValue = 0;
+								}
+
+								PopUpLabelData popUpLabelData = KickStarter.variablesManager.GetPopUpLabelData (guiData.fromParameters[i].popUpID);
+								if (popUpLabelData != null)
+								{
+									string[] labels = popUpLabelData.GenerateEditorPopUpLabels ();
+									if (guiData.fromParameters[i].intValue >= labels.Length)
+									{
+										if (labels.Length == 0)
+										{
+											EditorGUILayout.HelpBox ("The PopUp parameter " + guiData.fromParameters[i].label + " has no labels defined.", MessageType.Warning);
+											break;
+										}
+										guiData.fromParameters[i].intValue = labels.Length - 1;
+										Debug.LogWarning ("Value for PopUp parameter " + guiData.fromParameters[i].label + " was reduced because it exceeded the maximum value.");
+									}
+									guiData.fromParameters[i].intValue = EditorGUILayout.Popup (label + ":", guiData.fromParameters[i].intValue, labels);
+								}
+								else
+								{
+									guiData.fromParameters[i].intValue = EditorGUILayout.IntField (label + " index:", guiData.fromParameters[i].intValue);
+								}
+							}
+						}
+						break;
+
+					default:
+						break;
 				}
 
 				if (i < guiData.parameterIDs.Count)
@@ -514,9 +633,76 @@ namespace AC
 					EditorGUILayout.Space ();
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			return guiData;
+		}
+
+
+		protected static int FieldToID<T> (bool isAssetFile, T field, int _constantID, bool alwaysAssign = false) where T : Behaviour
+		{
+			if (field != null)
+			{
+				if (alwaysAssign || isAssetFile || (!isAssetFile && !field.gameObject.activeInHierarchy))
+				{
+					if (field.GetComponent<ConstantID> ())
+					{
+						if (!field.gameObject.activeInHierarchy && field.GetComponent<ConstantID> ().constantID == 0)
+						{
+							UnityVersionHandler.AddConstantIDToGameObject<ConstantID> (field.gameObject);
+						}
+						_constantID = field.GetComponent<ConstantID> ().constantID;
+					}
+					else if (field.GetComponent<Player> () == null)
+					{
+						UnityVersionHandler.AddConstantIDToGameObject<ConstantID> (field.gameObject);
+					}
+					return _constantID;
+				}
+				if (!Application.isPlaying)
+				{
+					return 0;
+				}
+			}
+			return _constantID;
+		}
+
+
+		protected static T IDToField<T> (bool isAssetFile, T field, int _constantID, bool moreInfo) where T : Behaviour
+		{
+			if (isAssetFile || (!isAssetFile && (field == null || !field.gameObject.activeInHierarchy)))
+			{
+				T newField = field;
+				if (_constantID != 0)
+				{
+					newField = ConstantID.GetComponent<T> (_constantID);
+					if (field && field.GetComponent<ConstantID> () != null && field.GetComponent<ConstantID> ().constantID == _constantID)
+					{ }
+					else if (newField && !Application.isPlaying)
+					{
+						field = newField;
+					}
+
+					CustomGUILayout.BeginVertical ();
+					EditorGUILayout.BeginHorizontal ();
+					EditorGUILayout.LabelField ("Recorded ConstantID: " + _constantID.ToString (), EditorStyles.miniLabel);
+					if (field == null)
+					{
+						if (!Application.isPlaying && GUILayout.Button ("Locate", EditorStyles.miniButton))
+						{
+							AdvGame.FindObjectWithConstantID (_constantID);
+						}
+					}
+					EditorGUILayout.EndHorizontal ();
+
+					if (field == null && moreInfo)
+					{
+						EditorGUILayout.HelpBox ("Further controls cannot display because the referenced object cannot be found.", MessageType.Warning);
+					}
+					CustomGUILayout.EndVertical ();
+				}
+			}
+			return field;
 		}
 
 
@@ -720,44 +906,20 @@ namespace AC
 			return newArray;
 		}
 
-		#endif
 
-
-		#region PrivateFunctions
-
-		private List<ActionParameter> GetFromParameters (int index)
+		public bool ReferencesObjectOrID (GameObject _gameObject, int id)
 		{
-			if (index <= 0)
+			if (initialGUIData.ReferencesObjectOrID (_gameObject, id)) return true;
+			if (successiveGUIData != null)
 			{
-				return initialGUIData.fromParameters;
-			}
-			return successiveGUIData[index-1].fromParameters;
-		}
-
-
-		private List<ActionListAsset> GetAssetsFromParameterGUIData (SetParametersBase.GUIData guiData, List<ActionListAsset> existingList)
-		{
-			if (guiData.fromParameters != null)
-			{
-				foreach (ActionParameter parameter in guiData.fromParameters)
+				foreach (GUIData guiData in successiveGUIData)
 				{
-					if (parameter.parameterType == ParameterType.UnityObject)
-					{
-						if (parameter.objectValue != null)
-						{
-							if (parameter.objectValue is ActionListAsset)
-							{
-								ActionListAsset _actionListAsset = (ActionListAsset) parameter.objectValue;
-								existingList.Add (_actionListAsset);
-							}
-						}
-					}
+					if (guiData.ReferencesObjectOrID (_gameObject, id)) return true;
 				}
 			}
-			return existingList;
+			return false;
 		}
-
-		#endregion
+		#endif
 
 	}
 

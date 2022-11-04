@@ -1,9 +1,9 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
- *	"NavigationEngine_meshCollider.cs"
+ *	"NavigationEngine_UnityNavigation.cs"
  * 
  *	This script uses Unity's built-in Navigation
  *	system to allow pathfinding in a scene.
@@ -11,9 +11,7 @@
  */
 
 using UnityEngine;
-#if UNITY_5_5_OR_NEWER
 using UnityEngine.AI;
-#endif
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -25,6 +23,8 @@ namespace AC
 
 	public class NavigationEngine_UnityNavigation : NavigationEngine
 	{
+
+		#region PublicFunctions
 
 		public override void SceneSettingsGUI ()
 		{
@@ -76,12 +76,13 @@ namespace AC
 
 				if (!foundNewEnd)
 				{
+					ACDebug.LogWarning ("No path could be calculated between " + startPosition + " and " + targetPosition);
 					return new Vector3[0];
 				}
 
 				NavMesh.CalculatePath (startPosition, targetPosition, -1, _path);
 			}
-
+			
 			List<Vector3> pointArray = new List<Vector3>();
 			for (int i=0; i<_path.corners.Length; i++)
 			{
@@ -108,8 +109,6 @@ namespace AC
 			Vector3 randomOffset = new Vector3 (circle.x, 0f, circle.y) * Random.Range (minDistance, maxDistance);
 			Vector3 randomPoint = point + randomOffset;
 
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
-
 			NavMeshHit hit = new NavMeshHit ();
 			bool blocked = NavMesh.Raycast (point, randomPoint, out hit, NavMesh.AllAreas);
 			if (!blocked)
@@ -122,12 +121,6 @@ namespace AC
 				return hit.position;
 			}
 			return base.GetPointNear (point, minDistance, maxDistance);
-
-			#else
-
-			return randomPoint;
-
-			#endif
 		}
 
 
@@ -136,31 +129,7 @@ namespace AC
 			return ("NavMeshSegment");
 		}
 
-
-		public override void SetVisibility (bool visibility)
-		{
-			NavMeshSegment[] navMeshSegments = FindObjectsOfType (typeof (NavMeshSegment)) as NavMeshSegment[];
-			
-			#if UNITY_EDITOR
-			Undo.RecordObjects (navMeshSegments, "NavMesh visibility");
-			#endif
-			
-			foreach (NavMeshSegment navMeshSegment in navMeshSegments)
-			{
-				if (visibility)
-				{
-					navMeshSegment.Show ();
-				}
-				else
-				{
-					navMeshSegment.Hide ();
-				}
-				
-				#if UNITY_EDITOR
-				UnityVersionHandler.CustomSetDirty (navMeshSegment, true);
-				#endif
-			}
-		}
+		#endregion
 
 	}
 

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavigationEngine_meshCollider.cs"
  * 
@@ -22,15 +22,22 @@ namespace AC
 
 	public class NavigationEngine_meshCollider : NavigationEngine
 	{
-		
-		private bool pathFailed = false;
 
+		#region Variables
+		
+		protected bool pathFailed = false;
+		private Vector3 upDirection = new Vector3 (0f, 1f, 0f);
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		public override void OnReset (NavigationMesh navMesh)
 		{
 			if (!Application.isPlaying) return;
 
-			if (navMesh == null && KickStarter.settingsManager != null && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick)
+			if (navMesh == null && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick)
 			{
 				ACDebug.LogWarning ("Could not initialise NavMesh - was one set as the Default in the Settings Manager?");
 			}
@@ -40,6 +47,8 @@ namespace AC
 		public override void TurnOn (NavigationMesh navMesh)
 		{
 			if (navMesh == null || KickStarter.settingsManager == null) return;
+
+			upDirection = navMesh.UpDirection;
 			
 			if (LayerMask.NameToLayer (KickStarter.settingsManager.navMeshLayer) == -1)
 			{
@@ -166,37 +175,11 @@ namespace AC
 		}
 		
 		
-		public override void SetVisibility (bool visibility)
-		{
-			NavigationMesh[] navMeshes = FindObjectsOfType (typeof (NavigationMesh)) as NavigationMesh[];
-			
-			#if UNITY_EDITOR
-			Undo.RecordObjects (navMeshes, "NavMesh visibility");
-			#endif
-			
-			foreach (NavigationMesh navMesh in navMeshes)
-			{
-				if (visibility)
-				{
-					navMesh.Show ();
-				}
-				else
-				{
-					navMesh.Hide ();
-				}
-				
-				#if UNITY_EDITOR
-				UnityVersionHandler.CustomSetDirty (navMesh, true);
-				#endif
-			}	
-		}
-
-
 		public override Vector3 GetPointNear (Vector3 point, float minDistance, float maxDistance)
 		{
 			Vector2 circle = Random.insideUnitCircle;
 
-			Vector3 randomOffset = new Vector3 (circle.x, 0f, circle.y) * Random.Range (minDistance, maxDistance);
+			Vector3 randomOffset = Vector3.Cross (new Vector3 (circle.x, 0f, circle.y), upDirection) * Random.Range (minDistance, maxDistance);
 			Vector3 randomPoint = point + randomOffset;
 
 			if (IsLineClear (point, randomPoint, false))
@@ -225,8 +208,12 @@ namespace AC
 			#endif
 		}
 		
-		
-		private bool IsVertexImperfect (Vector3 vertex, Vector3[] blackList)
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected bool IsVertexImperfect (Vector3 vertex, Vector3[] blackList)
 		{
 			for (int i=0; i<blackList.Length; i++)
 			{
@@ -240,7 +227,7 @@ namespace AC
 		}
 		
 		
-		private float GetPathLength (List <Vector3> _pointsList, Vector3 candidatePoint, Vector3 endPos)
+		protected float GetPathLength (List <Vector3> _pointsList, Vector3 candidatePoint, Vector3 endPos)
 		{
 			float length = 0f;
 			
@@ -261,19 +248,23 @@ namespace AC
 		}
 		
 		
-		private bool IsLineClear (Vector3 startPos, Vector3 endPos, bool ignoreOthers)
+		protected bool IsLineClear (Vector3 startPos, Vector3 endPos, bool ignoreOthers)
 		{
 			// Raise positions to above mesh, so they can "look down"
 			
-			if (startPos.y > endPos.y)
+			float startOffset = Vector3.Dot (startPos, upDirection);
+			float endOffset = Vector3.Dot (endPos, upDirection);
+
+			float diffOffset = endOffset - startOffset;
+			if (diffOffset > 0f)
 			{
-				endPos.y = startPos.y;
+				startPos -= diffOffset * upDirection;
 			}
 			else
 			{
-				startPos.y = endPos.y;
+				endPos -= diffOffset * upDirection;
 			}
-			
+
 			Vector3 actualPos = startPos;
 			RaycastHit hit = new RaycastHit();
 			Ray ray = new Ray ();
@@ -281,7 +272,7 @@ namespace AC
 			for (float i=0f; i<1f; i+= 0.01f)
 			{
 				actualPos = startPos + ((endPos - startPos) * i);
-				ray = new Ray (actualPos + new Vector3 (0f, 2f, 0f), new Vector3 (0f, -1f, 0f));
+				ray = new Ray (actualPos + (upDirection * 2f), -upDirection);
 				
 				if (KickStarter.settingsManager && Physics.Raycast (ray, out hit, KickStarter.settingsManager.navMeshRaycastLength, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer))
 				{
@@ -301,17 +292,21 @@ namespace AC
 		}
 		
 		
-		private Vector3 GetLineBreak (Vector3 startPos, Vector3 endPos)
+		protected Vector3 GetLineBreak (Vector3 startPos, Vector3 endPos)
 		{
 			// Raise positions to above mesh, so they can "look down"
 			
-			if (startPos.y > endPos.y)
+			float startOffset = Vector3.Dot (startPos, upDirection);
+			float endOffset = Vector3.Dot (endPos, upDirection);
+
+			float diffOffset = endOffset - startOffset;
+			if (diffOffset > 0f)
 			{
-				endPos.y = startPos.y;
+				startPos -= diffOffset * upDirection;
 			}
 			else
 			{
-				startPos.y = endPos.y;
+				endPos -= diffOffset * upDirection;
 			}
 			
 			Vector3 actualPos = startPos;
@@ -321,7 +316,7 @@ namespace AC
 			for (float i=0f; i<1f; i+= 0.01f)
 			{
 				actualPos = startPos + ((endPos - startPos) * i);
-				ray = new Ray (actualPos + new Vector3 (0f, 2f, 0f), new Vector3 (0f, -1f, 0f));
+				ray = new Ray (actualPos + (upDirection * 2f), -upDirection);
 				
 				if (KickStarter.settingsManager && Physics.Raycast (ray, out hit, KickStarter.settingsManager.navMeshRaycastLength, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer))
 				{
@@ -336,7 +331,7 @@ namespace AC
 		}
 		
 		
-		private Vector3[] CreateVertexArray (Vector3 targetPos)
+		protected Vector3[] CreateVertexArray (Vector3 targetPos)
 		{
 			Mesh mesh = KickStarter.sceneSettings.navMesh.transform.GetComponent <MeshCollider>().sharedMesh;
 			if (mesh == null)
@@ -365,7 +360,7 @@ namespace AC
 		}
 		
 		
-		private List<Vector3> FindComplexPath (Vector3 originPos, Vector3 targetPos, bool ignoreOthers)
+		protected List<Vector3> FindComplexPath (Vector3 originPos, Vector3 targetPos, bool ignoreOthers)
 		{
 			targetPos = GetNearestToMesh (targetPos);
 			
@@ -476,13 +471,13 @@ namespace AC
 		}
 		
 		
-		private Vector3 GetNearestToMesh (Vector3 point)
+		protected Vector3 GetNearestToMesh (Vector3 point)
 		{
 			RaycastHit hit = new RaycastHit();
 			Ray ray = new Ray ();
 			
 			// Test to make sure starting on the collision mesh
-			ray = new Ray (point + new Vector3 (0f, 2f, 0f), new Vector3 (0f, -1f, 0f));
+			ray = new Ray (point + (upDirection * 2f), -upDirection);
 			if (KickStarter.settingsManager && !Physics.Raycast (ray, out hit, KickStarter.settingsManager.navMeshRaycastLength, 1 << KickStarter.sceneSettings.navMesh.gameObject.layer))
 			{
 				Vector3[] vertices = CreateVertexArray (point);
@@ -492,30 +487,46 @@ namespace AC
 			return (point);	
 		}
 
-	}
+		#endregion
 
 
-	/**
-	 * A data container for vertices within a NavMesh.
-	 */
-	public class NavMeshData
-	{
+		#region ProtectedClasses
 
-		/** The vertex's position */
-		public Vector3 vertex;
-		/** The distance between the vertex and the current target position */
-		public float distance;
-		
-
-		/**
-		 * The default Constructor.
-		 */
-		public NavMeshData (Vector3 _vertex, Vector3 _target, Transform navObject)
+		protected class NavMeshData
 		{
-			vertex = navObject.TransformPoint (_vertex);
-			distance = Vector3.Distance (vertex, _target);
+
+			/** The vertex's position */
+			public Vector3 vertex;
+			/** The distance between the vertex and the current target position */
+			public float distance;
+			
+
+			/**
+			 * The default Constructor.
+			 */
+			public NavMeshData (Vector3 _vertex, Vector3 _target, Transform navObject)
+			{
+				vertex = navObject.TransformPoint (_vertex);
+				distance = Vector3.Distance (vertex, _target);
+			}
+			
 		}
-		
+
+		#endregion
+
+
+		#region GetSet
+
+		public override bool RequiresNavMeshGameObject
+		{
+			get
+			{
+				return true;
+			}
+		}
+
+		#endregion
+
 	}
 
 }

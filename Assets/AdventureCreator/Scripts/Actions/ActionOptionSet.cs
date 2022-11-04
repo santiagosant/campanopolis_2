@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionOptionSet.cs"
  * 
@@ -22,26 +22,22 @@ namespace AC
 	public class ActionOptionSet : Action
 	{
 
-		[SerializeField] private int indexParameterID = -1;
-		[SerializeField] private int index;
+		[SerializeField] protected int indexParameterID = -1;
+		[SerializeField] protected int index;
 
-		[SerializeField] private int volumeParameterID = -1;
-		[SerializeField] private float volume;
+		[SerializeField] protected int volumeParameterID = -1;
+		[SerializeField] protected float volume;
 
-		[SerializeField] private OptionSetMethod method = OptionSetMethod.Language;
-		private enum OptionSetMethod { Language=0, Subtitles=1, SFXVolume=2, SpeechVolume=3, MusicVolume=4 };
+		[SerializeField] protected OptionSetMethod method = OptionSetMethod.Language;
+		protected enum OptionSetMethod { Language=0, Subtitles=1, SFXVolume=2, SpeechVolume=3, MusicVolume=4 };
 
-		[SerializeField] private SplitLanguageType splitLanguageType = SplitLanguageType.TextAndVoice;
+		[SerializeField] protected SplitLanguageType splitLanguageType = SplitLanguageType.TextAndVoice;
 
+
+		public override ActionCategory Category { get { return ActionCategory.Save; }}
+		public override string Title { get { return "Set Option"; }}
+		public override string Description { get { return "Set an Options variable to a specific value"; }}
 		
-		public ActionOptionSet ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Save;
-			title = "Set Option";
-			description = "Set an Options variable to a specific value";
-		}
-
 
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
@@ -67,12 +63,12 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			switch (method)
 			{
 				case OptionSetMethod.Language:
-					if (index >= 0 && KickStarter.speechManager != null && index < KickStarter.speechManager.languages.Count)
+					if (index >= 0 && KickStarter.speechManager != null && index < KickStarter.speechManager.Languages.Count)
 					{
 						if (KickStarter.speechManager != null && KickStarter.speechManager.separateVoiceAndTextLanguages)
 						{
@@ -126,7 +122,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			method = (OptionSetMethod) EditorGUILayout.EnumPopup ("Option to set:", method);
 
@@ -137,7 +133,7 @@ namespace AC
 					{
 						EditorGUILayout.HelpBox ("No Speech Manager found! One must be assigned in order to change the language.", MessageType.Warning);
 					}
-					else if (KickStarter.speechManager.languages != null && KickStarter.speechManager.languages.Count > 1)
+					else if (KickStarter.speechManager.Languages != null && KickStarter.speechManager.Languages.Count > 1)
 					{
 						if (KickStarter.speechManager != null && KickStarter.speechManager.separateVoiceAndTextLanguages)
 						{
@@ -147,7 +143,7 @@ namespace AC
 						indexParameterID = Action.ChooseParameterGUI ("Language:", parameters, indexParameterID, ParameterType.Integer);
 						if (indexParameterID < 0)
 						{
-							index = EditorGUILayout.Popup ("Language:", index, KickStarter.speechManager.languages.ToArray ());
+							index = EditorGUILayout.Popup ("Language:", index, KickStarter.speechManager.GetLanguageNameArray ());
 						}
 					}
 					else
@@ -177,8 +173,6 @@ namespace AC
 					}
 					break;
 			}
-
-			AfterRunningOption ();
 		}
 		
 
@@ -198,7 +192,7 @@ namespace AC
 		 */
 		public static ActionOptionSet CreateNew_Language (int languageIndex, SplitLanguageType splitLanguageType = SplitLanguageType.TextAndVoice)
 		{
-			ActionOptionSet newAction = (ActionOptionSet) CreateInstance <ActionOptionSet>();
+			ActionOptionSet newAction = CreateNew<ActionOptionSet> ();
 			newAction.method = OptionSetMethod.Language;
 			newAction.index = languageIndex;
 			newAction.splitLanguageType = splitLanguageType;
@@ -213,7 +207,7 @@ namespace AC
 		 */
 		public static ActionOptionSet CreateNew_Subtitles (bool newState)
 		{
-			ActionOptionSet newAction = (ActionOptionSet) CreateInstance <ActionOptionSet>();
+			ActionOptionSet newAction = CreateNew<ActionOptionSet> ();
 			newAction.method = OptionSetMethod.Subtitles;
 			newAction.index = (newState) ? 1 : 0;
 			return newAction;
@@ -227,7 +221,7 @@ namespace AC
 		 */
 		public static ActionOptionSet CreateNew_SFXVolume (float newVolume)
 		{
-			ActionOptionSet newAction = (ActionOptionSet) CreateInstance <ActionOptionSet>();
+			ActionOptionSet newAction = CreateNew<ActionOptionSet> ();
 			newAction.method = OptionSetMethod.SFXVolume;
 			newAction.volume = newVolume;
 			return newAction;
@@ -241,7 +235,7 @@ namespace AC
 		 */
 		public static ActionOptionSet CreateNew_MusicVolume (float newVolume)
 		{
-			ActionOptionSet newAction = (ActionOptionSet) CreateInstance <ActionOptionSet>();
+			ActionOptionSet newAction = CreateNew<ActionOptionSet> ();
 			newAction.method = OptionSetMethod.MusicVolume;
 			newAction.volume = newVolume;
 			return newAction;
@@ -255,7 +249,7 @@ namespace AC
 		 */
 		public static ActionOptionSet CreateNew_SpeechVolume (float newVolume)
 		{
-			ActionOptionSet newAction = (ActionOptionSet) CreateInstance <ActionOptionSet>();
+			ActionOptionSet newAction = CreateNew<ActionOptionSet> ();
 			newAction.method = OptionSetMethod.SpeechVolume;
 			newAction.volume = newVolume;
 			return newAction;

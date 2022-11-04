@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuJournal.cs"
  * 
@@ -50,7 +50,7 @@ namespace AC
 		public float outlineSize = 2f;
 		/** An ActionList to run whenever a new page is added */
 		public ActionListAsset actionListOnAddPage;
-		/** What type of journal this is (NewJournal, DisplayExistingJournal) */
+		/** What type of journal this is (NewJournal, DisplayExistingJournal, DisplayActiveDocument) */
 		public JournalType journalType = JournalType.NewJournal;
 		/** The page offset, if journalType = JournalType.DisplayExistingJournal) */
 		public int pageOffset;
@@ -66,9 +66,6 @@ namespace AC
 		#endif
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiText = null;
@@ -164,11 +161,7 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			#if TextMeshProIsPresent
 			uiText = LinkUIElement <TMPro.TextMeshProUGUI> (canvas);
@@ -178,11 +171,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of the element</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiText)
@@ -224,7 +212,7 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuJournal)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			journalType = (JournalType) CustomGUILayout.EnumPopup ("Journal type:", journalType, apiPrefix + ".journalType", "What type of journal this is");
 			if (journalType == JournalType.DisplayExistingJournal || journalType == JournalType.DisplayActiveDocument)
@@ -294,8 +282,8 @@ namespace AC
 
 				numPages = pages.Count;
 
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 
 				if (numPages > 1)
 				{
@@ -323,8 +311,8 @@ namespace AC
 			}
 			else
 			{
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 
 				#if TextMeshProIsPresent
 				uiText = LinkedUiGUI <TMPro.TextMeshProUGUI> (uiText, "Linked Text:", source);
@@ -338,7 +326,7 @@ namespace AC
 				actionListOnAddPage = (ActionListAsset) CustomGUILayout.ObjectField <ActionListAsset> ("ActionList on add page:", actionListOnAddPage, false, apiPrefix + ".actionListOnAddPage", "An ActionList to run whenever a new page is added");
 			}
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -458,7 +446,7 @@ namespace AC
 		public override int GetVariableReferences (int _varID)
 		{
 			int numFound = 0;
-			string tokenText = "[var:" + _varID.ToString () + "]";
+			string tokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, _varID);
 			if (journalType == JournalType.NewJournal)
 			{
 				foreach (JournalPage page in pages)
@@ -470,10 +458,57 @@ namespace AC
 				}
 			}
 
-			return numFound + base.GetVariableReferences (_varID);
+			return numFound;
 		}
-		
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, newVarID);
+			if (journalType == JournalType.NewJournal)
+			{
+				foreach (JournalPage page in pages)
+				{
+					if (page.text.Contains (oldTokenText))
+					{
+						page.text = page.text.Replace (oldTokenText, newTokenText);
+						numFound++;
+					}
+				}
+			}
+
+			return numFound;
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (journalType == JournalType.NewJournal && actionListOnAddPage == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiText && uiText.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiText && uiText.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
 
 
 		public override void OnMenuTurnOn (Menu menu)
@@ -505,7 +540,7 @@ namespace AC
 					}
 					else
 					{
-						fullText = "";
+						fullText = string.Empty;
 					}
 					fullText = AdvGame.ConvertTokens (fullText, languageNumber);
 				}
@@ -524,7 +559,7 @@ namespace AC
 
 				if (pages.Count == 0)
 				{
-					fullText = "";
+					fullText = string.Empty;
 				}
 				else if (pages.Count >= showPage && showPage > 0)
 				{
@@ -533,7 +568,7 @@ namespace AC
 				}
 			}
 
-			if (uiText != null)
+			if (uiText)
 			{
 				UpdateUIElement (uiText);
 				uiText.text = fullText;
@@ -541,13 +576,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -573,12 +601,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Gets the display text of the current page</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the current page</returns>
-		 */
 		public override string GetLabel (int slot, int languageNumber)
 		{
 			if (journalType == JournalType.DisplayExistingJournal)
@@ -664,9 +686,9 @@ namespace AC
 
 		private string TranslatePage (JournalPage page, int languageNumber)
 		{
-			if (languageNumber > 0)
+			if (Application.isPlaying)
 			{
-				return (KickStarter.runtimeLanguages.GetTranslation (page.text, page.lineID, languageNumber));
+				return KickStarter.runtimeLanguages.GetTranslation (page.text, page.lineID, languageNumber, AC_TextType.JournalEntry);
 			}
 			return page.text;
 		}
@@ -695,7 +717,7 @@ namespace AC
 				}
 			}
 
-			if (pageText == "" && backgroundTexture != null)
+			if (string.IsNullOrEmpty (pageText) && backgroundTexture)
 			{
 				GUIContent content = new GUIContent (backgroundTexture);
 				AutoSize (content);
@@ -840,9 +862,7 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Removes all page from the journal.</summary>
-		 */
+		/** Removes all page from the journal. */
 		public void RemoveAllPages ()
 		{
 			if (journalType == JournalType.DisplayExistingJournal)
@@ -861,7 +881,7 @@ namespace AC
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -876,6 +896,15 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (index < pages.Count)
+			{
+				pages[index].text = updatedText;
+			}
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -916,17 +945,21 @@ namespace AC
 
 		public bool CanTranslate (int index)
 		{
-			return (!string.IsNullOrEmpty (pages[index].text));
+			if (journalType == JournalType.NewJournal)
+			{
+				return (!string.IsNullOrEmpty (pages[index].text));
+			}
+			return false;
 		}
 
 		#endif
 
+		#endregion
+
 	}
 
 
-	/**
-	 * A data container for the contents of each page in a MenuJournal.
-	 */
+	/** A data container for the contents of each page in a MenuJournal. */
 	[System.Serializable]
 	public class JournalPage
 	{

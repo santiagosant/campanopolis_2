@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"DetectHotspots.cs"
  * 
@@ -21,22 +21,26 @@ namespace AC
 	 * Attach this as a child object to your Player prefab, and assign it as your Hotspot detector child - be sure to set "hotspot detection" to Player Vicinity in SettingsManager.
 	 */
 	[AddComponentMenu("Adventure Creator/Hotspots/Hotspot detector")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_detect_hotspots.html")]
-	#endif
 	public class DetectHotspots : MonoBehaviour
 	{
 
-		private Hotspot nearestHotspot;
-		private int selected = 0;
-		private List<Hotspot> hotspots = new List<Hotspot>();
-		private int hotspotLayerInt;
-		private int distantHotspotLayerInt;
+		#region Variables
+
+		protected Hotspot nearestHotspot;
+		protected int selected = 0;
+		protected List<Hotspot> hotspots = new List<Hotspot>();
+		protected int hotspotLayerInt;
+		protected int distantHotspotLayerInt;
+
+		#endregion
 
 
-		private void Start ()
+		#region UnityStandards
+
+		protected void Start ()
 		{
-			if (KickStarter.settingsManager != null)
+			if (KickStarter.settingsManager)
 			{
 				string layerName = LayerMask.LayerToName (gameObject.layer);
 				if (layerName == KickStarter.settingsManager.hotspotLayer)
@@ -50,14 +54,114 @@ namespace AC
 		}
 
 
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
+		protected void OnEnable ()
 		{
-			hotspots.Clear ();
-			hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
-			selected = 0;
+			EventManager.OnInitialiseScene += OnInitialiseScene;
+			EventManager.OnUnregisterHotspot += ForceRemoveHotspot;
+		}
+
+
+		protected void OnDisable ()
+		{
+			EventManager.OnInitialiseScene -= OnInitialiseScene;
+			EventManager.OnUnregisterHotspot -= ForceRemoveHotspot;
+		}
+
+
+		protected void OnTriggerStay (Collider other)
+		{
+			Hotspot otherHotspot = other.GetComponent <Hotspot>();
+			if (otherHotspot && otherHotspot.PlayerIsWithinBoundary () && IsLayerCorrect (other.gameObject.layer, true))
+			{
+				if (nearestHotspot == null ||
+					(transform.position - other.transform.position).sqrMagnitude <= (transform.position - nearestHotspot.Transform.position).sqrMagnitude)
+				{
+					nearestHotspot = otherHotspot;
+				}
+
+				foreach (Hotspot hotspot in hotspots)
+				{
+					if (hotspot == otherHotspot)
+					{
+						return;
+					}
+				}
+
+				hotspots.Add (otherHotspot);
+				hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
+			}
+        }
+
+
+		protected void OnTriggerStay2D (Collider2D other)
+		{
+			Hotspot otherHotspot = other.GetComponent <Hotspot>();
+			if (otherHotspot && otherHotspot.PlayerIsWithinBoundary () && IsLayerCorrect (other.gameObject.layer, true))
+			{
+				if (nearestHotspot == null ||
+					(transform.position - other.transform.position).sqrMagnitude <= (transform.position - nearestHotspot.Transform.position).sqrMagnitude)
+				{
+					nearestHotspot = otherHotspot;
+				}
+				
+				foreach (Hotspot hotspot in hotspots)
+				{
+					if (hotspot == otherHotspot)
+					{
+						return;
+					}
+				}
+				hotspots.Add (otherHotspot);
+				hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
+			}
+		}
+
+
+		protected void OnTriggerExit (Collider other)
+		{
+			if (IsActivePlayer ())
+			{
+				ForceRemoveHotspot (other.GetComponent <Hotspot>());
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Detects Hotspots in its vicinity. This is public so that it can be called by StateHandler every frame. */
+		public void _Update ()
+		{
+			if (nearestHotspot && nearestHotspot.gameObject.layer == LayerMask.NameToLayer (AdvGame.GetReferences ().settingsManager.deactivatedLayer))
+			{
+				nearestHotspot = null;
+			}
+
+			if (KickStarter.stateHandler && KickStarter.stateHandler.IsInGameplay ())
+			{
+				if (!IsActivePlayer ())
+				{
+					return;
+				}
+
+				if (KickStarter.playerInput.InputGetButtonDown ("CycleHotspotsLeft"))
+				{
+					CycleHotspots (false);
+				}
+				else if (KickStarter.playerInput.InputGetButtonDown ("CycleHotspotsRight"))
+				{
+					CycleHotspots (true);
+				}
+				else if (KickStarter.playerInput.InputGetAxis ("CycleHotspots") > 0.1f)
+				{
+					CycleHotspots (true);
+				}
+				else if (KickStarter.playerInput.InputGetAxis ("CycleHotspots") < -0.1f)
+				{
+					CycleHotspots (false);
+				}
+			}
 		}
 
 
@@ -81,9 +185,9 @@ namespace AC
 			{
 				if (AdvGame.GetReferences ().settingsManager.hotspotsInVicinity == HotspotsInVicinity.NearestOnly)
 				{
-					if (selected >= 0 && hotspots.Count > selected)
+					if (selected >= 0 && selected < hotspots.Count)
 					{
-						if (IsLayerCorrect (hotspots[selected].gameObject.layer))
+						if (hotspots[selected] && IsLayerCorrect (hotspots[selected].gameObject.layer))
 						{
 							return nearestHotspot;
 						}
@@ -106,7 +210,7 @@ namespace AC
 						selected = 0;
 					}
 
-					if (IsLayerCorrect (hotspots[selected].gameObject.layer))
+					if (hotspots[selected] && IsLayerCorrect (hotspots[selected].gameObject.layer))
 					{
 						return hotspots [selected];
 					}
@@ -124,81 +228,6 @@ namespace AC
 			}
 
 			return null;
-		}
-
-
-		private void OnTriggerStay (Collider other)
-		{
-			Hotspot otherHotspot = other.GetComponent <Hotspot>();
-			if (otherHotspot != null && otherHotspot.PlayerIsWithinBoundary () && IsLayerCorrect (other.gameObject.layer, true))
-			{
-				if (nearestHotspot == null ||
-					(transform.position - other.transform.position).sqrMagnitude <= (transform.position - nearestHotspot.transform.position).sqrMagnitude)
-				{
-					nearestHotspot = otherHotspot;
-				}
-
-				foreach (Hotspot hotspot in hotspots)
-				{
-					if (hotspot == otherHotspot)
-					{
-						return;
-					}
-				}
-
-				hotspots.Add (otherHotspot);
-				hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
-			}
-        }
-
-
-		private void OnTriggerStay2D (Collider2D other)
-		{
-			Hotspot otherHotspot = other.GetComponent <Hotspot>();
-			if (otherHotspot != null && otherHotspot.PlayerIsWithinBoundary () && IsLayerCorrect (other.gameObject.layer, true))
-			{
-				if (nearestHotspot == null ||
-					(transform.position - other.transform.position).sqrMagnitude <= (transform.position - nearestHotspot.transform.position).sqrMagnitude)
-				{
-					nearestHotspot = otherHotspot;
-				}
-				
-				foreach (Hotspot hotspot in hotspots)
-				{
-					if (hotspot == otherHotspot)
-					{
-						return;
-					}
-				}
-				hotspots.Add (otherHotspot);
-				hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
-			}
-		}
-
-
-		private void OnTriggerExit (Collider other)
-		{
-			ForceRemoveHotspot (other.GetComponent <Hotspot>());
-		}
-
-
-		private bool IsLayerCorrect (int layerInt, bool distantToo = false)
-		{
-			if (distantToo)
-			{
-				if (layerInt == hotspotLayerInt || layerInt == distantHotspotLayerInt)
-				{
-					return true;
-				}
-			}
-			else
-			{
-				if (layerInt == hotspotLayerInt)
-				{
-					return true;
-				}
-			}
-			return false;
 		}
 
 
@@ -224,79 +253,9 @@ namespace AC
 				hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
 			}
 			
-			if (_hotspot.highlight != null)
+			if (_hotspot.highlight)
 			{
 				_hotspot.highlight.HighlightOff ();
-			}
-		}
-
-
-		private void OnTriggerExit2D (Collider2D other)
-		{
-			ForceRemoveHotspot (other.GetComponent <Hotspot>());
-		}
-
-
-		/** The Hotspot nearest to the centre of the detector */
-		public Hotspot NearestHotspot
-		{
-			get
-			{
-				return nearestHotspot;
-			}
-		}
-
-
-		/**
-		 * Detects Hotspots in its vicinity. This is public so that it can be called by StateHandler every frame.
-		 */
-		public void _Update ()
-		{
-			if (nearestHotspot && nearestHotspot.gameObject.layer == LayerMask.NameToLayer (AdvGame.GetReferences ().settingsManager.deactivatedLayer))
-			{
-				nearestHotspot = null;
-			}
-
-			if (KickStarter.stateHandler != null && KickStarter.stateHandler.IsInGameplay ())
-			{
-				if (KickStarter.playerInput.InputGetButtonDown ("CycleHotspotsLeft"))
-				{
-					CycleHotspots (false);
-				}
-				else if (KickStarter.playerInput.InputGetButtonDown ("CycleHotspotsRight"))
-				{
-					CycleHotspots (true);
-				}
-				else if (KickStarter.playerInput.InputGetAxis ("CycleHotspots") > 0.1f)
-				{
-					CycleHotspots (true);
-				}
-				else if (KickStarter.playerInput.InputGetAxis ("CycleHotspots") < -0.1f)
-				{
-					CycleHotspots (false);
-				}
-			}
-		}
-
-
-		private void CycleHotspots (bool goRight)
-		{
-			if (goRight)
-			{
-				selected ++;
-			}
-			else
-			{
-				selected --;
-			}
-
-			if (selected >= hotspots.Count)
-			{
-				selected = 0;
-			}
-			else if (selected < 0)
-			{
-				selected = hotspots.Count - 1;
 			}
 		}
 
@@ -323,12 +282,107 @@ namespace AC
 		{
 			foreach (Hotspot _hotspot in hotspots)
 			{
-				if (_hotspot.highlight != null)
+				if (_hotspot.highlight)
 				{
 					_hotspot.highlight.HighlightOn ();
 				}
 			}
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void OnInitialiseScene ()
+		{
+			hotspots.Clear ();
+			hotspots = KickStarter.eventManager.Call_OnModifyHotspotDetectorCollection (this, hotspots);
+			selected = 0;
+		}
+
+
+		protected bool IsLayerCorrect (int layerInt, bool distantToo = false)
+		{
+			if (distantToo)
+			{
+				if (layerInt == hotspotLayerInt || layerInt == distantHotspotLayerInt)
+				{
+					return true;
+				}
+			}
+			else
+			{
+				if (layerInt == hotspotLayerInt)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+
+		protected void OnTriggerExit2D (Collider2D other)
+		{
+			if (IsActivePlayer ())
+			{
+				ForceRemoveHotspot (other.GetComponent <Hotspot>());
+			}
+		}
+
+
+		protected void CycleHotspots (bool goRight)
+		{
+			if (goRight)
+			{
+				selected ++;
+			}
+			else
+			{
+				selected --;
+			}
+
+			if (selected >= hotspots.Count)
+			{
+				selected = 0;
+			}
+			else if (selected < 0)
+			{
+				selected = hotspots.Count - 1;
+			}
+		}
+
+
+		protected bool IsActivePlayer ()
+		{
+			if (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow)
+			{
+				return true;
+			}
+
+			if (KickStarter.player && KickStarter.player.hotspotDetector == this)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The Hotspot nearest to the centre of the detector */
+		public Hotspot NearestHotspot
+		{
+			get
+			{
+				return nearestHotspot;
+			}
+		}
+
+		#endregion
 
 	}
 

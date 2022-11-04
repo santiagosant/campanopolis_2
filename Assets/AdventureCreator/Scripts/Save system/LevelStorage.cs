@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"LevelStorage.cs"
  * 
@@ -11,7 +11,16 @@
  */
 
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System.Collections.Generic;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+using System.Collections;
+#endif
 
 namespace AC
 {
@@ -20,25 +29,27 @@ namespace AC
 	 * Manages the loading and storage of per-scene data (the various Remember scripts).
 	 * This needs to be attached to the PersistentEngine prefab
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
-	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_level_storage.html")]
-	#endif
+	[HelpURL ("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_level_storage.html")]
 	public class LevelStorage : MonoBehaviour
 	{
 
+		#region Variables
+
 		/** A collection of level data for each visited scene */
-		[HideInInspector] public List<SingleLevelData> allLevelData = new List<SingleLevelData>();
-		
-		
-		public void OnAwake ()
+		[HideInInspector] public List<SingleLevelData> allLevelData = new List<SingleLevelData> ();
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		public void OnInitPersistentEngine ()
 		{
 			ClearAllLevelData ();
 		}
 
 
-		/**
-		 * Wipes all stored scene save data from memory.
-		 */
+		/** Wipes all stored scene save data from memory. */
 		public void ClearAllLevelData ()
 		{
 			allLevelData.Clear ();
@@ -46,28 +57,105 @@ namespace AC
 		}
 
 
-
 		/**
-		 * Wipes the currently-loaded scene's save data from memory
+		 * <summary>Wipes stored data for a specific scene from memory.</summary>
+		 * <param name="sceneIndex">The build index number of the scene to clear save data for</param>
 		 */
-		public void ClearCurrentLevelData ()
+		public void ClearLevelData (int sceneIndex)
 		{
+			if (allLevelData == null) return;
 			foreach (SingleLevelData levelData in allLevelData)
 			{
-				if (levelData.sceneNumber == UnityVersionHandler.GetCurrentSceneNumber ())
+				if (levelData.sceneNumber == sceneIndex)
 				{
 					allLevelData.Remove (levelData);
 					return;
 				}
 			}
 		}
-		
+
 
 		/**
-		 * <summary>Returns the currently-loaded scene's save data to the appropriate Remember components.</summary>
-		 * <param name = "restoringSaveFile">True if the game is currently loading a saved game file, as opposed to just switching scene</param>
+		 * <summary>Wipes stored data for a specific scene from memory.</summary>
+		 * <param name="sceneName">The name of the scene to clear save data for</param>
 		 */
-		public void ReturnCurrentLevelData (bool restoringSaveFile)
+		public void ClearLevelData (string sceneName)
+		{
+			if (allLevelData == null) return;
+			foreach (SingleLevelData levelData in allLevelData)
+			{
+				if (levelData.sceneName == sceneName)
+				{
+					allLevelData.Remove (levelData);
+					return;
+				}
+			}
+		}
+
+
+		/** Wipes the currently-loaded scene's save data from memory */
+		public void ClearCurrentLevelData ()
+		{
+			if (allLevelData == null) allLevelData = new List<SingleLevelData>();
+			foreach (SingleLevelData levelData in allLevelData)
+			{
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						if (levelData.sceneName == SceneChanger.CurrentSceneName)
+						{
+							allLevelData.Remove (levelData);
+							return;
+						}
+						break;
+
+					case ChooseSceneBy.Number:
+					default:
+						if (levelData.sceneNumber == SceneChanger.CurrentSceneIndex)
+						{
+							allLevelData.Remove (levelData);
+							return;
+						}
+						break;
+				}
+			}
+		}
+
+
+		/**
+		 * <summary>Removes all data related to a given object's Constant ID value in the current scene. This is equivalent to resetting that object's Remember component values, so that it has no Remember data stored</param>
+		 * <param name = "constantID">The object's Constant ID value</param>
+		 */
+		public void RemoveDataFromCurrentLevelData (int constantID)
+		{
+			if (allLevelData == null) allLevelData = new List<SingleLevelData>();
+			foreach (SingleLevelData levelData in allLevelData)
+			{
+				switch (KickStarter.settingsManager.referenceScenesInSave)
+				{
+					case ChooseSceneBy.Name:
+						if (levelData.sceneName == SceneChanger.CurrentSceneName)
+						{
+							levelData.RemoveDataForID (constantID);
+							return;
+						}
+						break;
+
+					case ChooseSceneBy.Number:
+					default:
+						if (levelData.sceneNumber == SceneChanger.CurrentSceneIndex)
+						{
+							levelData.RemoveDataForID (constantID);
+							return;
+						}
+						break;
+				}
+			}
+		}
+		
+
+		/** Returns the currently-loaded scene's save data to the appropriate Remember components. */
+		public void ReturnCurrentLevelData ()
 		{
 			SingleLevelData levelData = GetLevelData ();
 
@@ -76,7 +164,7 @@ namespace AC
 				return;
 			}
 
-			SendDataToScene (levelData, restoringSaveFile);
+			LoadSceneData (levelData);
 			AssetLoader.UnloadAssets ();
 		}
 
@@ -84,48 +172,37 @@ namespace AC
 		/**
 		 * <summary>Returns a sub-scene's save data to the appropriate Remember components.</summary>
 		 * <param name = "subScene">The SubScene component associated with the sub-scene</param>
-		 * <param name = "restoringSaveFile">True if the game is currently loading a saved game file, as opposed to just switching scene</param>
 		 */
-		public void ReturnSubSceneData (SubScene subScene, bool restoringSaveFile)
+		public void ReturnSubSceneData (SubScene subScene)
 		{
-			SingleLevelData levelData = GetLevelData (subScene.SceneInfo.number);
+			SingleLevelData levelData = null;
+			
+			switch (KickStarter.settingsManager.referenceScenesInSave)
+			{
+				case ChooseSceneBy.Name:
+					levelData = GetLevelData (subScene.SceneName);
+					break;
+
+				case ChooseSceneBy.Number:
+				default:
+					levelData = GetLevelData (subScene.SceneIndex);
+					break;
+			}
 
 			if (levelData == null)
 			{
 				return;
 			}
 
-			SendDataToScene (levelData, restoringSaveFile, subScene);
+			LoadSceneData (levelData, subScene);
 			AssetLoader.UnloadAssets ();
-		}
-
-
-		private SingleLevelData GetLevelData ()
-		{
-			return GetLevelData (UnityVersionHandler.GetCurrentSceneNumber ());
-		}
-
-
-		private SingleLevelData GetLevelData (int sceneNumber)
-		{
-			if (allLevelData != null)
-			{
-				foreach (SingleLevelData levelData in allLevelData)
-				{
-					if (levelData.sceneNumber == sceneNumber)
-					{
-						return levelData;
-					}
-				}
-			}
-			return null;
 		}
 
 
 		public PlayerData SavePlayerData (Player player, PlayerData playerData)
 		{
-			List<ScriptData> playerScriptData = new List<ScriptData>();
-			Remember[] playerSaveScripts = player.gameObject.GetComponentsInChildren <Remember>();
+			List<ScriptData> playerScriptData = new List<ScriptData> ();
+			Remember[] playerSaveScripts = player.gameObject.GetComponentsInChildren<Remember> ();
 
 			foreach (Remember remember in playerSaveScripts)
 			{
@@ -154,18 +231,18 @@ namespace AC
 
 		public void LoadPlayerData (Player player, PlayerData playerData)
 		{
-			Remember[] playerSaveScripts = player.gameObject.GetComponentsInChildren <Remember>();
+			Remember[] playerSaveScripts = player.gameObject.GetComponentsInChildren<Remember> ();
 			if (playerData.playerScriptData != null)
 			{
 				foreach (ScriptData _scriptData in playerData.playerScriptData)
 				{
-					if (_scriptData.data != null && _scriptData.data.Length > 0)
+					if (!string.IsNullOrEmpty (_scriptData.data))
 					{
 						foreach (Remember playerSaveScript in playerSaveScripts)
 						{
-							if (playerSaveScript.constantID == _scriptData.objectID)	
+							if (playerSaveScript.constantID == _scriptData.objectID)
 							{
-								playerSaveScript.LoadData (_scriptData.data, true);
+								playerSaveScript.LoadData (_scriptData.data);
 							}
 						}
 					}
@@ -175,75 +252,77 @@ namespace AC
 		}
 
 
-		private void SendDataToScene (SingleLevelData levelData, bool restoringSaveFile, SubScene subScene = null)
+		public MainData SavePersistentData (MainData mainData)
 		{
-			SceneSettings sceneSettings = (subScene == null) ? KickStarter.sceneSettings : subScene.SceneSettings;
-			LocalVariables localVariables = (subScene == null) ? KickStarter.localVariables : subScene.LocalVariables;
-			KickStarter.actionListManager.LoadData (levelData.activeLists, subScene);
+			List<ScriptData> persistentScriptData = new List<ScriptData> ();
 
-			UnloadCutsceneOnLoad (levelData.onLoadCutscene, sceneSettings);
-			UnloadCutsceneOnStart (levelData.onStartCutscene, sceneSettings);
-			UnloadNavMesh (levelData.navMesh, sceneSettings);
-			UnloadPlayerStart (levelData.playerStart, sceneSettings);
-			UnloadSortingMap (levelData.sortingMap, sceneSettings);
-			UnloadTintMap (levelData.tintMap, sceneSettings);
-
-			UnloadTransformData (levelData.allTransformData, subScene);
-
-			foreach (ScriptData _scriptData in levelData.allScriptData)
+			HashSet<Remember> persistentSaveScripts = KickStarter.stateHandler.ConstantIDManager.GetPersistentButNotPlayerComponents <Remember>();
+			foreach (Remember remember in persistentSaveScripts)
 			{
-				if (_scriptData.data != null && _scriptData.data.Length > 0)
+				if (remember.constantID != 0)
 				{
-					// Get objects in active scene, and "DontDestroyOnLoad" scene
-					Remember[] saveObjects = Serializer.returnComponents <Remember> (_scriptData.objectID, (subScene != null) ? subScene.gameObject : null);
-
-					foreach (Remember saveObject in saveObjects)
+					if (remember.retainInPrefab)
 					{
-						if (saveObject != null)
+						persistentScriptData.Add (new ScriptData (remember.constantID, remember.SaveData ()));
+					}
+					else
+					{
+						ACDebug.LogWarning ("Could not save GameObject " + remember.name + " because 'Retain in prefab?' is not checked!", remember);
+					}
+				}
+				else
+				{
+					ACDebug.LogWarning ("GameObject " + remember.name + " was not saved because its ConstantID has not been set!", remember);
+				}
+			}
+
+			mainData.persistentScriptData = persistentScriptData;
+
+			return mainData;
+		}
+
+
+		public void LoadPersistentData (MainData mainData)
+		{
+			HashSet<Remember> persistentSaveScripts = KickStarter.stateHandler.ConstantIDManager.GetPersistentButNotPlayerComponents <Remember>();
+			if (mainData.persistentScriptData != null)
+			{
+				foreach (ScriptData _scriptData in mainData.persistentScriptData)
+				{
+					if (!string.IsNullOrEmpty (_scriptData.data))
+					{
+						foreach (Remember remember in persistentSaveScripts)
 						{
-							if ((subScene != null && UnityVersionHandler.ObjectIsInScene (saveObject.gameObject, levelData.sceneNumber, restoringSaveFile))
-								||
-								(subScene == null && UnityVersionHandler.ObjectIsInActiveScene (saveObject.gameObject, restoringSaveFile)))
+							if (remember.constantID == _scriptData.objectID)
 							{
-								// May have more than one Remember script on the same object, so check all
-								Remember[] saveScripts = saveObject.gameObject.GetComponents <Remember>();
-								foreach (Remember saveScript in saveScripts)
-								{
-									saveScript.LoadData (_scriptData.data, restoringSaveFile);
-								}
+								remember.LoadData (_scriptData.data);
 							}
 						}
 					}
 				}
 			}
-
-			//UnloadVariablesData (levelData.localVariablesData, localVariables);
-			localVariables.localVars = SaveSystem.UnloadVariablesData (levelData.localVariablesData, localVariables.localVars);
+			AssetLoader.UnloadAssets ();
 		}
-		
 
-		/**
-		 * Combs the active scene for data to store, combines it into a SingleLevelData variable, and adds it to the SingleLevelData List, allLevelData.
-		 */
+
+		/** Combs the active scene for data to store, combines it into a SingleLevelData variable, and adds it to the SingleLevelData List, allLevelData. */
 		public void StoreCurrentLevelData ()
 		{
 			// Active scene
-			SendSceneToData ();
+			SaveSceneData ();
 		}
 
 
-		/**
-		 * Combs all open scenes for data to store, combines each into a SingleLevelData variable, and adds them to the SingleLevelData List, allLevelData.
-		 */
+		/** Combs all open scenes for data to store, combines each into a SingleLevelData variable, and adds them to the SingleLevelData List, allLevelData. */
 		public void StoreAllOpenLevelData ()
 		{
 			// Active scene
-			SendSceneToData ();
-		
+			SaveSceneData ();
+
 			// Sub-scenes
-			foreach (SubScene subScene in KickStarter.sceneChanger.GetSubScenes ())
+			foreach (SubScene subScene in KickStarter.sceneChanger.SubScenes)
 			{
-				SendSceneToData (subScene);
+				SaveSceneData (subScene);
 			}
 		}
 
@@ -254,78 +333,160 @@ namespace AC
 		 */
 		public void StoreSubSceneData (SubScene subScene)
 		{
-			SendSceneToData (subScene);
+			SaveSceneData (subScene);
+		}
+
+		#endregion
+
+
+		#region PrivateFunctions
+
+		private SingleLevelData GetLevelData ()
+		{
+			switch (KickStarter.settingsManager.referenceScenesInSave)
+			{
+				case ChooseSceneBy.Name:
+					return GetLevelData (SceneChanger.CurrentSceneName);
+
+				case ChooseSceneBy.Number:
+				default:
+					return GetLevelData (SceneChanger.CurrentSceneIndex);
+			}
 		}
 
 
-		private void SendSceneToData (SubScene subScene = null)
+		private SingleLevelData GetLevelData (int sceneNumber)
 		{
+			if (allLevelData == null) allLevelData = new List<SingleLevelData>();
+			if (allLevelData != null)
+			{
+				foreach (SingleLevelData levelData in allLevelData)
+				{
+					if (levelData.sceneNumber == sceneNumber)
+					{
+						return levelData;
+					}
+				}
+			}
+			return null;
+		}
+
+
+		private SingleLevelData GetLevelData (string sceneName)
+		{
+			if (allLevelData == null) allLevelData = new List<SingleLevelData> ();
+			if (allLevelData != null)
+			{
+				foreach (SingleLevelData levelData in allLevelData)
+				{
+					if (levelData.sceneName == sceneName)
+					{
+						return levelData;
+					}
+				}
+			}
+			return null;
+		}
+
+
+		private void LoadSceneData (SingleLevelData levelData, SubScene subScene = null)
+		{
+			Scene scene = (subScene) ? subScene.gameObject.scene : SceneChanger.CurrentScene;
+
+			SceneSettings sceneSettings = (subScene == null) ? KickStarter.sceneSettings : subScene.SceneSettings;
+			LocalVariables localVariables = (subScene == null) ? KickStarter.localVariables : subScene.LocalVariables;
+			KickStarter.actionListManager.LoadData (levelData.activeLists, subScene);
+
+			if (sceneSettings)
+			{
+				UnloadCutsceneOnLoad (levelData.onLoadCutscene, sceneSettings);
+				UnloadCutsceneOnStart (levelData.onStartCutscene, sceneSettings);
+				UnloadNavMesh (levelData.navMesh, sceneSettings);
+				UnloadPlayerStart (levelData.playerStart, sceneSettings);
+				UnloadSortingMap (levelData.sortingMap, sceneSettings);
+				UnloadTintMap (levelData.tintMap, sceneSettings);
+			}
+
+			UnloadTransformData (levelData.allTransformData, scene);
+			UnloadScriptData (levelData.allScriptData, scene);
+			
+			if (localVariables)
+			{
+				localVariables.localVars = SaveSystem.UnloadVariablesData (levelData.localVariablesData, true, localVariables.localVars);
+			}
+		}
+
+
+		private void SaveSceneData (SubScene subScene = null)
+		{
+			Scene scene = (subScene) ? subScene.gameObject.scene : SceneChanger.CurrentScene;
+
 			SceneSettings sceneSettings = (subScene == null) ? KickStarter.sceneSettings : subScene.SceneSettings;
 			LocalVariables localVariables = (subScene == null) ? KickStarter.localVariables : subScene.LocalVariables;
 
-			List<TransformData> thisLevelTransforms = PopulateTransformData (subScene);
-			List<ScriptData> thisLevelScripts = PopulateScriptData (subScene);
+			List<TransformData> thisLevelTransforms = PopulateTransformData (scene);
+			List<ScriptData> thisLevelScripts = PopulateScriptData (scene);
 
 			SingleLevelData thisLevelData = new SingleLevelData ();
-			thisLevelData.sceneNumber = (subScene == null) ? UnityVersionHandler.GetCurrentSceneNumber () : subScene.SceneInfo.number;
+			thisLevelData.sceneNumber = (subScene == null) ? SceneChanger.CurrentSceneIndex : subScene.SceneIndex;
+			thisLevelData.sceneName = (subScene == null) ? SceneChanger.CurrentSceneName : subScene.SceneName;
 
 			thisLevelData.activeLists = KickStarter.actionListManager.GetSaveData (subScene);
 			
-			if (sceneSettings != null)
+			if (sceneSettings)
 			{
-				if (sceneSettings.navMesh && sceneSettings.navMesh.GetComponent <ConstantID>())
+				if (sceneSettings.navMesh)
 				{
-					thisLevelData.navMesh = Serializer.GetConstantID (sceneSettings.navMesh.gameObject);
+					thisLevelData.navMesh = Serializer.GetConstantID (sceneSettings.navMesh.gameObject, false);
 				}
-				if (sceneSettings.defaultPlayerStart && sceneSettings.defaultPlayerStart.GetComponent <ConstantID>())
+				if (sceneSettings.defaultPlayerStart)
 				{
-					thisLevelData.playerStart = Serializer.GetConstantID (sceneSettings.defaultPlayerStart.gameObject);
+					thisLevelData.playerStart = Serializer.GetConstantID (sceneSettings.defaultPlayerStart.gameObject, false);
 				}
-				if (sceneSettings.sortingMap && sceneSettings.sortingMap.GetComponent <ConstantID>())
+				if (sceneSettings.sortingMap)
 				{
-					thisLevelData.sortingMap = Serializer.GetConstantID (sceneSettings.sortingMap.gameObject);
+					thisLevelData.sortingMap = Serializer.GetConstantID (sceneSettings.sortingMap.gameObject, false);
 				}
-				if (sceneSettings.cutsceneOnLoad && sceneSettings.cutsceneOnLoad.GetComponent <ConstantID>())
+				if (sceneSettings.cutsceneOnLoad)
 				{
-					thisLevelData.onLoadCutscene = Serializer.GetConstantID (sceneSettings.cutsceneOnLoad.gameObject);
+					thisLevelData.onLoadCutscene = Serializer.GetConstantID (sceneSettings.cutsceneOnLoad.gameObject, false);
 				}
-				if (sceneSettings.cutsceneOnStart && sceneSettings.cutsceneOnStart.GetComponent <ConstantID>())
+				if (sceneSettings.cutsceneOnStart)
 				{
-					thisLevelData.onStartCutscene = Serializer.GetConstantID (sceneSettings.cutsceneOnStart.gameObject);
+					thisLevelData.onStartCutscene = Serializer.GetConstantID (sceneSettings.cutsceneOnStart.gameObject, false);
 				}
-				if (sceneSettings.tintMap && sceneSettings.tintMap.GetComponent <ConstantID>())
+				if (sceneSettings.tintMap)
 				{
-					thisLevelData.tintMap = Serializer.GetConstantID (sceneSettings.tintMap.gameObject);
+					thisLevelData.tintMap = Serializer.GetConstantID (sceneSettings.tintMap.gameObject, false);
 				}
 			}
 
-			thisLevelData.localVariablesData = SaveSystem.CreateVariablesData (localVariables.localVars, false, VariableLocation.Local);
+			if (localVariables)
+			{ 
+				thisLevelData.localVariablesData = SaveSystem.CreateVariablesData (localVariables.localVars, false, VariableLocation.Local);
+			}
 			thisLevelData.allTransformData = thisLevelTransforms;
 			thisLevelData.allScriptData = thisLevelScripts;
 
-			bool found = false;
+			if (allLevelData == null) allLevelData = new List<SingleLevelData>();
 			for (int i=0; i<allLevelData.Count; i++)
 			{
-				if (allLevelData[i].sceneNumber == thisLevelData.sceneNumber)
+				if (allLevelData[i].DataMatchesScene (thisLevelData))
 				{
 					allLevelData[i] = thisLevelData;
-					found = true;
-					break;
+					return;
 				}
 			}
 			
-			if (!found)
-			{
-				allLevelData.Add (thisLevelData);
-			}
+			allLevelData.Add (thisLevelData);
 		}
 
 		
 		private void UnloadNavMesh (int navMeshInt, SceneSettings sceneSettings)
 		{
-			NavigationMesh navMesh = Serializer.returnComponent <NavigationMesh> (navMeshInt, sceneSettings.gameObject);
+			NavigationMesh navMesh = ConstantID.GetComponent <NavigationMesh> (navMeshInt, sceneSettings.gameObject.scene);
 
-			if (navMesh && sceneSettings && sceneSettings.navigationMethod != AC_NavigationMethod.UnityNavigation)
+			if (navMesh != null && sceneSettings.navigationMethod != AC_NavigationMethod.UnityNavigation)
 			{
 				if (sceneSettings.navMesh)
 				{
@@ -345,9 +506,8 @@ namespace AC
 
 		private void UnloadPlayerStart (int playerStartInt, SceneSettings sceneSettings)
 		{
-			PlayerStart playerStart = Serializer.returnComponent <PlayerStart> (playerStartInt, sceneSettings.gameObject);
-
-			if (playerStart && sceneSettings)
+			PlayerStart playerStart = ConstantID.GetComponent <PlayerStart> (playerStartInt, sceneSettings.gameObject.scene);
+			if (playerStart)
 			{
 				sceneSettings.defaultPlayerStart = playerStart;
 			}
@@ -356,39 +516,28 @@ namespace AC
 
 		private void UnloadSortingMap (int sortingMapInt, SceneSettings sceneSettings)
 		{
-			SortingMap sortingMap = Serializer.returnComponent <SortingMap> (sortingMapInt, sceneSettings.gameObject);
-
-			if (sortingMap && sceneSettings)
+			SortingMap sortingMap = ConstantID.GetComponent <SortingMap> (sortingMapInt, sceneSettings.gameObject.scene);
+			if (sortingMap)
 			{
-				sceneSettings.sortingMap = sortingMap;
-				KickStarter.sceneSettings.UpdateAllSortingMaps ();
+				KickStarter.sceneSettings.SetSortingMap (sortingMap);
 			}
 		}
 
 
 		private void UnloadTintMap (int tintMapInt, SceneSettings sceneSettings)
 		{
-			TintMap tintMap = Serializer.returnComponent <TintMap> (tintMapInt, sceneSettings.gameObject);
-			
-			if (tintMap && sceneSettings)
+			TintMap tintMap = ConstantID.GetComponent <TintMap> (tintMapInt, sceneSettings.gameObject.scene);
+			if (tintMap)
 			{
-				sceneSettings.tintMap = tintMap;
-				
-				// Reset all FollowTintMap components
-				FollowTintMap[] followTintMaps = FindObjectsOfType (typeof (FollowTintMap)) as FollowTintMap[];
-				foreach (FollowTintMap followTintMap in followTintMaps)
-				{
-					followTintMap.ResetTintMap ();
-				}
+				sceneSettings.SetTintMap (tintMap);
 			}
 		}
 
 
 		private void UnloadCutsceneOnLoad (int cutsceneInt, SceneSettings sceneSettings)
 		{
-			Cutscene cutscene = Serializer.returnComponent <Cutscene> (cutsceneInt, sceneSettings.gameObject);
-
-			if (cutscene && sceneSettings)
+			Cutscene cutscene = ConstantID.GetComponent <Cutscene> (cutsceneInt, sceneSettings.gameObject.scene);
+			if (cutscene)
 			{
 				sceneSettings.cutsceneOnLoad = cutscene;
 			}
@@ -397,19 +546,19 @@ namespace AC
 
 		private void UnloadCutsceneOnStart (int cutsceneInt, SceneSettings sceneSettings)
 		{
-			Cutscene cutscene = Serializer.returnComponent <Cutscene> (cutsceneInt, sceneSettings.gameObject);
+			Cutscene cutscene = ConstantID.GetComponent <Cutscene> (cutsceneInt, sceneSettings.gameObject.scene);
 
-			if (cutscene && sceneSettings)
+			if (cutscene)
 			{
 				sceneSettings.cutsceneOnStart = cutscene;
 			}
 		}
 
 
-		private List<TransformData> PopulateTransformData (SubScene subScene)
+		private List<TransformData> PopulateTransformData (Scene scene)
 		{
 			List<TransformData> allTransformData = new List<TransformData>();
-			RememberTransform[] transforms = UnityVersionHandler.GetOwnSceneComponents <RememberTransform> ((subScene != null) ? subScene.gameObject : null);
+			HashSet<RememberTransform> transforms = ConstantID.GetComponents <RememberTransform> (scene);
 
 			foreach (RememberTransform _transform in transforms)
 			{
@@ -427,21 +576,21 @@ namespace AC
 		}
 
 
-		private void UnloadTransformData (List<TransformData> _transforms, SubScene subScene)
+		private void UnloadTransformData (List<TransformData> allTransformData, Scene scene)
 		{
 			// Delete any objects (if told to)
-			RememberTransform[] currentTransforms = UnityVersionHandler.GetOwnSceneComponents <RememberTransform> ((subScene != null) ? subScene.gameObject : null);
+			HashSet<RememberTransform> currentTransforms = ConstantID.GetComponents <RememberTransform> (scene);
 			foreach (RememberTransform transformOb in currentTransforms)
 			{
 				if (transformOb.saveScenePresence)
 				{
 					// Was object not saved?
 					bool found = false;
-					foreach (TransformData _transform in _transforms)
+					foreach (TransformData transformData in allTransformData)
 					{
-						if (_transform.objectID == transformOb.constantID)
+						if (transformData.objectID == transformOb.constantID)
 						{
-							found = !_transform.savePrevented;
+							found = !transformData.savePrevented;
 						}
 					}
 
@@ -453,45 +602,63 @@ namespace AC
 				}
 			}
 
-			Object[] prefabAssets = Resources.LoadAll ("SaveableData/Prefabs", typeof (GameObject));
-			if (prefabAssets == null || prefabAssets.Length == 0)
+			#if AddressableIsPresent
+			if (KickStarter.settingsManager.saveAssetReferencesWithAddressables)
 			{
-				prefabAssets = Resources.LoadAll ("", typeof (GameObject));
+				StopAllCoroutines ();
+				StartCoroutine (UnloadTransformDataFromAddressables (allTransformData, scene));
+				return;
 			}
+			#endif
 
-			foreach (TransformData _transform in _transforms)
+			Object[] prefabAssets = null;
+			bool searchedResources = false;
+			
+			foreach (TransformData transformData in allTransformData)
 			{
-				RememberTransform saveObject = Serializer.returnComponent <RememberTransform> (_transform.objectID, (subScene != null) ? subScene.gameObject : null);
+				RememberTransform saveObject = ConstantID.GetComponent <RememberTransform> (transformData.objectID, scene);
 
 				if (saveObject == null)
 				{
 					// Restore any deleted objects (if told to)
-					if (_transform.bringBack && !_transform.savePrevented)
+					if (transformData.bringBack && !transformData.savePrevented)
 					{
 						bool foundObject = false;
+
+						if (!searchedResources)
+						{
+							prefabAssets = Resources.LoadAll ("SaveableData/Prefabs", typeof (GameObject));
+							if (prefabAssets == null || prefabAssets.Length == 0)
+							{
+								prefabAssets = Resources.LoadAll (string.Empty, typeof (GameObject));
+							}
+							searchedResources = true;
+						}
+
 						foreach (Object prefabAsset in prefabAssets)
 						{
 							if (prefabAsset is GameObject)
 							{
 								GameObject prefabGameObject = (GameObject) prefabAsset;
-								if (prefabGameObject.GetComponent <RememberTransform>())
+								RememberTransform prefabRememberTransform = prefabGameObject.GetComponent<RememberTransform>();
+								if (prefabRememberTransform)
 								{
-									int prefabID = prefabGameObject.GetComponent <ConstantID>().constantID;
-									if ((_transform.linkedPrefabID != 0 && prefabID == _transform.linkedPrefabID) ||
-										(_transform.linkedPrefabID == 0 && prefabID == _transform.objectID))
+									int prefabID = prefabRememberTransform.constantID;
+									if ((transformData.linkedPrefabID != 0 && prefabID == transformData.linkedPrefabID) ||
+										(transformData.linkedPrefabID == 0 && prefabID == transformData.objectID))
 									{
-										GameObject newObject = (GameObject) Instantiate (prefabGameObject);
+										GameObject newObject = Instantiate (prefabGameObject);
 										newObject.name = prefabGameObject.name;
 										saveObject = newObject.GetComponent <RememberTransform>();
 										foundObject = true;
 
-										if (_transform.linkedPrefabID != 0 && prefabID == _transform.linkedPrefabID)
+										if (transformData.linkedPrefabID != 0 && prefabID == transformData.linkedPrefabID)
 										{
 											// Spawned object has wrong ID, re-assign it
 											ConstantID[] idScripts = saveObject.GetComponents <ConstantID>();
 											foreach (ConstantID idScript in idScripts)
 											{
-												idScript.constantID = _transform.objectID;
+												idScript.constantID = transformData.objectID;
 											}
 										}
 
@@ -503,36 +670,92 @@ namespace AC
 
 						if (!foundObject)
 						{
-							ACDebug.LogWarning ("Could not find Resources prefab with ID " + _transform.objectID + " - is it placed in a Resources folder?");
+							ACDebug.LogWarning ("Could not find Resources prefab with ID " + transformData.objectID + " - is it placed in a Resources folder?");
 						}
 					}
 				}
 
-				if (saveObject != null)
+				if (saveObject)
 				{
-					saveObject.LoadTransformData (_transform);
+					saveObject.LoadTransformData (transformData);
 				}
 			}
 
-			Resources.UnloadUnusedAssets ();
+			if (searchedResources)
+			{
+				Resources.UnloadUnusedAssets ();
+			}
 			KickStarter.stateHandler.IgnoreNavMeshCollisions ();
 		}
 
 
-		private List<ScriptData> PopulateScriptData (SubScene subScene)
+		#if AddressableIsPresent
+
+		private IEnumerator UnloadTransformDataFromAddressables (List<TransformData> allTransformData, Scene scene)
+		{
+			foreach (TransformData transformData in allTransformData)
+			{
+				RememberTransform saveObject = ConstantID.GetComponent<RememberTransform> (transformData.objectID, scene);
+
+				if (saveObject == null)
+				{
+					// Restore any deleted objects (if told to)
+					if (transformData.bringBack && !transformData.savePrevented)
+					{
+						AsyncOperationHandle<GameObject> goHandle = Addressables.LoadAssetAsync<GameObject> (transformData.addressableName);
+						yield return goHandle;
+						if (goHandle.Status == AsyncOperationStatus.Succeeded)
+						{
+							GameObject prefabGameObject = goHandle.Result;
+							if (prefabGameObject)
+							{
+								GameObject newObject = Instantiate (prefabGameObject);
+								newObject.name = prefabGameObject.name;
+								saveObject = newObject.GetComponent<RememberTransform> ();
+								saveObject.LoadTransformData (transformData);
+							}
+						}
+						Addressables.Release (goHandle);
+					}
+				}
+			}
+
+			KickStarter.stateHandler.IgnoreNavMeshCollisions ();
+		}
+
+		#endif
+
+
+		private void UnloadScriptData (List<ScriptData> allScriptData, Scene scene)
+		{
+			HashSet<Remember> saveObjects = ConstantID.GetComponents <Remember> (scene);
+			foreach (ScriptData _scriptData in allScriptData)
+			{
+				if (!string.IsNullOrEmpty (_scriptData.data))
+				{
+					foreach (Remember saveObject in saveObjects)
+					{
+						if (!saveObject.isActiveAndEnabled) continue;
+
+						if (saveObject.constantID == _scriptData.objectID)
+						{
+							saveObject.LoadData (_scriptData.data);
+						}
+					}
+				}
+			}
+		}
+
+
+		private List<ScriptData> PopulateScriptData (Scene scene)
 		{
 			List<ScriptData> allScriptData = new List<ScriptData>();
-			Remember[] scripts = UnityVersionHandler.GetOwnSceneComponents <Remember> ((subScene != null) ? subScene.gameObject : null);
+			HashSet<Remember> scripts = ConstantID.GetComponents <Remember> (scene);
 
 			foreach (Remember _script in scripts)
 			{
-				Player associatedPlayer = _script.gameObject.GetComponentInParent <Player>();
-				if (associatedPlayer != null && !associatedPlayer.IsLocalPlayer ())
-				{
-					// Skip this, since this is saved in PlayerData
-					continue;
-				}
-				
+				if (!_script.isActiveAndEnabled) continue;
+
 				if (_script.constantID != 0)
 				{
 					allScriptData.Add (new ScriptData (_script.constantID, _script.SaveData ()));
@@ -546,43 +769,12 @@ namespace AC
 			return allScriptData;
 		}
 
-
-		private void AssignMenuLocks (List<Menu> menus, string menuLockData)
-		{
-			if (string.IsNullOrEmpty (menuLockData))
-			{
-				return;
-			}
-
-			string[] lockArray = menuLockData.Split (SaveSystem.pipe[0]);
-			
-			foreach (string chunk in lockArray)
-			{
-				string[] chunkData = chunk.Split (SaveSystem.colon[0]);
-				
-				int _id = 0;
-				int.TryParse (chunkData[0], out _id);
-				
-				bool _lock = false;
-				bool.TryParse (chunkData[1], out _lock);
-				
-				foreach (AC.Menu _menu in menus)
-				{
-					if (_menu.id == _id)
-					{
-						_menu.isLocked = _lock;
-						break;
-					}
-				}
-			}
-		}
+		#endregion
 
 	}
-		
 
-	/**
-	 * A data container for a single scene's save data. Used by the LevelStorage component.
-	 */
+
+	/** A data container for a single scene's save data. Used by the LevelStorage component. */
 	[System.Serializable]
 	public class SingleLevelData
 	{
@@ -593,6 +785,8 @@ namespace AC
 		public List<TransformData> allTransformData;
 		/** The scene number this data is for */
 		public int sceneNumber;
+		/** The scene name this data is for */
+		public string sceneName;
 
 		/** The ConstantID number of the default NavMesh */
 		public int navMesh;
@@ -613,21 +807,114 @@ namespace AC
 		public string localVariablesData;
 
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public SingleLevelData ()
 		{
-			allScriptData = new List<ScriptData>();
-			allTransformData = new List<TransformData>();
+			allScriptData = new List<ScriptData> ();
+			allTransformData = new List<TransformData> ();
 		}
+
+
+		/**
+		 * <summary>Checks if a given SingleLevelData class instance matches this own instance's intended scene</summary>
+		 * <param name = "otherLevelData">The other class instance to check</param>
+		 * <returns>True if the two instances match the same scene</returns>
+		 */
+		public bool DataMatchesScene (SingleLevelData otherLevelData)
+		{
+			switch (KickStarter.settingsManager.referenceScenesInSave)
+			{
+				case ChooseSceneBy.Name:
+					if (otherLevelData.sceneName == sceneName)
+					{
+						return true;
+					}
+					return false;
+
+				case ChooseSceneBy.Number:
+				default:
+					if (otherLevelData.sceneNumber == sceneNumber)
+					{
+						return true;
+					}
+					return false;
+			}
+		}
+
+
+		/**
+		 * <summary>Removes all save data related to an object with a given Constant ID</summary>
+		 * <param name = "id">The object's ConstantID value</param>
+		 */
+		public void RemoveDataForID (int id)
+		{
+			foreach (ScriptData scriptData in allScriptData)
+			{
+				if (scriptData.objectID == id)
+				{
+					allScriptData.Remove (scriptData);
+				}
+			}
+
+			foreach (TransformData transformData in allTransformData)
+			{
+				if (transformData.objectID == id)
+				{
+					allTransformData.Remove (transformData);
+				}
+			}
+		}
+
+
+		#if UNITY_EDITOR
+
+		public void ShowGUI ()
+		{
+			CustomGUILayout.MultiLineLabelGUI ("Scene number:", sceneNumber.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("Scene name:", sceneName);
+			CustomGUILayout.MultiLineLabelGUI ("Active NavMesh:", navMesh.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("Default PlayerStart:", playerStart.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("Default SortingMap:", sortingMap.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("Default TintMap:", tintMap.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("OnStart Cutscene:", onStartCutscene.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("OnLoad Cutscene:", onLoadCutscene.ToString ());
+
+			if (allScriptData != null && allScriptData.Count > 0)
+			{
+				EditorGUILayout.LabelField ("Remember data:");
+				foreach (ScriptData scriptData in allScriptData)
+				{
+					if (string.IsNullOrEmpty (scriptData.data))
+					{ 
+						Debug.LogWarning ("Invalid Remember data for object ID " + scriptData.objectID + " in scene " + sceneName + ", " + sceneNumber);
+						continue;
+					}
+					RememberData rememberData = SaveSystem.FileFormatHandler.DeserializeObject<RememberData> (scriptData.data);
+					if (rememberData != null)
+					{
+						CustomGUILayout.MultiLineLabelGUI ("   " + rememberData.GetType ().ToString () + ":", EditorJsonUtility.ToJson (rememberData, true));
+					}
+				}
+			}
+
+			if (allTransformData != null && allTransformData.Count > 0)
+			{
+				foreach (TransformData transformData in allTransformData)
+				{
+					CustomGUILayout.MultiLineLabelGUI ("   " + transformData.GetType ().ToString () + ":", EditorJsonUtility.ToJson (transformData, true));
+				}
+			}
+
+			CustomGUILayout.MultiLineLabelGUI ("Active ActionLists:", activeLists.ToString ());
+			CustomGUILayout.MultiLineLabelGUI ("Local Variables:", localVariablesData);
+		}
+
+		#endif
 
 	}
 
 
-	/**
-	 * A data container for save data returned by each Remember script.  Used by the SingleLevelData class.
-	 */
+	/** A data container for save data returned by each Remember script.  Used by the SingleLevelData class. */
 	[System.Serializable]
 	public struct ScriptData
 	{

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDocumentCollection.cs"
  * 
@@ -20,23 +20,19 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionDocumentCollection : Action
+	public class ActionDocumentCollection : Action, IDocumentReferencerAction
 	{
 
 		public int documentID;
 		public int parameterID = -1;
 
-		[SerializeField] private DocumentCollectionMethod documentCollectionMethod = DocumentCollectionMethod.Add;
+		[SerializeField] protected DocumentCollectionMethod documentCollectionMethod = DocumentCollectionMethod.Add;
 		public enum DocumentCollectionMethod { Add, Remove, Clear };
 
 		
-		public ActionDocumentCollection ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Document;
-			title = "Add or remove";
-			description = "Adds or removes a document from the player's collection, or removes all of them.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Document; }}
+		public override string Title { get { return "Add or remove"; }}
+		public override string Description { get { return "Adds or removes a document from the player's collection, or removes all of them."; }}
 
 
 		public override void AssignValues (List<ActionParameter> parameters)
@@ -45,7 +41,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			Document document = KickStarter.inventoryManager.GetDocument (documentID);
 
@@ -71,7 +67,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			documentCollectionMethod = (DocumentCollectionMethod) EditorGUILayout.EnumPopup ("Method:", documentCollectionMethod);
 
@@ -80,21 +76,30 @@ namespace AC
 			{
 				documentID = InventoryManager.DocumentSelectorList (documentID);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			return documentCollectionMethod.ToString ();
 		}
 
 
-		public override int GetDocumentReferences (List<ActionParameter> parameters, int _docID)
+		public int GetNumDocumentReferences (int _docID, List<ActionParameter> parameters)
 		{
 			if (parameterID < 0 && documentID == _docID)
 			{
+				return 1;
+			}
+			return 0;
+		}
+
+
+		public int UpdateDocumentReferences (int oldDocumentID, int newDocumentID, List<ActionParameter> actionParameters)
+		{
+			if (parameterID < 0 && documentID == oldDocumentID)
+			{
+				documentID = newDocumentID;
 				return 1;
 			}
 			return 0;
@@ -111,7 +116,7 @@ namespace AC
 		 */
 		public static ActionDocumentCollection CreateNew (int documentID, DocumentCollectionMethod method)
 		{
-			ActionDocumentCollection newAction = (ActionDocumentCollection) CreateInstance <ActionDocumentCollection>();
+			ActionDocumentCollection newAction = CreateNew<ActionDocumentCollection> ();
 			newAction.documentCollectionMethod = method;
 			newAction.documentID = documentID;
 			return newAction;

@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionAnim.cs"
  * 
@@ -33,6 +33,7 @@ namespace AC
 		public Animation runtimeAnim;
 		public AnimationClip clip;
 		public float fadeTime = 0f;
+		public int clipParameterID = -1;
 		
 		// 2D variables
 		
@@ -74,15 +75,11 @@ namespace AC
 		public string customClassName;
 		public AnimEngine animEngine;
 
-		
-		public ActionAnim ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Animate";
-			description = "Causes a GameObject to play or stop an animation, or modify a Blend Shape. The available options will differ depending on the chosen animation engine.";
-		}
 
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Animate"; }}
+		public override string Description { get { return "Causes a GameObject to play or stop an animation, or modify a Blend Shape. The available options will differ depending on the chosen animation engine."; }}
+		
 
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
@@ -106,7 +103,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (method == AnimMethod.BlendShape && isPlayer && runtimeShapeObject == null)
 			{
@@ -125,7 +122,7 @@ namespace AC
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (animEngine != null)
 			{
@@ -142,26 +139,28 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			ResetAnimationEngine ();
 			
 			animationEngine = (AnimationEngine) EditorGUILayout.EnumPopup ("Animation engine:", animationEngine);
 			if (animationEngine == AnimationEngine.Custom)
 			{
-				customClassName = EditorGUILayout.TextField ("Script name:", customClassName);
+				customClassName = EditorGUILayout.DelayedTextField ("Script name:", customClassName);
 			}
 
 			if (animEngine)
 			{
 				animEngine.ActionAnimGUI (this, parameters);
-			}
 
-			AfterRunningOption ();
+				#if !AC_ActionListPrefabs
+				if (GUI.changed && this) EditorUtility.SetDirty (this);
+				#endif
+			}
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (animEngine)
 			{
@@ -171,7 +170,7 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -208,11 +207,31 @@ namespace AC
 				}
 			}
 		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (_anim != null && _anim.gameObject && _anim.gameObject == _gameObject) return true;
+				if (animator && animator.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (method == AnimMethod.BlendShape)
+			{
+				if (!isPlayer)
+				{
+					if (shapeObject && shapeObject.gameObject == _gameObject) return true;
+				}
+				if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
 		
 		#endif
 
 
-		private void ResetAnimationEngine ()
+		protected void ResetAnimationEngine ()
 		{
 			string className = "";
 			if (animationEngine == AnimationEngine.Custom)
@@ -242,7 +261,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnity_PlayCustom (Animator animator, string clipName, int layerIndex, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnity;
 			newAction.animator = animator;
 			newAction.clip2D = clipName;
@@ -265,7 +284,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnityComplex_PlayCustom (Animator animator, string clipName, int layerIndex, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnityComplex;
 			newAction.methodMecanim = AnimMethodMecanim.PlayCustom;
 			newAction.animator = animator;
@@ -287,7 +306,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (Animator animator, string parameterName, int newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnityComplex;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -308,7 +327,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (Animator animator, string parameterName, float newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnityComplex;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -329,7 +348,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (Animator animator, string parameterName, bool newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnityComplex;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -350,7 +369,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_SpritesUnityComplex_ChangeParameterValue (Animator animator, string parameterName)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.SpritesUnityComplex;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -373,7 +392,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_Mecanim_PlayCustom (Animator animator, string clipName, int layerIndex, float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.PlayCustom;
 			newAction.animator = animator;
@@ -395,7 +414,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_Mecanim_ChangeParameterValue (Animator animator, string parameterName, int newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -416,7 +435,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_Mecanim_ChangeParameterValue (Animator animator, string parameterName, float newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -437,7 +456,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_Mecanim_ChangeParameterValue (Animator animator, string parameterName, bool newValue)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew <ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -458,7 +477,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_Mecanim_ChangeParameterValue (Animator animator, string parameterName)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.ChangeParameterValue;
 			newAction.animator = animator;
@@ -481,7 +500,7 @@ namespace AC
 		 */
 		public static ActionAnim CreateNew_BlendShape (Shapeable shapeable, int shapeKey, float shapeValue, float transitionTime = 1f, bool waitUntilFinish = false)
 		{
-			ActionAnim newAction = (ActionAnim) CreateInstance <ActionAnim>();
+			ActionAnim newAction = CreateNew<ActionAnim> ();
 			newAction.animationEngine = AnimationEngine.Mecanim;
 			newAction.methodMecanim = AnimMethodMecanim.BlendShape;
 			newAction.shapeObject = shapeable;

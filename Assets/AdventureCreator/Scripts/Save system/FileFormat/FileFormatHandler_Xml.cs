@@ -7,6 +7,7 @@ using System.Xml.Serialization;
 namespace AC
 {
 
+	/** A format handler that serializes data into XML format */
 	public class FileFormatHandler_Xml : iFileFormatHandler
 	{
 
@@ -22,23 +23,20 @@ namespace AC
 		}
 
 
-		public string SerializeObject <T> (object dataObject)
+		public virtual string SerializeObject <T> (object dataObject)
 		{
-			string XmlizedString = null; 
-			
 			MemoryStream memoryStream = new MemoryStream(); 
 			XmlSerializer xs = new XmlSerializer (typeof (T)); 
 			XmlTextWriter xmlTextWriter = new XmlTextWriter (memoryStream, Encoding.UTF8); 
 			
 			xs.Serialize (xmlTextWriter, dataObject); 
-			memoryStream = (MemoryStream) xmlTextWriter.BaseStream; 
-			XmlizedString = UTF8ByteArrayToString (memoryStream.ToArray());
-			
-			return XmlizedString;
+			memoryStream = (MemoryStream) xmlTextWriter.BaseStream;
+
+			return UTF8ByteArrayToString (memoryStream.ToArray());
 		}
 
 
-		public T DeserializeObject <T> (string dataString)
+		public virtual T DeserializeObject <T> (string dataString)
 		{
 			if (!dataString.Contains ("<?xml") && !dataString.Contains ("xml version"))
 			{
@@ -55,37 +53,48 @@ namespace AC
 				{
 					dataType = dataType.Substring (3);
 				}
+				else if (dataType.Contains ("[AC."))
+				{
+					// If it's a list, it's a bit more complicated
 
-				if (dataString.Contains (dataType))
+					int startIndex = dataType.IndexOf ("[AC.") + 4;
+					int length = dataType.Substring (startIndex).IndexOf ("]");
+					if (length > 1)
+					{
+						dataType = dataType.Substring (startIndex, length);
+					}
+				}
+
+				if (dataString.Contains ("</" + dataType + ">"))
 				{
 					object deserializedObject = xs.Deserialize (memoryStream);
 					if (deserializedObject is T)
 					{
 						return (T) deserializedObject;
 					}
-				}
+				} 
 			}
 			catch (System.Exception e)
- 			{
+			{
 				ACDebug.LogWarning ("Could not XML deserialize datastring '" + dataString + "; Exception: " + e);
- 			}
+			}
 			return default (T);
 		}
 
 
-		public string SerializeAllRoomData (List<SingleLevelData> dataObjects)
+		public virtual string SerializeAllRoomData (List<SingleLevelData> dataObjects)
 		{
 			return SerializeObject <List<SingleLevelData>> (dataObjects);
 		}
 
 
-		public List<SingleLevelData> DeserializeAllRoomData (string dataString)
+		public virtual List<SingleLevelData> DeserializeAllRoomData (string dataString)
 		{
 			return (List<SingleLevelData>) DeserializeObject <List<SingleLevelData>> (dataString);
 		}
 
 
-		public T LoadScriptData <T> (string dataString) where T : RememberData
+		public virtual T LoadScriptData <T> (string dataString) where T : RememberData
 		{
 			return DeserializeObject <T> (dataString);
 		}

@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"SpeechPlayableBehaviour.cs"
  * 
@@ -9,46 +9,56 @@
  * 
  */
 
-#if UNITY_2017_1_OR_NEWER
+#if AddressableIsPresent
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
+#if !ACIgnoreTimeline
 using UnityEngine;
 using UnityEngine.Playables;
-using UnityEngine.Timeline;
-
-#if UNITY_EDITOR
-using System.Reflection;
-using System;
-#endif
 
 namespace AC
 {
 
-	/**
-	 * A PlayableBehaviour that allows for AC speech playback in Timelines
-	 */
+	/** A PlayableBehaviour that allows for AC speech playback in Timelines */
 	[System.Serializable]
 	public class SpeechPlayableBehaviour : PlayableBehaviour
 	{
 
 		#region Variables
 
-		private SpeechPlayableData speechPlayableData;
-		private SpeechTrackPlaybackMode speechTrackPlaybackMode;
-		private Char speaker;
-		private bool isPlaying;
-		private int trackInstanceID;
+		protected SpeechPlayableData speechPlayableData;
+		protected SpeechTrackPlaybackMode speechTrackPlaybackMode;
+		protected Char speaker;
+		protected bool isPlayerLine;
+		protected int playerID;
+		protected bool isPlaying;
+		protected int trackInstanceID;
+		private Speech speech;
+
+		#if AddressableIsPresent
+		protected bool isAwaitingAddressable = false;
+		protected AudioClip addressableAudioClip = null;
+		#endif
 
 		#endregion
 
 
 		#region PublicFunctions
 
-		public void Init (SpeechPlayableData _speechPlayableData, Char _speaker, SpeechTrackPlaybackMode _speechTrackPlaybackMode, int _trackInstanceID)
+		public void Init (SpeechPlayableData _speechPlayableData, Char _speaker, bool _isPlayerLine, int _playerID, SpeechTrackPlaybackMode _speechTrackPlaybackMode, int _trackInstanceID)
 		{
 			speechPlayableData = _speechPlayableData;
 			speaker = _speaker;
+			isPlayerLine = _isPlayerLine;
+			playerID = _playerID;
 			speechTrackPlaybackMode = _speechTrackPlaybackMode;
 			trackInstanceID = _trackInstanceID;
+
+			#if AddressableIsPresent
+			PrepareAddressable ();
+			#endif
 		}
 
 
@@ -71,18 +81,23 @@ namespace AC
 					string messageText = speechPlayableData.messageText;
 
 					int languageNumber = Options.GetLanguage ();
-					if (languageNumber > 0)
-					{
-						// Not in original language, so pull translation in from Speech Manager
-						messageText = KickStarter.runtimeLanguages.GetTranslation (messageText, speechPlayableData.lineID, languageNumber);
-					}
-
+					messageText = KickStarter.runtimeLanguages.GetTranslation (messageText, speechPlayableData.lineID, languageNumber, AC_TextType.Speech);
+					
 					if (speechTrackPlaybackMode == SpeechTrackPlaybackMode.ClipDuration)
 					{
 						messageText += "[hold]";
 					}
 
-					KickStarter.dialog.StartDialog (speaker, messageText, false, speechPlayableData.lineID, false, true);
+					if (speaker == null && isPlayerLine)
+					{
+						speaker = AssignPlayer (playerID);
+					}
+					
+					#if AddressableIsPresent
+					speech = KickStarter.dialog.StartDialog (speaker, messageText, speechPlayableData.isBackground, speechPlayableData.lineID, false, true, addressableAudioClip);
+					#else
+					speech = KickStarter.dialog.StartDialog (speaker, messageText, speechPlayableData.isBackground, speechPlayableData.lineID, false, true);
+					#endif
 				}
 				#if UNITY_EDITOR
 				else if (KickStarter.menuPreview)
@@ -104,9 +119,9 @@ namespace AC
 		#endregion
 
 
-		#region PrivateFunctions
+		#region ProtectedFunctions
 
-		private bool IsValid ()
+		protected bool IsValid ()
 		{
 			if (speechPlayableData != null && !string.IsNullOrEmpty (speechPlayableData.messageText))
 			{
@@ -114,6 +129,53 @@ namespace AC
 			}
 			return false;
 		}
+
+
+		protected Player AssignPlayer (int _playerID)
+		{
+			if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && _playerID >= 0)
+			{
+				PlayerPrefab playerPrefab = KickStarter.settingsManager.GetPlayerPrefab (_playerID);
+				if (playerPrefab != null)
+				{
+					Player _player = playerPrefab.GetSceneInstance ();
+					if (_player == null) Debug.LogWarning ("Cannot assign Player with ID = " + _playerID + " because they are not currently in the scene.");
+					return _player;
+				}
+				else
+				{
+					Debug.LogWarning ("No Player prefab found with ID = " + _playerID);
+				}
+				return null;
+			}
+			return KickStarter.player;
+		}
+
+
+		#if AddressableIsPresent
+
+		protected void PrepareAddressable ()
+		{
+			if (!isAwaitingAddressable && KickStarter.speechManager.referenceSpeechFiles == ReferenceSpeechFiles.ByAddressable && speechPlayableData.lineID >= 0)
+			{
+				SpeechLine speechLine = KickStarter.speechManager.GetLine (speechPlayableData.lineID);
+				if (speechLine != null)
+				{
+					string filename = speechLine.GetFilename ();
+					Addressables.LoadAssetAsync<AudioClip>(filename).Completed += OnCompleteLoad;
+					isAwaitingAddressable = true;
+				}
+			}
+		}
+
+
+		protected void OnCompleteLoad (AsyncOperationHandle<AudioClip> obj)
+		{
+			isAwaitingAddressable = false;
+			addressableAudioClip = obj.Result;
+		}
+
+		#endif
 
 		#endregion
 
@@ -129,10 +191,19 @@ namespace AC
 			}
 		}
 
+
+		/** The Speech line produced by the clip.  This will only be set once the clip has begun playing. */
+		public Speech Speech
+		{
+			get
+			{
+				return speech;
+			}
+		}
+
 		#endregion
 
 	}
 
 }
-
 #endif

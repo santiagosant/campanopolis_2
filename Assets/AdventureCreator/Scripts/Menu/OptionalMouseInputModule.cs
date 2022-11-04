@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"OptionalMouseInputModule.cs"
  * 
@@ -41,9 +41,9 @@ namespace AC
 		}
 
 
-		private void Update ()
+		protected void Update ()
 		{
-			if (KickStarter.settingsManager != null && KickStarter.settingsManager.inputMethod == InputMethod.KeyboardOrController)
+			if (KickStarter.settingsManager && KickStarter.settingsManager.inputMethod != InputMethod.TouchScreen)
 			{
 				AllowMouseInput = !CanDirectlyControlMenus ();
 			}
@@ -54,8 +54,13 @@ namespace AC
 		}
 
 
-		private bool CanDirectlyControlMenus ()
+		protected virtual bool CanDirectlyControlMenus ()
 		{
+			if (KickStarter.settingsManager && KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
+			{
+				return false;
+			}
+
 			if ((KickStarter.stateHandler.gameState == GameState.Paused && KickStarter.menuManager.keyboardControlWhenPaused) ||
 				(KickStarter.stateHandler.gameState == GameState.DialogOptions && KickStarter.menuManager.keyboardControlWhenDialogOptions) ||
 				(KickStarter.stateHandler.IsInGameplay () && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay))
@@ -68,7 +73,7 @@ namespace AC
 
 		protected override MouseState GetMousePointerEventData (int id = 0)
 		{
-			if (KickStarter.settingsManager == null || KickStarter.settingsManager.inputMethod != InputMethod.KeyboardOrController)
+			if (KickStarter.settingsManager == null || KickStarter.settingsManager.inputMethod == InputMethod.MouseAndKeyboard)
 			{
 				return base.GetMousePointerEventData (id);
 			}
@@ -109,13 +114,41 @@ namespace AC
 			middleData.button = PointerEventData.InputButton.Middle;
 	 
 			PointerEventData.FramePressState leftClickState = PointerEventData.FramePressState.NotChanged;
-			if (KickStarter.playerInput.InputGetButtonDown ("InteractionA"))
+			if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
 			{
-				leftClickState = PointerEventData.FramePressState.Pressed;
+				if (Input.touchCount == 1)
+				{
+					TouchPhase phase = Input.GetTouch (0).phase;
+					switch (phase)
+					{
+						case TouchPhase.Began:
+							leftClickState = PointerEventData.FramePressState.Pressed;
+							break;
+
+						case TouchPhase.Canceled:
+							leftClickState = PointerEventData.FramePressState.Released;
+							break;
+
+						case TouchPhase.Ended:
+							leftClickState = PointerEventData.FramePressState.PressedAndReleased;
+							break;
+
+						default:
+							
+							break;
+					}
+				}
 			}
-			else if (KickStarter.playerInput.InputGetButtonUp ("InteractionA"))
+			else
 			{
-				leftClickState = PointerEventData.FramePressState.Released;
+				if (KickStarter.playerInput.InputGetButtonDown ("InteractionA"))
+				{
+					leftClickState = PointerEventData.FramePressState.Pressed;
+				}
+				else if (KickStarter.playerInput.InputGetButtonUp ("InteractionA"))
+				{
+					leftClickState = PointerEventData.FramePressState.Released;
+				}
 			}
 
 			PointerEventData.FramePressState rightClickState = PointerEventData.FramePressState.NotChanged;
@@ -136,10 +169,10 @@ namespace AC
 		}
 
 
-		#if !UNITY_5_0
-
 		public override void Process ()
 		{
+			//if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen) {base.Process (); return;}
+
 			bool usedEvent = SendUpdateEventToSelectedObject ();
 	 
 			if (eventSystem.sendNavigationEvents)
@@ -160,8 +193,6 @@ namespace AC
 				ProcessMouseEvent ();
 			}
 		}
-
-		#endif
 
 	}
 

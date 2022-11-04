@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"StateHandler.cs"
  * 
@@ -21,87 +21,480 @@ namespace AC
 	 * This script stores the all-important gameState variable, which determines if the game is running normal gameplay, is in a cutscene, or is paused.
 	 * It also runs the various "Update", "LateUpdate", "FixedUpdate" and "OnGUI" functions that are within Adventure Creator's main scripts - by running them all from here, performance is drastically improved.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_state_handler.html")]
-	#endif
 	public class StateHandler : MonoBehaviour
 	{
 
-		private GameState _gameState = GameState.Normal;
+		#region Variables
 
-		private Music music;
-		private Ambience ambience;
-		private bool inScriptedCutscene;
-		private GameState previousUpdateState = GameState.Normal;
-		private GameState lastNonPausedState = GameState.Normal;
-		private bool isACDisabled = false;
+		protected Music music;
+		protected Ambience ambience;
+		protected bool inScriptedCutscene;
+		protected bool inScriptedPause;
+		protected GameState previousUpdateState = GameState.Normal;
+		protected bool isACDisabled = false;
 
-		private bool cursorIsOff = false;
-		private bool inputIsOff = false;
-		private bool interactionIsOff = false;
-		private bool menuIsOff = false;
-		private bool movementIsOff = false;
-		private bool cameraIsOff = false;
-		private bool triggerIsOff = false;
-		private bool playerIsOff = false;
+		protected bool cursorIsOff = false;
+		protected bool inputIsOff = false;
+		protected bool interactionIsOff = false;
+		protected bool draggablesIsOff = false;
+		protected bool menuIsOff = false;
+		protected bool movementIsOff = false;
+		protected bool cameraIsOff = false;
+		protected bool triggerIsOff = false;
+		protected bool playerIsOff = false;
+		protected bool applicationIsInFocus = true;
+		protected bool applicationIsPaused = false;
 
-		private bool runAtLeastOnce = false;
-		private bool hasGameEngine = false;
+		protected bool runAtLeastOnce = false;
+		protected KickStarter activeKickStarter = null;
 
-		private List<ArrowPrompt> arrowPrompts = new List<ArrowPrompt>();
-		private List<DragBase> dragBases = new List<DragBase>();
-		private List<Parallax2D> parallax2Ds = new List<Parallax2D>();
-		private List<Hotspot> hotspots = new List<Hotspot>();
-		private List<Highlight> highlights = new List<Highlight>();
-		private List<AC_Trigger> triggers = new List<AC_Trigger>();
-		private List<_Camera> cameras = new List<_Camera>();
-		private List<Sound> sounds = new List<Sound>();
-		private List<LimitVisibility> limitVisibilitys = new List<LimitVisibility>();
-		private List<Char> characters = new List<Char>();
-		private List<FollowSortingMap> followSortingMaps = new List<FollowSortingMap>();
-		private List<NavMeshBase> navMeshBases = new List<NavMeshBase>();
-		private List<SortingMap> sortingMaps = new List<SortingMap>();
-		private List<BackgroundCamera> backgroundCameras = new List<BackgroundCamera>();
-		private List<BackgroundImage> backgroundImages = new List<BackgroundImage>();
-		private List<ConstantID> constantIDs = new List<ConstantID>();
+		protected HashSet<ArrowPrompt> arrowPrompts = new HashSet<ArrowPrompt>();
+		protected HashSet<DragBase> dragBases = new HashSet<DragBase>();
+		protected HashSet<Parallax2D> parallax2Ds = new HashSet<Parallax2D>();
+		protected HashSet<Hotspot> hotspots = new HashSet<Hotspot>();
+		protected HashSet<Highlight> highlights = new HashSet<Highlight>();
+		protected HashSet<AC_Trigger> triggers = new HashSet<AC_Trigger>();
+		protected HashSet<_Camera> cameras = new HashSet<_Camera>();
+		protected HashSet<Sound> sounds = new HashSet<Sound>();
+		protected HashSet<Char> characters = new HashSet<Char>();
+		protected HashSet<FollowSortingMap> followSortingMaps = new HashSet<FollowSortingMap>();
+		protected HashSet<NavMeshBase> navMeshBases = new HashSet<NavMeshBase>();
+		protected HashSet<SortingMap> sortingMaps = new HashSet<SortingMap>();
+		protected HashSet<BackgroundCamera> backgroundCameras = new HashSet<BackgroundCamera>();
+		protected HashSet<BackgroundImage> backgroundImages = new HashSet<BackgroundImage>();
+		protected HashSet<Container> containers = new HashSet<Container> ();
 
-		private int _i = 0;
+		protected ConstantIDManager constantIDManager;
+
+		#endregion
 
 
-		public void OnAwake ()
+		#region UnityStandards
+
+		private void OnEnable ()
 		{
-			Time.timeScale = 1f;
-			DontDestroyOnLoad (this);
-			inScriptedCutscene = false;
+			EventManager.OnInitialiseScene += OnInitialiseScene;
+			EventManager.OnAddSubScene += OnAddSubScene;
+			EventManager.OnEnterGameState += OnEnterGameState;
 
-			InitPersistentEngine ();
+			#if UNITY_EDITOR
+			UnityEditor.EditorApplication.pauseStateChanged += OnPauseStateChange;
+			#endif
 		}
 
 
-		private void Start ()
+		private void OnDisable ()
 		{
-			if (KickStarter.settingsManager == null)
+			EventManager.OnInitialiseScene -= OnInitialiseScene;
+			EventManager.OnAddSubScene -= OnAddSubScene;
+			EventManager.OnEnterGameState -= OnEnterGameState;
+
+			#if UNITY_EDITOR
+			UnityEditor.EditorApplication.pauseStateChanged -= OnPauseStateChange;
+			#endif
+		}
+		
+
+		public void Initialise (bool rebuildMenus = true)
+		{
+			RegisterInitialConstantIDs ();
+
+			Time.timeScale = 1f;
+			DontDestroyOnLoad (this);
+
+			KickStarter.sceneChanger.OnInitPersistentEngine ();
+			KickStarter.runtimeInventory.OnInitPersistentEngine ();
+
+			KickStarter.saveSystem.SetInitialPlayerID ();
+
+			KickStarter.runtimeLanguages.OnInitPersistentEngine ();
+			KickStarter.runtimeVariables.TransferFromManager ();
+			KickStarter.options.OnInitPersistentEngine ();
+			KickStarter.levelStorage.OnInitPersistentEngine ();
+			KickStarter.runtimeVariables.OnInitPersistentEngine ();
+			KickStarter.runtimeDocuments.OnInitPersistentEngine ();
+			KickStarter.runtimeObjectives.OnInitPersistentEngine ();
+
+			if (rebuildMenus)
 			{
-				hasGameEngine = false;
+				KickStarter.playerMenus.OnInitPersistentEngine ();
+			}
+
+			KickStarter.playerMenus.RecalculateAll ();
+		}
+
+
+		protected void Update ()
+		{
+			#if UNITY_EDITOR
+			ACScreen.UpdateCache ();
+			#endif
+			
+			if (!CanRun ())
+			{
+				return;
+			}
+			
+			if (KickStarter.settingsManager.IsInLoadingScene () || KickStarter.sceneChanger.IsLoading ())
+			{
+				if (!menuIsOff)
+				{
+					KickStarter.playerMenus.UpdateLoadingMenus ();
+				}
+				return;
+			}
+
+			if (!inputIsOff)
+			{
+				if (gameState == GameState.DialogOptions)
+				{
+					KickStarter.playerInput.DetectConversationInputs ();
+				}
+				KickStarter.playerInput.UpdateInput ();
+
+				KickStarter.playerInput.UpdateDirectInput (IsInGameplay ());
+			
+				if (gameState != GameState.Paused)
+				{
+					KickStarter.playerQTE.UpdateQTE ();
+				}
+			}
+
+			KickStarter.dialog._Update ();
+
+			KickStarter.playerInteraction.UpdateInteractionLabel ();
+
+			if (!cursorIsOff)
+			{
+				KickStarter.playerCursor.UpdateCursor ();
+			
+				bool canHideHotspots = KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseInteractionThenHotspot && KickStarter.settingsManager.hideUnhandledHotspots;
+				bool canDrawHotspotIcons = (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never);
+				bool canUpdateProximity = (KickStarter.settingsManager.hotspotDetection == HotspotDetection.PlayerVicinity && KickStarter.settingsManager.placeDistantHotspotsOnSeparateLayer && KickStarter.player);
+
+				foreach (Hotspot hotspot in hotspots)
+				{
+					bool showing = (canHideHotspots) ? hotspot.UpdateUnhandledVisibility () : true;
+					if (showing)
+					{
+						if (canDrawHotspotIcons)
+						{
+							if (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never)
+							{
+								hotspot.UpdateIcon ();
+								if (KickStarter.settingsManager.hotspotDrawing == ScreenWorld.WorldSpace)
+								{
+									hotspot.DrawHotspotIcon (true);
+								}
+							}
+						}
+
+						if (canUpdateProximity)
+						{
+							hotspot.UpdateProximity (KickStarter.player.hotspotDetector);
+						}
+					}
+				}
+			}
+			
+			if (!menuIsOff)
+			{
+				KickStarter.playerMenus.CheckForInput ();
+				
+				if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen && KickStarter.playerInput.GetMouseState () != MouseState.Normal)
+				{
+					KickStarter.playerMenus.UpdateAllMenus ();
+				}
+			}
+
+			if (!interactionIsOff)
+			{
+				KickStarter.playerInteraction.UpdateInteraction ();
+
+				foreach (Highlight highlight in highlights)
+				{
+					highlight._Update ();
+				}
+
+				if (KickStarter.settingsManager.hotspotDetection == HotspotDetection.MouseOver && KickStarter.settingsManager.scaleHighlightWithMouseProximity)
+				{
+					bool isInGameplay = IsInGameplay ();
+					foreach (Hotspot hotspot in hotspots)
+					{
+						hotspot.SetProximity (isInGameplay);
+					}
+				}
+			}
+
+			if (!triggerIsOff)
+			{
+				foreach (AC_Trigger trigger in triggers)
+				{
+					trigger._Update ();
+				}
+			}
+
+			if (!menuIsOff)
+			{
+				KickStarter.playerMenus.UpdateAllMenus ();
+			}
+
+			foreach (DragBase dragBase in dragBases)
+			{
+				dragBase.UpdateMovement ();
+			}
+
+			if (!movementIsOff)
+			{
+				if (IsInGameplay () && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod != MovementMethod.None)
+				{
+					KickStarter.playerMovement.UpdatePlayerMovement ();
+				}
+			}
+
+			if (!interactionIsOff)
+			{
+				KickStarter.playerInteraction.UpdateInventory ();
+			}
+			
+			foreach (Sound sound in sounds)
+			{
+				sound._Update ();
+			}
+			
+			foreach (AC.Char character in characters)
+			{
+				if (character && (!playerIsOff || !(character.IsPlayer)))
+				{
+					character._Update ();
+				}
+			}
+
+			if (!cameraIsOff)
+			{
+				foreach (_Camera _camera in cameras)
+				{
+					_camera._Update ();
+				}
 			}
 		}
 
 
-		private void InitPersistentEngine ()
+		protected void LateUpdate ()
 		{
-			KickStarter.runtimeLanguages.OnAwake ();
-			KickStarter.options.OnStart ();
+			if (!CanRun ())
+			{
+				return;
+			}
 
-			KickStarter.localVariables.OnStart ();
+			if (KickStarter.settingsManager && KickStarter.settingsManager.IsInLoadingScene ())
+			{
+				return;
+			}
 
-			KickStarter.sceneChanger.OnAwake ();
-			KickStarter.levelStorage.OnAwake ();
-			
-			KickStarter.runtimeVariables.OnStart ();
-			KickStarter.runtimeInventory.OnStart ();
-			KickStarter.runtimeDocuments.OnStart ();
+			foreach (AC.Char character in characters)
+			{
+				if (!playerIsOff || !(character.IsPlayer))
+				{
+					character._LateUpdate ();
+				}
+			}
 
-			KickStarter.playerMenus.OnStart ();
+			if (!cameraIsOff && KickStarter.mainCamera)
+			{
+				KickStarter.mainCamera._LateUpdate ();
+			}
+
+			foreach (Parallax2D parallax2D in parallax2Ds)
+			{
+				parallax2D.UpdateOffset ();
+			}
+
+			foreach (SortingMap sortingMap in sortingMaps)
+			{
+				sortingMap.UpdateSimilarFollowers ();
+			}
+
+			KickStarter.dialog._LateUpdate ();
+
+			GameState currentGameState = gameState;
+			if (previousUpdateState != currentGameState)
+			{
+				KickStarter.eventManager.Call_OnChangeGameState (previousUpdateState, currentGameState);
+				previousUpdateState = currentGameState;
+			}
+		}
+
+
+		protected void FixedUpdate ()
+		{
+			if (!CanRun ())
+			{
+				return;
+			}
+
+			if (KickStarter.settingsManager && KickStarter.settingsManager.IsInLoadingScene ())
+			{
+				return;
+			}
+
+			foreach (AC.Char character in characters)
+			{
+				if (!playerIsOff || !(character.IsPlayer))
+				{
+					character._FixedUpdate ();
+				}
+			}
+
+			foreach (DragBase dragBase in dragBases)
+			{
+				dragBase._FixedUpdate ();
+			}
+
+			KickStarter.playerInput._FixedUpdate ();
+		}
+
+
+		private void OnApplicationFocus (bool focus)
+		{
+			applicationIsInFocus = focus;
+		}
+
+
+		private void OnApplicationPause (bool pause)
+		{
+			applicationIsPaused = pause;
+		}
+
+
+		#if ACIgnoreOnGUI
+		#else
+
+		protected void OnGUI ()
+		{
+			if (!isACDisabled)
+			{
+				_OnGUI ();
+			}
+		}
+
+		#endif
+
+
+		/**
+		 * Runs all of AC's OnGUI code.
+		 * This is called automatically from within StateHandler, unless 'ACIgnoreOnGUI' is listed in Unity's Scripting Define Symbols box in the Player settings.
+		 */
+		public void _OnGUI ()
+		{
+			if (!CanRun ())
+			{
+				return;
+			}
+
+			if (KickStarter.settingsManager.IsInLoadingScene () || KickStarter.sceneChanger.IsLoading ())
+			{
+				if (!cameraIsOff && !KickStarter.settingsManager.IsInLoadingScene ())
+				{
+					KickStarter.mainCamera.DrawCameraFade ();
+				}
+				if (!menuIsOff)
+				{
+					if (KickStarter.settingsManager.IsInLoadingScene ())
+					{
+						KickStarter.playerMenus.DrawLoadingMenus ();
+					}
+					else
+					{
+						KickStarter.playerMenus.DrawMenus ();
+					}
+				}
+				if (!cameraIsOff)
+				{
+					KickStarter.mainCamera.DrawBorders ();
+				}
+
+				StatusBox.DrawDebugWindow ();
+				return;
+			}
+
+			if (!cursorIsOff && !KickStarter.saveSystem.IsTakingSaveScreenshot)
+			{
+				if (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never &&
+				   KickStarter.settingsManager.hotspotDrawing == ScreenWorld.ScreenSpace)
+				{
+					foreach (Hotspot hotspot in hotspots)
+					{
+						hotspot.DrawHotspotIcon ();
+					}
+				}
+
+				if (IsInGameplay ())
+				{
+					foreach (DragBase dragBase in dragBases)
+					{
+						dragBase.DrawGrabIcon ();
+					}
+				}
+			}
+
+			if (!inputIsOff)
+			{
+				if (gameState == GameState.DialogOptions)
+				{
+					KickStarter.playerInput.DetectConversationNumerics ();
+				}
+				KickStarter.playerInput.DrawDragLine ();
+
+				foreach (ArrowPrompt arrowPrompt in arrowPrompts)
+				{
+					arrowPrompt.DrawArrows ();
+				}
+			}
+
+			if (!menuIsOff)
+			{
+				KickStarter.playerMenus.DrawMenus ();
+			}
+
+			if (!cursorIsOff)
+			{
+				if (KickStarter.cursorManager.cursorRendering == CursorRendering.Software)
+				{
+					KickStarter.playerCursor.DrawCursor ();
+				}
+				else if (InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance))
+				{
+					KickStarter.runtimeInventory.DrawSelectedInventoryCount ();
+				}
+			}
+
+			if (!cameraIsOff && KickStarter.mainCamera)
+			{
+				KickStarter.mainCamera.DrawCameraFade ();
+				KickStarter.mainCamera.DrawBorders ();
+			}
+
+			StatusBox.DrawDebugWindow ();
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
+
+		/** Checks if the application is currently in focus or not */
+		public bool ApplicationIsInFocus ()
+		{
+			return applicationIsInFocus;
+		}
+
+
+		/** Checks if the application is currently paused */
+		public bool ApplicationIsPaused ()
+		{
+			return applicationIsPaused;
 		}
 
 
@@ -110,29 +503,43 @@ namespace AC
 		{
 			get
 			{
-				return _gameState;
-			}
-			set
-			{
-				if (KickStarter.mainCamera)
+				if (inScriptedPause) return GameState.Paused;
+
+				if (KickStarter.playerMenus.ArePauseMenusOn ())
 				{
-					KickStarter.mainCamera.CancelPauseGame ();
+					if (KickStarter.actionListManager.IsGameplayBlockedAndUnfrozen ())
+					{
+						return GameState.Cutscene;
+					}
+					return GameState.Paused;
 				}
-				_gameState = value;
+
+				if (inScriptedCutscene) return GameState.Cutscene;
+				if (KickStarter.mainCamera && KickStarter.mainCamera.IsShowingForcedOverlay ()) return GameState.Cutscene;
+				if (KickStarter.playerInteraction.InPreInteractionCutscene) return GameState.Cutscene;
+
+				if (KickStarter.actionListManager.IsGameplayBlocked ())
+				{
+					return GameState.Cutscene;
+				}
+
+				if (KickStarter.playerInput.IsInConversation (true))
+				{
+					return GameState.DialogOptions;
+				}
+				return GameState.Normal;
 			}
 		}
+
 
 
 		/**
 		 * Alerts the StateHandler that a Game Engine prefab is present in the scene.
 		 * This is called from KickStarter when the game begins - the StateHandler will not run until this is done.
 		 */
-		public void RegisterWithGameEngine ()
+		public void Register (KickStarter kickStarter)
 		{
-			if (!hasGameEngine)
-			{
-				hasGameEngine = true;
-			}
+			activeKickStarter = kickStarter;
 		}
 
 
@@ -140,18 +547,12 @@ namespace AC
 		 * Alerts the StateHandler that a Game Engine prefab is no longer present in the scene.
 		 * This is called from KickStarter's OnDestroy function.
 		 */
-		public void UnregisterWithGameEngine ()
+		public void Unregister (KickStarter kickStarter)
 		{
-			hasGameEngine = false;
-		}
-
-
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
-		{
-			inScriptedCutscene = false;
+			if (kickStarter != null && activeKickStarter == kickStarter)
+			{
+				activeKickStarter = null;
+			}
 		}
 
 
@@ -167,6 +568,8 @@ namespace AC
 			}
 
 			runAtLeastOnce = true;
+
+			KickStarter.playerMenus.ShowEnabledOnStartMenus ();
 
 			ActiveInput.Upgrade ();
 			if (KickStarter.settingsManager.activeInputs != null)
@@ -193,310 +596,25 @@ namespace AC
 		}
 
 
-		/**
-		 * Allows the ActionListAsset defined in SettingsManager's actionListOnStart to be run again.
-		 */
+		/** Allows the ActionListAsset defined in SettingsManager's actionListOnStart to be run again. */
 		public void CanGlobalOnStart ()
 		{
 			runAtLeastOnce = false;
 		}
 
 
-		/**
-		 * <summary>This method is now deprecrated and is not necessary.</summary>
-		 */
-		public void GatherObjects (bool afterDelete = false)
-		{}
-
-
-		/**
-		 * Calls Physics.IgnoreCollision on all appropriate Collider combinations (Unity 5 only).
-		 */
+		/** Calls Physics.IgnoreCollision on all appropriate Collider combinations (Unity 5 only). */
 		public void IgnoreNavMeshCollisions ()
 		{
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			Collider[] allColliders = FindObjectsOfType (typeof(Collider)) as Collider[];
-			for (_i=0; _i<navMeshBases.Count; _i++)
+			foreach (NavMeshBase navMeshBase in navMeshBases)
 			{
-				navMeshBases[_i].IgnoreNavMeshCollisions (allColliders);
+				navMeshBase.IgnoreNavMeshCollisions (allColliders);
 			}
-			#endif
 		}
 
 
-		private void Update ()
-		{
-			if (isACDisabled || !hasGameEngine)
-			{
-				return;
-			}
-
-			if (KickStarter.settingsManager.IsInLoadingScene () || KickStarter.sceneChanger.IsLoading ())
-			{
-				if (!menuIsOff)
-				{
-					KickStarter.playerMenus.UpdateLoadingMenus ();
-				}
-				return;
-			}
-
-			if (gameState != GameState.Paused)
-			{
-				lastNonPausedState = gameState;
-			}
-			if (!inputIsOff)
-			{
-				if (gameState == GameState.DialogOptions)
-				{
-					KickStarter.playerInput.DetectConversationInputs ();
-				}
-				KickStarter.playerInput.UpdateInput ();
-
-				if (IsInGameplay ())
-				{
-					KickStarter.playerInput.UpdateDirectInput ();
-				}
-
-				if (gameState != GameState.Paused)
-				{
-					KickStarter.playerQTE.UpdateQTE ();
-				}
-			}
-
-			KickStarter.dialog._Update ();
-
-			KickStarter.playerInteraction.UpdateInteractionLabel ();
-
-			if (!cursorIsOff)
-			{
-				KickStarter.playerCursor.UpdateCursor ();
-
-				bool canHideHotspots = KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseInteractionThenHotspot && KickStarter.settingsManager.hideUnhandledHotspots;
-				bool canDrawHotspotIcons = (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never);
-				bool canUpdateProximity = (KickStarter.settingsManager.hotspotDetection == HotspotDetection.PlayerVicinity && KickStarter.settingsManager.placeDistantHotspotsOnSeparateLayer && KickStarter.player != null);
-
-				for (_i=0; _i<hotspots.Count; _i++)
-				{
-					bool showing = (canHideHotspots) ? hotspots[_i].UpdateUnhandledVisibility () : true;
-					if (showing)
-					{
-						if (canDrawHotspotIcons)
-						{
-							if (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never)
-							{
-								hotspots[_i].UpdateIcon ();
-								if (KickStarter.settingsManager.hotspotDrawing == ScreenWorld.WorldSpace)
-								{
-									hotspots[_i].DrawHotspotIcon (true);
-								}
-							}
-						}
-
-						if (canUpdateProximity)
-						{
-							hotspots[_i].UpdateProximity (KickStarter.player.hotspotDetector);
-						}
-					}
-				}
-			}
-
-			if (!menuIsOff)
-			{
-				KickStarter.playerMenus.CheckForInput ();
-			}
-
-			if (!menuIsOff)
-			{
-				if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen && KickStarter.playerInput.GetMouseState () != MouseState.Normal)
-				{
-					KickStarter.playerMenus.UpdateAllMenus ();
-				}
-			}
-
-			if (!interactionIsOff)
-			{
-				KickStarter.playerInteraction.UpdateInteraction ();
-
-				for (_i=0; _i<highlights.Count; _i++)
-				{
-					highlights[_i]._Update ();
-				}
-
-				if (KickStarter.settingsManager.hotspotDetection == HotspotDetection.MouseOver && KickStarter.settingsManager.scaleHighlightWithMouseProximity)
-				{
-					bool setProximity = IsInGameplay ();
-					for (_i=0; _i<hotspots.Count; _i++)
-					{
-						hotspots[_i].SetProximity (setProximity);
-					}
-				}
-			}
-
-			if (!triggerIsOff)
-			{
-				for (_i=0; _i<triggers.Count; _i++)
-				{
-					triggers[_i]._Update ();
-				}
-			}
-
-			if (!menuIsOff)
-			{
-				KickStarter.playerMenus.UpdateAllMenus ();
-			}
-
-			KickStarter.actionListManager.UpdateActionListManager ();
-
-			if (!movementIsOff)
-			{
-				for (_i=0; _i<dragBases.Count; _i++)
-				{
-					dragBases[_i].UpdateMovement ();
-				}
-
-				if (IsInGameplay () && KickStarter.settingsManager && KickStarter.settingsManager.movementMethod != MovementMethod.None)
-				{
-					KickStarter.playerMovement.UpdatePlayerMovement ();
-				}
-
-				KickStarter.playerMovement.UpdateFPCamera ();
-			}
-
-			if (!interactionIsOff)
-			{
-				KickStarter.playerInteraction.UpdateInventory ();
-			}
-
-			for (_i=0; _i<limitVisibilitys.Count; _i++)
-			{
-				limitVisibilitys[_i]._Update ();
-			}
-
-			for (_i=0; _i<sounds.Count; _i++)
-			{
-				sounds[_i]._Update ();
-			}
-
-			for (_i=0; _i<characters.Count; _i++)
-			{
-				if (characters[_i] != null && (!playerIsOff || !(characters[_i].IsPlayer)))
-				{
-					characters[_i]._Update ();
-				}
-			}
-
-			if (!cameraIsOff)
-			{
-				for (_i=0; _i<cameras.Count; _i++)
-				{
-					cameras[_i]._Update ();
-				}
-			}
-
-			if (HasGameStateChanged ())
-			{
-				KickStarter.eventManager.Call_OnChangeGameState (previousUpdateState);
-
-				if (KickStarter.settingsManager.movementMethod == MovementMethod.FirstPerson)
-				{
-					if (IsInGameplay () || (gameState == GameState.DialogOptions && KickStarter.settingsManager.useFPCamDuringConversations))
-					{
-						KickStarter.mainCamera.SetFirstPerson ();
-					}
-				}
-
-				if (Time.time > 0f && gameState != GameState.Paused)
-				{
-					AudioListener.pause = false;
-				}
-
-					if (gameState == GameState.Cutscene && previousUpdateState != GameState.Cutscene)
-					{
-						KickStarter.playerMenus.MakeUINonInteractive ();
-					}
-					else if (gameState != GameState.Cutscene && previousUpdateState == GameState.Cutscene)
-					{
-						KickStarter.playerMenus.MakeUIInteractive ();
-					}
-
-				KickStarter.sceneSettings.OnStateChange ();
-			}
-
-			previousUpdateState = gameState;
-		}
-
-
-		private void LateUpdate ()
-		{
-			if (isACDisabled || !hasGameEngine)
-			{
-				return;
-			}
-
-			if (KickStarter.settingsManager != null && KickStarter.settingsManager.IsInLoadingScene ())
-			{
-				return;
-			}
-
-			for (_i=0; _i<characters.Count; _i++)
-			{
-				if (!playerIsOff || !(characters[_i].IsPlayer))
-				{
-					characters[_i]._LateUpdate ();
-				}
-			}
-
-			if (!cameraIsOff)
-			{
-				KickStarter.mainCamera._LateUpdate ();
-			}
-
-			for (_i=0; _i<parallax2Ds.Count; _i++)
-			{
-				parallax2Ds[_i].UpdateOffset ();
-			}
-
-			for (_i=0; _i<sortingMaps.Count; _i++)
-			{
-				sortingMaps[_i].UpdateSimilarFollowers ();
-			}
-
-			KickStarter.dialog._LateUpdate ();
-		}
-
-
-		private void FixedUpdate ()
-		{
-			if (isACDisabled || !hasGameEngine)
-			{
-				return;
-			}
-
-			if (KickStarter.settingsManager != null && KickStarter.settingsManager.IsInLoadingScene ())
-			{
-				return;
-			}
-
-			for (_i=0; _i<characters.Count; _i++)
-			{
-				if (!playerIsOff || !(characters[_i].IsPlayer))
-				{
-					characters[_i]._FixedUpdate ();
-				}
-			}
-
-			for (_i=0; _i<dragBases.Count; _i++)
-			{
-				dragBases[_i]._FixedUpdate ();
-			}
-
-			KickStarter.playerInput._FixedUpdate ();
-		}
-
-
-		/**
-		 * Sets the maximum volume of all Sound objects in the scene.
-		 */
+		/** Sets the maximum volume of all Sound objects in the scene. */
 		public void UpdateAllMaxVolumes ()
 		{
 			foreach (Sound sound in sounds)
@@ -506,221 +624,31 @@ namespace AC
 		}
 
 
-		private bool HasGameStateChanged ()
-		{
-			if (previousUpdateState != gameState)
-			{
-				return true;
-			}
-			return false;
-		}
-
-
-		/* Checks if the game was unpaused in the previous frame. */
-		public bool UnpausedLastFrame
+		/** The state of enforced cutscene mode.  This is used to block gameplay etc through custom scripting, as opposed to ActionLists */
+		public bool EnforceCutsceneMode
 		{
 			get
 			{
-				if (gameState != GameState.Paused && previousUpdateState == GameState.Paused)
-				{
-					return true;
-				}
-				return false;
+				return inScriptedCutscene;
+			}
+			set
+			{
+				inScriptedCutscene = value;
 			}
 		}
 
 
-		#if ACIgnoreOnGUI
-		#else
-
-		private void OnGUI ()
+		/** The state of enforced pause mode.  This is used to pause the game without requiring a pausing menu to be enabled */
+		public bool EnforcePauseMode
 		{
-			if (!isACDisabled)
+			get
 			{
-				_OnGUI ();
+				return inScriptedPause;
 			}
-		}
-
-		#endif
-
-
-		/**
-		 * Runs all of AC's OnGUI code.
-		 * This is called automatically from within StateHandler, unless 'ACIgnoreOnGUI' is listed in Unity's Scripting Define Symbols box in the Player settings.
-		 */
-		public void _OnGUI ()
-		{
-			if (!hasGameEngine)
+			set
 			{
-				return;
+				inScriptedPause = value;
 			}
-
-			StatusBox.DrawDebugWindow ();
-
-			if (KickStarter.settingsManager.IsInLoadingScene () || KickStarter.sceneChanger.IsLoading ())
-			{
-				if (!cameraIsOff && !KickStarter.settingsManager.IsInLoadingScene ())
-				{
-					KickStarter.mainCamera.DrawCameraFade ();
-				}
-				if (!menuIsOff)
-				{
-					KickStarter.playerMenus.DrawLoadingMenus ();
-				}
-				if (!cameraIsOff)
-				{
-					KickStarter.mainCamera.DrawBorders ();
-				}
-				return;
-			}
-
-			if (!cursorIsOff && !KickStarter.saveSystem.IsTakingSaveScreenshot)
-			{
-				if (KickStarter.settingsManager.hotspotIconDisplay != HotspotIconDisplay.Never &&
-				   KickStarter.settingsManager.hotspotDrawing == ScreenWorld.ScreenSpace)
-				{
-					for (_i=0; _i<hotspots.Count; _i++)
-					{
-						hotspots[_i].DrawHotspotIcon ();
-					}
-				}
-
-				if (IsInGameplay ())
-				{
-					for (_i=0; _i<dragBases.Count; _i++)
-					{
-						dragBases[_i].DrawGrabIcon ();
-					}
-				}
-			}
-
-			if (!inputIsOff)
-			{
-				if (gameState == GameState.DialogOptions)
-				{
-					KickStarter.playerInput.DetectConversationNumerics ();
-				}
-				KickStarter.playerInput.DrawDragLine ();
-
-				for (_i=0; _i<arrowPrompts.Count; _i++)
-				{
-					arrowPrompts[_i].DrawArrows ();
-				}
-			}
-
-			if (!menuIsOff)
-			{
-				KickStarter.playerMenus.DrawMenus ();
-			}
-
-			if (!cursorIsOff)
-			{
-				if (KickStarter.cursorManager.cursorRendering == CursorRendering.Software)
-				{
-					KickStarter.playerCursor.DrawCursor ();
-				}
-			}
-
-			if (!cameraIsOff)
-			{
-				KickStarter.mainCamera.DrawCameraFade ();
-				KickStarter.mainCamera.DrawBorders ();
-			}
-		}
-
-
-		/**
-		 * <summary>Gets the last value of gameState that wasn't GameState.Paused.</summary>
-		 * <returns>The last value of gameState that wasn't GameState.Paused</summary>
-		 */
-		public GameState GetLastNonPausedState ()
-		{
-			return lastNonPausedState;
-		}
-		
-
-		/**
-		 * Restores the gameState to its former state after un-pausing the game.
-		 */
-		public void RestoreLastNonPausedState ()
-		{
-			if (Time.timeScale <= 0f)
-			{
-				KickStarter.sceneSettings.UnpauseGame (KickStarter.playerInput.timeScale);
-			}
-
-			if (KickStarter.playerInteraction.InPreInteractionCutscene)
-			{
-				gameState = GameState.Cutscene;
-				return;
-			}
-
-			if (KickStarter.actionListManager.IsGameplayBlocked () || inScriptedCutscene)
-			{
-				gameState = GameState.Cutscene;
-			}
-			else if (KickStarter.playerInput.IsInConversation (true))
-			{
-				gameState = GameState.DialogOptions;
-			}
-			else
-			{
-				gameState = GameState.Normal;
-			}
-		}
-
-
-		/**
-		 * <summary>Goes through all Hotspots in the scene, and limits their enabed state based on a specific _Camera, if appropriate.</summary>
-		 * <param name = "_camera">The _Camera to attempt to limit all Hotspots to</param>
-		 */
-		public void LimitHotspotsToCamera (_Camera _camera)
-		{
-			if (_camera != null)
-			{
-				for (_i=0; _i<hotspots.Count; _i++)
-				{
-					hotspots[_i].LimitToCamera (_camera);
-				}
-			}
-		}
-
-
-		/**
-		 * Begins a hard-coded cutscene.
-		 * Gameplay will resume once EndCutscene() is called.
-		 */
-		public void StartCutscene ()
-		{
-			inScriptedCutscene = true;
-			gameState = GameState.Cutscene;
-		}
-
-
-		/**
-		 * Ends a hard-coded cutscene, started by calling StartCutscene().
-		 */
-		public void EndCutscene ()
-		{
-			inScriptedCutscene = false;
-			if (KickStarter.playerMenus.ArePauseMenusOn (null))
-			{
-				KickStarter.mainCamera.PauseGame ();
-			}
-			else
-			{
-				KickStarter.stateHandler.RestoreLastNonPausedState ();
-			}
-		}
-
-
-		/**
-		 * <summary>Checks if the game is currently in a user-scripted cutscene.</summary>
-		 * <returns>True if the game is currently in a user-scripted cutscene</returns>
-		 */
-		public bool IsInScriptedCutscene ()
-		{
-			return inScriptedCutscene;
 		}
 
 
@@ -776,6 +704,10 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Checks if AC is currently enabled.<summary>
+		 * <returns>Trye if AC is currently enabled.<returns>
+		 */
 		public bool IsACEnabled ()
 		{
 			return !isACDisabled;
@@ -803,8 +735,8 @@ namespace AC
 
 
 		/**
-		 * <summary>Sets the enabled state of the PlayerInteraction system.</summary>
-		 * <param name = "state">If True, the PlayerInteraction system will be enabled</param>
+		 * <summary>Sets the enabled state of the Interaction system.</summary>
+		 * <param name = "state">If True, the Interaction system will be enabled</param>
 		 */
 		public void SetInteractionSystem (bool state)
 		{
@@ -818,12 +750,37 @@ namespace AC
 
 
 		/**
+		 * <summary>Sets the enabled state of the Draggable system.</summary>
+		 * <param name = "state">If True, the Draggable system will be enabled</param>
+		 */
+		public void SetDraggableSystem (bool state)
+		{
+			draggablesIsOff = !state;
+
+			if (!state)
+			{
+				KickStarter.playerInput.LetGo ();
+			}
+		}
+
+
+		/**
 		 * <summary>Checks if the interaction system is enabled.</summary>
 		 * <returns>True if the interaction system is enabled</returns>
 		 */
 		public bool CanInteract ()
 		{
 			return !interactionIsOff;
+		}
+
+
+		/**
+		 * <summary>Checks if the draggables system is enabled.</summary>
+		 * <returns>True if the draggables system is enabled</returns>
+		 */
+		public bool CanInteractWithDraggables ()
+		{
+			return !draggablesIsOff;
 		}
 
 
@@ -888,6 +845,16 @@ namespace AC
 
 
 		/**
+		 * <summary>Checks if the camera system is disabled.</summary>
+		 * <returns>True if the camera system is disabled</returns>
+		 */
+		public bool AreCamerasDisabled ()
+		{
+			return cameraIsOff;
+		}
+
+
+		/**
 		 * <summary>Updates a MainData class with its own variables that need saving.</summary>
 		 * <param name = "mainData">The original MainData class</param>
 		 * <returns>The updated MainData class</returns>
@@ -903,15 +870,17 @@ namespace AC
 			mainData.triggerIsOff = triggerIsOff;
 			mainData.playerIsOff = playerIsOff;
 
-			if (music != null)
+			if (music)
 			{
 				mainData = music.SaveMainData (mainData);
 			}
 
-			if (ambience != null)
+			if (ambience)
 			{
 				mainData = ambience.SaveMainData (mainData);
 			}
+
+			mainData = KickStarter.runtimeObjectives.SaveGlobalObjectives (mainData);
 
 			return mainData;
 		}
@@ -943,40 +912,7 @@ namespace AC
 				CreateAmbienceEngine ();
 			}
 			ambience.LoadMainData (mainData);
-		}
-
-
-		private void CreateMusicEngine ()
-		{
-			if (music == null)
-			{
-				music = CreateSoundtrackEngine <Music> (Resource.musicEngine);
-			}
-		}
-
-
-		private void CreateAmbienceEngine ()
-		{
-			if (ambience == null)
-			{
-				ambience = CreateSoundtrackEngine <Ambience> (Resource.ambienceEngine);
-			}
-		}
-
-
-		private T CreateSoundtrackEngine <T> (string resourceName) where T : Soundtrack
-		{
-			GameObject soundtrackOb = (GameObject) Instantiate (Resources.Load (resourceName));
-			if (soundtrackOb != null)
-			{
-				soundtrackOb.name = AdvGame.GetName (resourceName);
-				return soundtrackOb.GetComponent <T>();
-			}
-			else
-			{
-				ACDebug.LogError ("Cannot find " + resourceName + " prefab in /AdventureCreator/Resources - did you import AC completely?");
-				return null;
-			}
+			KickStarter.runtimeObjectives.AssignGlobalObjectives (mainData);
 		}
 
 
@@ -1008,8 +944,123 @@ namespace AC
 		}
 
 
-		/** A List of all Char components found in the scene */
-		public List<Char> Characters
+		/** Creates an initial record of all ConstantID components in the Hierarchy. More may be added through OnEnable / Start functions, but this way those that are initially present are ensured to be included in initialisation processes */
+		public void RegisterInitialConstantIDs ()
+		{
+			ConstantID[] allConstantIDs = Object.FindObjectsOfType <ConstantID>();
+			foreach (ConstantID constantID in allConstantIDs)
+			{
+				Register(constantID);
+			}
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void OnAddSubScene (SubScene subScene)
+		{
+			IgnoreNavMeshCollisions ();
+		}
+
+
+		protected void OnInitialiseScene ()
+		{
+			if (previousUpdateState != gameState)
+			{
+				KickStarter.eventManager.Call_OnChangeGameState (previousUpdateState, gameState);
+				previousUpdateState = gameState;
+			}
+
+			EnforceCutsceneMode = false;
+		}
+
+
+		protected void OnEnterGameState (GameState gameState)
+		{
+			StopAllCoroutines ();
+
+			if (gameState == GameState.Paused)
+			{
+				if (Time.time > 0f)
+				{
+					AudioListener.pause = true;
+					Time.timeScale = 0f;
+				}
+				else
+				{
+					StartCoroutine (PauseNextFrame ());
+				}
+			}
+			else
+			{
+				if (Time.timeScale <= 0f)
+				{
+					AudioListener.pause = false;
+					Time.timeScale = KickStarter.playerInput.timeScale;
+				}
+			}
+		}
+
+
+		private System.Collections.IEnumerator PauseNextFrame ()
+		{
+			yield return null;
+			AudioListener.pause = true;
+			Time.timeScale = 0f;
+		}
+
+
+		protected void CreateMusicEngine ()
+		{
+			if (music == null)
+			{
+				GameObject newMusicOb = new GameObject ("_Music");
+				AudioSource audioSource = newMusicOb.AddComponent <AudioSource>();
+				audioSource.playOnAwake = false;
+				audioSource.spatialBlend = 0f;
+
+				music = newMusicOb.AddComponent <Music>();
+			}
+		}
+
+
+		protected void CreateAmbienceEngine ()
+		{
+			if (ambience == null)
+			{
+				GameObject newAmbienceOb = new GameObject ("_Ambience");
+				AudioSource audioSource = newAmbienceOb.AddComponent <AudioSource>();
+				audioSource.playOnAwake = false;
+				audioSource.spatialBlend = 0f;
+
+				ambience = newAmbienceOb.AddComponent<Ambience>();
+			}
+		}
+
+
+		protected bool CanRun ()
+		{
+			return (!isACDisabled && activeKickStarter);
+		}
+
+		
+		#if UNITY_EDITOR
+		protected void OnPauseStateChange (UnityEditor.PauseState state)
+		{
+			applicationIsPaused = (state == UnityEditor.PauseState.Paused);
+		}
+		#endif
+
+
+		#endregion
+
+
+		#region GetSet
+
+		/** A HashSet of all Char components found in the scene */
+		public HashSet<Char> Characters
 		{
 			get
 			{
@@ -1018,8 +1069,38 @@ namespace AC
 		}
 
 
-		/** A List of all FollowSortingMap components found in the scene */
-		public List<FollowSortingMap> FollowSortingMaps
+		/** A HashSet of all Sound components found in the scene */
+		public HashSet<Sound> Sounds
+		{
+			get
+			{
+				return sounds;
+			}
+		}
+
+
+		/** A HashSet of all ConstantID components found in the scene */
+		public HashSet<ConstantID> ConstantIDs
+		{
+			get
+			{
+				return constantIDManager.ConstantIDs;
+			}
+		}
+
+
+		/** A HashSet of all Hotspot components found in the scene */
+		public HashSet<Hotspot> Hotspots
+		{
+			get
+			{
+				return hotspots;
+			}
+		}
+
+
+		/** A HashSet of all FollowSortingMap components found in the scene */
+		public HashSet<FollowSortingMap> FollowSortingMaps
 		{
 			get
 			{
@@ -1028,8 +1109,8 @@ namespace AC
 		}
 
 
-		/** A List of all SortingMap components found in the scene */
-		public List<SortingMap> SortingMaps
+		/** A HashSet of all SortingMap components found in the scene */
+		public HashSet<SortingMap> SortingMaps
 		{
 			get
 			{
@@ -1038,8 +1119,8 @@ namespace AC
 		}
 
 
-		/** A List of all BackgroundCamera components found in the scene */
-		public List<BackgroundCamera> BackgroundCameras
+		/** A HashSet of all BackgroundCamera components found in the scene */
+		public HashSet<BackgroundCamera> BackgroundCameras
 		{
 			get
 			{
@@ -1048,8 +1129,8 @@ namespace AC
 		}
 
 
-		/** A List of all BackgroundImage components found in the scene */
-		public List<BackgroundImage> BackgroundImages
+		/** A HashSet of all BackgroundImage components found in the scene */
+		public HashSet<BackgroundImage> BackgroundImages
 		{
 			get
 			{
@@ -1058,12 +1139,32 @@ namespace AC
 		}
 
 
-		/** A List of all ConstantID components found in the scene */
-		public List<ConstantID> ConstantIDs
+		/** A HashSet of all Container components found in the scene */
+		public HashSet<Container> Containers
 		{
 			get
 			{
-				return constantIDs;
+				return containers;
+			}
+		}
+
+
+		/** A HashSet of all _Camera components found in the scene */
+		public HashSet<_Camera> Cameras
+		{
+			get
+			{
+				return cameras;
+			}
+		}
+
+
+		/** The ConstantIDManager used to record all ConstantID components in the Hierarchy */
+		public ConstantIDManager ConstantIDManager
+		{
+			get
+			{
+				return constantIDManager;
 			}
 		}
 
@@ -1077,6 +1178,8 @@ namespace AC
 			}
 		}
 
+		#endregion
+
 
 		#region ObjectRecordKeeping
 
@@ -1086,10 +1189,7 @@ namespace AC
 		 */
 		public void Register (ArrowPrompt _object)
 		{
-			if (!arrowPrompts.Contains (_object))
-			{
-				arrowPrompts.Add (_object);
-			}
+			arrowPrompts.Add (_object);
 		}
 
 
@@ -1099,10 +1199,7 @@ namespace AC
 		 */
 		public void Unregister (ArrowPrompt _object)
 		{
-			if (arrowPrompts.Contains (_object))
-			{
-				arrowPrompts.Remove (_object);
-			}
+			arrowPrompts.Remove (_object);
 		}
 
 
@@ -1112,10 +1209,7 @@ namespace AC
 		 */
 		public void Register (DragBase _object)
 		{
-			if (!dragBases.Contains (_object))
-			{
-				dragBases.Add (_object);
-			}
+			dragBases.Add (_object);
 		}
 
 
@@ -1125,10 +1219,7 @@ namespace AC
 		 */
 		public void Unregister (DragBase _object)
 		{
-			if (dragBases.Contains (_object))
-			{
-				dragBases.Remove (_object);
-			}
+			dragBases.Remove (_object);
 		}
 
 
@@ -1138,10 +1229,7 @@ namespace AC
 		 */
 		public void Register (Parallax2D _object)
 		{
-			if (!parallax2Ds.Contains (_object))
-			{
-				parallax2Ds.Add (_object);
-			}
+			parallax2Ds.Add (_object);
 		}
 
 
@@ -1151,10 +1239,7 @@ namespace AC
 		 */
 		public void Unregister (Parallax2D _object)
 		{
-			if (parallax2Ds.Contains (_object))
-			{
-				parallax2Ds.Remove (_object);
-			}
+			parallax2Ds.Remove (_object);
 		}
 
 
@@ -1168,7 +1253,7 @@ namespace AC
 			{
 				hotspots.Add (_object);
 
-				if (KickStarter.eventManager != null)
+				if (KickStarter.eventManager)
 				{
 					KickStarter.eventManager.Call_OnRegisterHotspot (_object, true);
 				}
@@ -1186,7 +1271,7 @@ namespace AC
 			{
 				hotspots.Remove (_object);
 
-				if (KickStarter.eventManager != null)
+				if (KickStarter.eventManager)
 				{
 					KickStarter.eventManager.Call_OnRegisterHotspot (_object, false);
 				}
@@ -1200,10 +1285,7 @@ namespace AC
 		 */
 		public void Register (Highlight _object)
 		{
-			if (!highlights.Contains (_object))
-			{
-				highlights.Add (_object);
-			}
+			highlights.Add (_object);
 		}
 
 
@@ -1213,10 +1295,7 @@ namespace AC
 		 */
 		public void Unregister (Highlight _object)
 		{
-			if (highlights.Contains (_object))
-			{
-				highlights.Remove (_object);
-			}
+			highlights.Remove (_object);
 		}
 
 
@@ -1226,10 +1305,7 @@ namespace AC
 		 */
 		public void Register (AC_Trigger _object)
 		{
-			if (!triggers.Contains (_object))
-			{
-				triggers.Add (_object);
-			}
+			triggers.Add (_object);
 		}
 
 
@@ -1239,10 +1315,7 @@ namespace AC
 		 */
 		public void Unregister (AC_Trigger _object)
 		{
-			if (triggers.Contains (_object))
-			{
-				triggers.Remove (_object);
-			}
+			triggers.Remove (_object);
 		}
 
 
@@ -1252,10 +1325,7 @@ namespace AC
 		 */
 		public void Register (_Camera _object)
 		{
-			if (!cameras.Contains (_object))
-			{
-				cameras.Add (_object);
-			}
+			cameras.Add (_object);
 		}
 
 
@@ -1265,10 +1335,7 @@ namespace AC
 		 */
 		public void Unregister (_Camera _object)
 		{
-			if (cameras.Contains (_object))
-			{
-				cameras.Remove (_object);
-			}
+			cameras.Remove (_object);
 		}
 
 
@@ -1278,10 +1345,7 @@ namespace AC
 		 */
 		public void Register (Sound _object)
 		{
-			if (!sounds.Contains (_object))
-			{
-				sounds.Add (_object);
-			}
+			sounds.Add (_object);
 		}
 
 
@@ -1291,36 +1355,7 @@ namespace AC
 		 */
 		public void Unregister (Sound _object)
 		{
-			if (sounds.Contains (_object))
-			{
-				sounds.Remove (_object);
-			}
-		}
-
-
-		/**
-		 * <summary>Registers a LimitVisibility, so that it can be updated</summary>
-		 * <param name = "_object">The LimitVisibility to register</param>
-		 */
-		public void Register (LimitVisibility _object)
-		{
-			if (!limitVisibilitys.Contains (_object))
-			{
-				limitVisibilitys.Add (_object);
-			}
-		}
-
-
-		/**
-		 * <summary>Unregisters a LimitVisibility, so that it is no longer updated</summary>
-		 * <param name = "_object">The LimitVisibility to unregister</param>
-		 */
-		public void Unregister (LimitVisibility _object)
-		{
-			if (limitVisibilitys.Contains (_object))
-			{
-				limitVisibilitys.Remove (_object);
-			}
+			sounds.Remove (_object);
 		}
 
 
@@ -1330,10 +1365,7 @@ namespace AC
 		 */
 		public void Register (Char _object)
 		{
-			if (!characters.Contains (_object))
-			{
-				characters.Add (_object);
-			}
+			characters.Add (_object);
 		}
 
 
@@ -1343,10 +1375,7 @@ namespace AC
 		 */
 		public void Unregister (Char _object)
 		{
-			if (characters.Contains (_object))
-			{
-				characters.Remove (_object);
-			}
+			characters.Remove (_object);
 		}
 
 
@@ -1356,11 +1385,8 @@ namespace AC
 		 */
 		public void Register (FollowSortingMap _object)
 		{
-			if (!followSortingMaps.Contains (_object))
-			{
-				followSortingMaps.Add (_object);
-				_object.UpdateSortingMap ();
-			}
+			followSortingMaps.Add (_object);
+			_object.UpdateSortingMap ();
 		}
 
 
@@ -1370,10 +1396,7 @@ namespace AC
 		 */
 		public void Unregister (FollowSortingMap _object)
 		{
-			if (followSortingMaps.Contains (_object))
-			{
-				followSortingMaps.Remove (_object);
-			}
+			followSortingMaps.Remove (_object);
 		}
 
 
@@ -1397,10 +1420,7 @@ namespace AC
 		 */
 		public void Unregister (NavMeshBase _object)
 		{
-			if (navMeshBases.Contains (_object))
-			{
-				navMeshBases.Remove (_object);
-			}
+			navMeshBases.Remove (_object);
 		}
 
 
@@ -1410,10 +1430,7 @@ namespace AC
 		 */
 		public void Register (SortingMap _object)
 		{
-			if (!sortingMaps.Contains (_object))
-			{
-				sortingMaps.Add (_object);
-			}
+			sortingMaps.Add (_object);
 		}
 
 
@@ -1423,10 +1440,7 @@ namespace AC
 		 */
 		public void Unregister (SortingMap _object)
 		{
-			if (sortingMaps.Contains (_object))
-			{
-				sortingMaps.Remove (_object);
-			}
+			sortingMaps.Remove (_object);
 		}
 
 
@@ -1450,10 +1464,7 @@ namespace AC
 		 */
 		public void Unregister (BackgroundCamera _object)
 		{
-			if (backgroundCameras.Contains (_object))
-			{
-				backgroundCameras.Remove (_object);
-			}
+			backgroundCameras.Remove (_object);
 		}
 
 
@@ -1463,10 +1474,7 @@ namespace AC
 		 */
 		public void Register (BackgroundImage _object)
 		{
-			if (!backgroundImages.Contains (_object))
-			{
-				backgroundImages.Add (_object);
-			}
+			backgroundImages.Add (_object);
 		}
 
 
@@ -1476,10 +1484,27 @@ namespace AC
 		 */
 		public void Unregister (BackgroundImage _object)
 		{
-			if (backgroundImages.Contains (_object))
-			{
-				backgroundImages.Remove (_object);
-			}
+			backgroundImages.Remove (_object);
+		}
+
+
+		/**
+		 * <summary>Registers a Container, so that it can be updated</summary>
+		 * <param name = "_object">The Container to register</param>
+		 */
+		public void Register (Container _object)
+		{
+			containers.Add (_object);
+		}
+
+
+		/**
+		 * <summary>Unregisters a Container, so that it is no longer updated</summary>
+		 * <param name = "_object">The Container to unregister</param>
+		 */
+		public void Unregister (Container _object)
+		{
+			containers.Remove (_object);
 		}
 
 
@@ -1489,10 +1514,7 @@ namespace AC
 		 */
 		public void Register (ConstantID _object)
 		{
-			if (!constantIDs.Contains (_object))
-			{
-				constantIDs.Add (_object);
-			}
+			constantIDManager.Register (_object);
 		}
 
 
@@ -1502,10 +1524,7 @@ namespace AC
 		 */
 		public void Unregister (ConstantID _object)
 		{
-			if (constantIDs.Contains (_object))
-			{
-				constantIDs.Remove (_object);
-			}
+			constantIDManager.Unregister (_object);
 		}
 
 		#endregion

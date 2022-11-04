@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -45,10 +47,14 @@ namespace AC
 				_target.limitToCameras [i] = (_Camera) CustomGUILayout.ObjectField <_Camera> ("Camera #" + i.ToString () + ":", _target.limitToCameras [i], true, "", "An AC _Camera to limit the GameObject's visibility to");
 			}
 
+			_target.negateEffect = CustomGUILayout.Toggle ("Negate effect?", _target.negateEffect, "", "If True, then the GameObject will instead be visible when the above cameras are not used");
 			_target.affectChildren = CustomGUILayout.Toggle ("Affect children too?", _target.affectChildren, "", "If True, then child GameObjects will be affected in the same way");
 
 			UnityVersionHandler.CustomSetDirty (_target);
 		}
 	
 	}
+
 }
+
+#endif

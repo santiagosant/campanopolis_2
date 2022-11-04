@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Dialog.cs"
  * 
@@ -19,18 +19,18 @@ namespace AC
 	 * Manages the creation, updating, and removal of all Speech lines.
 	 * It should be placed on the GameEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_dialog.html")]
-	#endif
 	public class Dialog : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** A List of all active Speech lines */
 		public List<Speech> speechList = new List<Speech>();
 		/** The Sound prefab to use to play narration speech audio from */
 		public Sound narratorSound;
 		/** The delay in seconds between choosing a Conversation's dialogue option and it triggering */
-		[Range (0f, 1f)] public float conversationDelay = 0.3f;
+		public float conversationDelay = 0.3f;
 		/** An array of rich-text tag names that can be detected when scrolling speech, to prevent them from displaying incorrectly.  If a name ends with an '=' symbol, the tag has a parameter */
 		public string[] richTextTags = new string[]
 		{
@@ -47,17 +47,28 @@ namespace AC
 			"color="
 		};
 
-		private AudioSource defaultAudioSource;
-		private AudioSource narratorAudioSource;
-		private string[] speechEventTokenKeys = new string[0];
+		protected AudioSource defaultAudioSource;
+		protected AudioSource narratorAudioSource;
+		protected string[] speechEventTokenKeys = new string[0];
+
+		#endregion
 
 
-		public void OnAwake ()
+		#region UnityStandards
+
+		protected void OnEnable ()
 		{
-			if (KickStarter.sceneSettings.defaultSound && KickStarter.sceneSettings.defaultSound.GetComponent <AudioSource>())
-			{
-				defaultAudioSource = this.GetComponent <SceneSettings>().defaultSound.GetComponent <AudioSource>();
-			}
+			EventManager.OnInitialiseScene += OnInitialiseScene;
+			EventManager.OnManuallyTurnACOff += OnInitialiseScene;
+			EventManager.OnChangeVolume += OnChangeVolume;
+		}
+
+
+		protected void OnDisable ()
+		{
+			EventManager.OnInitialiseScene -= OnInitialiseScene;
+			EventManager.OnManuallyTurnACOff -= OnInitialiseScene;
+			EventManager.OnChangeVolume -= OnChangeVolume;
 		}
 
 
@@ -67,7 +78,9 @@ namespace AC
 		 */
 		public void _Update ()
 		{
-			if (KickStarter.stateHandler.gameState != GameState.Paused)
+			GameState gameState = KickStarter.stateHandler.gameState;
+
+			if (gameState != GameState.Paused)
 			{
 				for (int i=0; i<speechList.Count; i++)
 				{
@@ -78,11 +91,9 @@ namespace AC
 				}
 			}
 
-			if (KickStarter.playerInput.InputGetButtonDown ("EndConversation") && KickStarter.stateHandler.gameState == GameState.DialogOptions)
+			if (gameState == GameState.DialogOptions && KickStarter.playerInput.InputGetButtonDown ("EndConversation"))
 			{
 				KickStarter.playerInput.EndConversation ();
-				KickStarter.actionListManager.OnEndConversation ();
-				KickStarter.actionListManager.SetCorrectGameState ();
 			}
 		}
 
@@ -101,15 +112,16 @@ namespace AC
 		}
 
 
-		/** Updates all speech volumes to the level set in Options.  This should be called whenever the Speech volume level is changed. */
-		public void UpdateSpeechVolumes ()
+		protected void OnDestroy ()
 		{
-			for (int i=0; i<speechList.Count; i++)
-			{
-				speechList[i].UpdateVolume ();
-			}
+			defaultAudioSource = null;
+			narratorAudioSource = null;
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Initialises a new Speech line.</summary>
@@ -119,11 +131,18 @@ namespace AC
 		 * <param name = "lineID">The ID number of the line, if it is listed in the Speech Manager</param>
 		 * <param name = "noAnimation">True if the character should not play a talking animation</param>
 		 * <param name = "preventSkipping">True if the speech cannot be skipped regardless of subtitle settings in the Speech Manager</param>
+		 * <param name = "audioOverride">If set, then this audio will be played instead of the one assigned via the Speech Manager given the line ID and language</param>
+		 * <param name = "lipsyncOverride">If set, then this lipsync text asset will be played instead of the one assigned via the Speech Manager given the line ID and language</param>
 		 * <returns>The generated Speech line</returns>
 		 */
-		public Speech StartDialog (Char _speaker, string _text, bool isBackground = false, int lineID = -1, bool noAnimation = false, bool preventSkipping = false)
+		public Speech StartDialog (Char _speaker, string _text, bool isBackground = false, int lineID = -1, bool noAnimation = false, bool preventSkipping = false, AudioClip audioOverride = null, TextAsset lipsyncOverride = null)
 		{
-			if (!KickStarter.actionListManager.IsGameplayBlocked () && !KickStarter.stateHandler.IsInScriptedCutscene ())
+			if (!KickStarter.runtimeLanguages.MarkLineAsSpoken (lineID))
+			{
+				return null;
+			}
+
+			if (!KickStarter.actionListManager.IsGameplayBlocked () && !KickStarter.stateHandler.EnforceCutsceneMode)
 			{
 				// Force background if during gameplay
 				isBackground = true;
@@ -139,7 +158,7 @@ namespace AC
 				}
 			}
 			
-			Speech speech = new Speech (_speaker, _text, lineID, isBackground, noAnimation, preventSkipping);
+			Speech speech = new Speech (_speaker, _text, lineID, isBackground, noAnimation, preventSkipping, audioOverride, lipsyncOverride);
 			speechList.Add (speech);
 
 			KickStarter.runtimeVariables.AddToSpeechLog (speech.log);
@@ -169,7 +188,7 @@ namespace AC
 		 */
 		public Speech StartDialog (Char _speaker, int lineID, bool isBackground = false, bool noAnimation = false)
 		{
-			string _text = "";
+			string _text = string.Empty;
 
 			SpeechLine speechLine = KickStarter.speechManager.GetLine (lineID);
 			if (speechLine != null)
@@ -179,6 +198,11 @@ namespace AC
 			else
 			{
 				ACDebug.LogWarning ("Cannot start dialog because the line ID " + lineID + " was not found in the Speech Manager.");
+				return null;
+			}
+
+			if (!KickStarter.runtimeLanguages.MarkLineAsSpoken (lineID))
+			{
 				return null;
 			}
 
@@ -220,7 +244,7 @@ namespace AC
 		{
 			if (narratorAudioSource == null)
 			{
-				if (narratorSound != null)
+				if (narratorSound)
 				{
 					narratorAudioSource = narratorSound.GetComponent <AudioSource>();
 				}
@@ -231,9 +255,7 @@ namespace AC
 
 					narratorAudioSource = narratorSoundOb.AddComponent <AudioSource>();
 					AdvGame.AssignMixerGroup (narratorAudioSource, SoundType.Speech);
-					#if UNITY_5 || UNITY_2017_1_OR_NEWER
 					narratorAudioSource.spatialBlend = 0f;
-					#endif
 
 					narratorSound = narratorSoundOb.AddComponent <Sound>();
 					narratorSound.soundType = SoundType.Speech;
@@ -249,31 +271,50 @@ namespace AC
 		 * <summary>Plays text-scoll audio for a given character. If no character is speaking, narration text-scroll audio will be played instead.</summary>
 		 * <param name = "_speaker">The speaking character</param>
 		 */
-		public void PlayScrollAudio (AC.Char _speaker)
-		{
+		public virtual void PlayScrollAudio (AC.Char _speaker)
+		{	
 			AudioClip textScrollClip = KickStarter.speechManager.textScrollCLip;
 
 			if (_speaker == null)
 			{
 				textScrollClip = KickStarter.speechManager.narrationTextScrollCLip;
 			}
-			else if (_speaker.textScrollClip != null)
+			else if (_speaker.textScrollClip)
 			{
 				textScrollClip = _speaker.textScrollClip;
 			}
 
-			if (textScrollClip != null)
+			if (textScrollClip)
 			{
-				if (defaultAudioSource)
+				AudioSource audioSource = null;
+				if (_speaker && KickStarter.speechManager.speechScrollAudioSource == SpeechScrollAudioSource.Speech)
 				{
-					if (KickStarter.speechManager.playScrollAudioEveryCharacter || !defaultAudioSource.isPlaying)
+					audioSource = _speaker.speechAudioSource;
+				}
+
+				if (audioSource == null)
+				{
+					if (defaultAudioSource == null && KickStarter.sceneSettings.defaultSound)
 					{
-						defaultAudioSource.PlayOneShot (textScrollClip);
+						defaultAudioSource = KickStarter.sceneSettings.defaultSound.audioSource;
 					}
+					audioSource = defaultAudioSource;
+				}
+
+				if (audioSource)
+				{
+					if (KickStarter.speechManager.playScrollAudioEveryCharacter || !audioSource.isPlaying)
+					{
+						audioSource.PlayOneShot (textScrollClip);
+					}
+				}
+				else if (_speaker && KickStarter.speechManager.speechScrollAudioSource == SpeechScrollAudioSource.Speech)
+				{
+					ACDebug.LogWarning ("Cannot play text scroll audio clip as the speaking character, " + _speaker.GetName () + " has no Speech AudioSource defined", _speaker);
 				}
 				else
 				{
-					ACDebug.LogWarning ("Cannot play text scroll audio clip as no 'Default' sound prefab has been defined in the Scene Manager");
+					ACDebug.LogWarning ("Cannot play text scroll audio clip as no 'Default sound' has been defined in the Scene Manager");
 				}
 			}
 		}
@@ -395,6 +436,41 @@ namespace AC
 			}
 			return false;
 		}
+
+
+		/**
+		 * <summary>Checks if narration is currently playing.</summary>
+		 * <returns>True if narrtion is currently playing</returns>
+		 */
+		public bool NarrationIsPlaying ()
+		{
+			for (int i = 0; i < speechList.Count; i++)
+			{
+				if (speechList[i].GetSpeakingCharacter () == null)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+
+		/**
+		 * <summary>Checks if a speech line with a given ID is currently playing.</summary>
+		 * <param name = "lineID".The line ID to check</param>
+		 * <returns>True if the line is playing</returns>
+		 */
+		public bool LineIsPlaying (int lineID)
+		{
+			for (int i=0; i<speechList.Count; i++)
+			{
+				if (speechList[i].LineID == lineID)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
 		
 
 		/**
@@ -491,10 +567,10 @@ namespace AC
 		 * <param name = "lineNumber">The speech line's ID number</param>
 		 * <param name = "_speaker">The speaking character</param>
 		 * <param name = "language">The name of the current language</param>
-		 * <param name = "_message">The speech text</param<
+		 * <param name = "_message">The speech text</param>
 		 * <returns>A List of LipSyncShape structs that contain the lipsync animation data</returns>
 		 */
-		public List<LipSyncShape> GenerateLipSyncShapes (LipSyncMode _lipSyncMode, int lineID, Char _speaker, string language = "", string _message = "")
+		public virtual List<LipSyncShape> GenerateLipSyncShapes (LipSyncMode _lipSyncMode, int lineID, Char _speaker, string language = "", string _message = "", TextAsset lipsyncOverride = null)
 		{
 			List<LipSyncShape> lipSyncShapes = new List<LipSyncShape>();
 			lipSyncShapes.Add (new LipSyncShape (0, 0f, KickStarter.speechManager.lipSyncSpeed));
@@ -505,202 +581,221 @@ namespace AC
 				return lipSyncShapes;
 			}
 			
-			if (lineID > -1 && _speaker != null && KickStarter.speechManager.searchAudioFiles && KickStarter.speechManager.UseFileBasedLipSyncing ())
+			if (lineID > -1 && _speaker && KickStarter.speechManager.searchAudioFiles && KickStarter.speechManager.UseFileBasedLipSyncing ())
 			{
-				textFile = (TextAsset) KickStarter.runtimeLanguages.GetSpeechLipsyncFile <TextAsset> (lineID, _speaker);
-			}
-			
-			if (_lipSyncMode == LipSyncMode.ReadPamelaFile && textFile != null)
-			{
-				var splitFile = new string[] { "\r\n", "\r", "\n" };
-				var pamLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
-
-				bool foundSpeech = false;
-				float fps = 24f;
-				foreach (string pamLine in pamLines)
+				if (lipsyncOverride)
 				{
-					if (!foundSpeech)
-					{
-						if (pamLine.Contains ("framespersecond:"))
-						{
-							string[] pamLineArray = pamLine.Split(':');
-							float.TryParse (pamLineArray[1], out fps);
-						}
-						else if (pamLine.Contains ("[Speech]"))
-						{
-							foundSpeech = true;
-						}
-					}
-					else if (pamLine.Contains (":"))
-					{
-						string[] pamLineArray = pamLine.Split(':');
-						
-						float timeIndex = 0f;
-						float.TryParse (pamLineArray[0], out timeIndex);
-						string searchText = pamLineArray[1].ToLower ().Substring (0, pamLineArray[1].Length-1);
-						
-						bool found = false;
-						foreach (string phoneme in KickStarter.speechManager.phonemes)
-						{
-							string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
-							if (!found)
-							{
-								foreach (string shape in shapesArray)
-								{
-									//if (shape == searchText)
-									if (searchText.Contains (shape) && searchText.Length == shape.Length)
-									{
-										int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
-										lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, fps));
-										found = true;
-									}
-								}
-							}
-						}
-						if (!found)
-						{
-							lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, fps));
-						}
-					}
+					textFile = lipsyncOverride;
+				}
+				else
+				{
+					textFile = (TextAsset) KickStarter.runtimeLanguages.GetSpeechLipsyncFile <TextAsset> (lineID, _speaker);
 				}
 			}
-			else if (_lipSyncMode == LipSyncMode.ReadSapiFile && textFile != null)
-			{
-				var splitFile = new string[] { "\r\n", "\r", "\n" };
-				var sapiLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
 
-				foreach (string sapiLine in sapiLines)
-				{
-					if (sapiLine.StartsWith ("phn "))
+			switch (_lipSyncMode)
+			{
+				case LipSyncMode.FromSpeechText:
 					{
-						string[] sapiLineArray = sapiLine.Split(' ');
-						float timeIndex = 0f;
-						float.TryParse (sapiLineArray[1], out timeIndex);
-						string searchText = sapiLineArray[4].EndsWith (" ") ? sapiLineArray[4].ToLower ().Substring (0, sapiLineArray[4].Length-1) : sapiLineArray[4].ToLower ();
-						bool found = false;
-						foreach (string _phoneme in KickStarter.speechManager.phonemes)
+						if (lineID > -1 && !KickStarter.speechManager.translateAudio && Options.GetLanguage () > 0)
 						{
-							string phoneme = _phoneme.ToLower ();
-							if (phoneme.Contains (searchText))
+							SpeechLine speechLine = KickStarter.speechManager.GetLine (lineID);
+							if (speechLine != null)
 							{
-								string[] shapesArray = phoneme.Split ("/"[0]);
-								if (!found)
+								_message = speechLine.text;
+							}
+						}
+
+						for (int i=0; i<_message.Length; i++)
+						{
+							int maxSearch = Mathf.Min (5, _message.Length - i);
+							for (int n=maxSearch; n>0; n--)
+							{
+								string searchText = _message.Substring (i, n);
+								searchText = searchText.ToLower ();
+								
+								foreach (string phoneme in KickStarter.speechManager.phonemes)
 								{
+									string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
 									foreach (string shape in shapesArray)
 									{
 										if (shape == searchText)
 										{
-											int frame = KickStarter.speechManager.phonemes.IndexOf (_phoneme);
-											lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, 60f));
-											found = true;
+											int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
+											lipSyncShapes.Add (new LipSyncShape (frame, (float) i, KickStarter.speechManager.lipSyncSpeed));
+											i += n;
+											n = Mathf.Min (5, _message.Length - i);
+											break;
 										}
 									}
 								}
+								
 							}
-						}
-						if (!found)
-						{
-							lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, 60f));
+							lipSyncShapes.Add (new LipSyncShape (0, (float) i, KickStarter.speechManager.lipSyncSpeed));
 						}
 					}
-				}
-			}
-			else if (_lipSyncMode == LipSyncMode.ReadPapagayoFile && textFile != null)
-			{
-				var splitFile = new string[] { "\r\n", "\r", "\n" };
-				var papagoyoLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
+					break;
 
-				foreach (string papagoyoLine in papagoyoLines)
-				{
-					if (!string.IsNullOrEmpty (papagoyoLine) && !papagoyoLine.Contains ("MohoSwitch"))
+				case LipSyncMode.ReadPamelaFile:
+					if (textFile)
 					{
-						string[] papagoyoLineArray = papagoyoLine.Split(' ');
-						if (papagoyoLineArray.Length == 2)
+						var splitFile = new string[] { "\r\n", "\r", "\n" };
+						var pamLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
+
+						bool foundSpeech = false;
+						float fps = 24f;
+						foreach (string pamLine in pamLines)
 						{
-							float timeIndex = 0f;
-							if (float.TryParse (papagoyoLineArray[0], out timeIndex))
+							if (!foundSpeech)
 							{
-								string searchText = papagoyoLineArray[1].ToLower ().Substring (0, papagoyoLineArray[1].Length);
+								if (pamLine.Contains ("framespersecond:"))
+								{
+									string[] pamLineArray = pamLine.Split(':');
+									float.TryParse (pamLineArray[1], out fps);
+								}
+								else if (pamLine.Contains ("[Speech]"))
+								{
+									foundSpeech = true;
+								}
+							}
+							else if (pamLine.Contains (":"))
+							{
+								string[] pamLineArray = pamLine.Split(':');
+								
+								float timeIndex = 0f;
+								float.TryParse (pamLineArray[0], out timeIndex);
+								string searchText = pamLineArray[1].ToLower ().Substring (0, pamLineArray[1].Length-1);
 								
 								bool found = false;
-								if (!searchText.Contains ("rest"))
+								foreach (string phoneme in KickStarter.speechManager.phonemes)
 								{
-									foreach (string phoneme in KickStarter.speechManager.phonemes)
+									string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
+									if (!found)
 									{
-										string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
+										foreach (string shape in shapesArray)
+										{
+											//if (shape == searchText)
+											if (searchText.Contains (shape) && searchText.Length == shape.Length)
+											{
+												int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
+												lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, fps));
+												found = true;
+											}
+										}
+									}
+								}
+								if (!found)
+								{
+									lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, fps));
+								}
+							}
+						}
+					}
+					break;
+
+				case LipSyncMode.ReadSapiFile:
+					if (textFile)
+					{
+						var splitFile = new string[] { "\r\n", "\r", "\n" };
+						var sapiLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
+
+						foreach (string sapiLine in sapiLines)
+						{
+							if (sapiLine.StartsWith ("phn "))
+							{
+								string[] sapiLineArray = sapiLine.Split(' ');
+								float timeIndex = 0f;
+								float.TryParse (sapiLineArray[1], out timeIndex);
+								string searchText = sapiLineArray[4].EndsWith (" ") ? sapiLineArray[4].ToLower ().Substring (0, sapiLineArray[4].Length-1) : sapiLineArray[4].ToLower ();
+								bool found = false;
+								foreach (string _phoneme in KickStarter.speechManager.phonemes)
+								{
+									string phoneme = _phoneme.ToLower ();
+									if (phoneme.Contains (searchText))
+									{
+										string[] shapesArray = phoneme.Split ("/"[0]);
 										if (!found)
 										{
 											foreach (string shape in shapesArray)
 											{
 												if (shape == searchText)
 												{
-													int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
-													lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, 24f));
+													int frame = KickStarter.speechManager.phonemes.IndexOf (_phoneme);
+													lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, 60f));
 													found = true;
-													break;
 												}
 											}
 										}
 									}
-									if (!found && !searchText.Contains ("etc"))
+								}
+								if (!found)
+								{
+									lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, 60f));
+								}
+							}
+						}
+					}
+					break;
+
+				case LipSyncMode.ReadPapagayoFile:
+					if (textFile)
+					{
+						var splitFile = new string[] { "\r\n", "\r", "\n" };
+						var papagoyoLines = textFile.text.Split (splitFile, System.StringSplitOptions.None);
+
+						foreach (string papagoyoLine in papagoyoLines)
+						{
+							if (!string.IsNullOrEmpty (papagoyoLine) && !papagoyoLine.Contains ("MohoSwitch"))
+							{
+								string[] papagoyoLineArray = papagoyoLine.Split(' ');
+								if (papagoyoLineArray.Length == 2)
+								{
+									float timeIndex = 0f;
+									if (float.TryParse (papagoyoLineArray[0], out timeIndex))
 									{
-										lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, 24f)); // was 240
+										string searchText = papagoyoLineArray[1].ToLower ().Substring (0, papagoyoLineArray[1].Length);
+										
+										bool found = false;
+										{
+											foreach (string phoneme in KickStarter.speechManager.phonemes)
+											{
+												string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
+												if (!found)
+												{
+													foreach (string shape in shapesArray)
+													{
+														if (shape == searchText)
+														{
+															int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
+															lipSyncShapes.Add (new LipSyncShape (frame, timeIndex, KickStarter.speechManager.lipSyncSpeed, 24f));
+															found = true;
+															break;
+														}
+													}
+												}
+											}
+											if (!found)
+											{
+												lipSyncShapes.Add (new LipSyncShape (0, timeIndex, KickStarter.speechManager.lipSyncSpeed, 24f));
+											}
+										}
 									}
 								}
 							}
 						}
 					}
-				}
+					break;
+
+				default:
+					break;
 			}
-			else if (_lipSyncMode == LipSyncMode.FromSpeechText)
-			{
-				for (int i=0; i<_message.Length; i++)
-				{
-					int maxSearch = Mathf.Min (5, _message.Length - i);
-					for (int n=maxSearch; n>0; n--)
-					{
-						string searchText = _message.Substring (i, n);
-						searchText = searchText.ToLower ();
-						
-						foreach (string phoneme in KickStarter.speechManager.phonemes)
-						{
-							string[] shapesArray = phoneme.ToLower ().Split ("/"[0]);
-							foreach (string shape in shapesArray)
-							{
-								if (shape == searchText)
-								{
-									int frame = KickStarter.speechManager.phonemes.IndexOf (phoneme);
-									lipSyncShapes.Add (new LipSyncShape (frame, (float) i, KickStarter.speechManager.lipSyncSpeed));
-									i += n;
-									n = Mathf.Min (5, _message.Length - i);
-									break;
-								}
-							}
-						}
-						
-					}
-					lipSyncShapes.Add (new LipSyncShape (0, (float) i, KickStarter.speechManager.lipSyncSpeed));
-				}
-			}
-			
+
 			if (lipSyncShapes.Count > 1)
 			{
 				lipSyncShapes.Sort (delegate (LipSyncShape a, LipSyncShape b) {return a.timeIndex.CompareTo (b.timeIndex);});
 			}
 			
 			return lipSyncShapes;
-		}
-
-
-		private void EndBackgroundSpeechAudio (Speech speech)
-		{
-			foreach (Speech _speech in speechList)
-			{
-				if (_speech != speech)
-				{
-					_speech.EndBackgroundSpeechAudio (speech.GetSpeakingCharacter ());
-				}
-			}
 		}
 
 
@@ -720,10 +815,45 @@ namespace AC
 			}
 		}
 		
-		
-		private void EndSpeech (int i, bool stopCharacter = false)
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void OnInitialiseScene ()
+		{
+			KillDialog (true, true);
+		}
+
+
+		protected void OnChangeVolume (SoundType soundType, float newVolume)
+		{
+			if (soundType == SoundType.Speech)
+			{
+				for (int i = 0; i < speechList.Count; i++)
+				{
+					speechList[i].UpdateVolume ();
+				}
+			}
+		}
+
+
+		protected void EndBackgroundSpeechAudio (Speech speech)
+		{
+			foreach (Speech _speech in speechList)
+			{
+				if (_speech != speech)
+				{
+					_speech.EndBackgroundSpeechAudio (speech.GetSpeakingCharacter ());
+				}
+			}
+		}
+
+
+		protected void EndSpeech (int i, bool stopCharacter = false)
 		{
 			Speech oldSpeech = speechList[i];
+			
 			KickStarter.playerMenus.RemoveSpeechFromMenu (oldSpeech);
 			if (stopCharacter)
 			{
@@ -748,6 +878,10 @@ namespace AC
 			KickStarter.eventManager.Call_OnStopSpeech (oldSpeech, oldSpeech.GetSpeakingCharacter ());
 		}
 
+		#endregion
+
+
+		#region GetSet
 
 		/**
 		 * An array of string keys that can be inserted into speech text in the form [key:value].
@@ -765,12 +899,7 @@ namespace AC
 			}
 		}
 
-
-		private void OnDestroy ()
-		{
-			defaultAudioSource = null;
-			narratorAudioSource = null;
-		}
+		#endregion
 
 	}
 	
@@ -867,9 +996,7 @@ namespace AC
 	}
 
 
-	/**
-	 * A data struct of lipsync animation
-	 */
+	/** A data struct of lipsync animation */
 	public struct LipSyncShape
 	{
 
@@ -886,11 +1013,11 @@ namespace AC
 		 * <param name = "speed">The playback speed set by the player</param>
 		 * <param name = "fps">The FPS rate set by the third-party LipSync tool</param>
 		 */
-		public LipSyncShape (int _frame, float _timeIndex, float speed, float fps = 1f)
+		public LipSyncShape (int _frame, float _timeIndex, float speed, float fps = 15f)
 		{
 			// Pamela / Sapi
 			frame = _frame;
-			timeIndex = (_timeIndex / 15f / speed / fps) + Time.time;
+			timeIndex = (_timeIndex / speed / fps) + Time.time;
 		}
 
 	}

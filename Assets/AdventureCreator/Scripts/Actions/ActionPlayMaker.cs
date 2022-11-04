@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionPlayMaker.cs"
  * 
@@ -25,6 +25,8 @@ namespace AC
 	{
 
 		public bool isPlayer;
+		public int playerID = -1;
+		public int playerParameterID = -1;
 
 		public int constantID = 0;
 		public int parameterID = -1;
@@ -37,23 +39,17 @@ namespace AC
 		public int eventNameParameterID = -1;
 
 
-		public ActionPlayMaker ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ThirdParty;
-			title = "PlayMaker";
-			description = "Calls a specified Event within a PlayMaker FSM. Note that PlayMaker is a separate Unity Asset, and the 'PlayMakerIsPresent' preprocessor must be defined for this to work.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.ThirdParty; }}
+		public override string Title { get { return "PlayMaker"; }}
+		public override string Description { get { return "Calls a specified Event within a PlayMaker FSM. Note that PlayMaker is a separate Unity Asset, and the 'PlayMakerIsPresent' preprocessor must be defined for this to work."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player != null)
-				{
-					runtimeLinkedObject = KickStarter.player.gameObject;
-				}
+				Player player = AssignPlayer (playerID, parameters, playerParameterID);
+				runtimeLinkedObject = (player != null) ? player.gameObject : null;
 			}
 			else
 			{
@@ -65,7 +61,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (isPlayer && KickStarter.player == null)
 			{
@@ -90,14 +86,23 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (PlayMakerIntegration.IsDefinePresent ())
 			{
 				isPlayer = EditorGUILayout.Toggle ("Use Player's FSM?", isPlayer);
-				if (!isPlayer)
+				if (isPlayer)
 				{
-					parameterID = Action.ChooseParameterGUI ("Playmaker FSM:", parameters, parameterID, ParameterType.GameObject);
+					if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+					{
+						playerParameterID = ChooseParameterGUI ("Player ID:", parameters, playerParameterID, ParameterType.Integer);
+						if (playerParameterID < 0)
+							playerID = ChoosePlayerGUI (playerID, true);
+					}
+				}
+				else
+				{
+					parameterID = ChooseParameterGUI ("Playmaker FSM:", parameters, parameterID, ParameterType.GameObject);
 					if (parameterID >= 0)
 					{
 						constantID = 0;
@@ -112,12 +117,12 @@ namespace AC
 					}
 				}
 
-				fsmNameParameterID = Action.ChooseParameterGUI ("FSM to call (optional):", parameters, fsmNameParameterID, ParameterType.String);
+				fsmNameParameterID = Action.ChooseParameterGUI ("FSM to call (optional):", parameters, fsmNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (fsmNameParameterID < 0)
 				{
 					fsmName = EditorGUILayout.TextField ("FSM to call (optional):", fsmName);
 				}
-				eventNameParameterID = Action.ChooseParameterGUI ("Event to call:", parameters, eventNameParameterID, ParameterType.String);
+				eventNameParameterID = Action.ChooseParameterGUI ("Event to call:", parameters, eventNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (eventNameParameterID < 0)
 				{
 					eventName = EditorGUILayout.TextField ("Event to call:", eventName);
@@ -127,14 +132,35 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("The 'PlayMakerIsPresent' Scripting Define Symbol must be listed in the\nPlayer Settings. Please set it from Edit -> Project Settings -> Player", MessageType.Warning);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
-			AssignConstantID (linkedObject, constantID, parameterID);
+			if (!isPlayer)
+			{
+				AssignConstantID (linkedObject, constantID, parameterID);
+			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0 && !isPlayer)
+			{
+				if (linkedObject && linkedObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && playerParameterID < 0) return true;
+			return (playerParameterID < 0 && playerID == _playerID);
 		}
 
 		#endif
@@ -149,7 +175,7 @@ namespace AC
 		 */
 		public static ActionPlayMaker CreateNew (GameObject playmakerFSM, string eventToCall, string fsmName = "")
 		{
-			ActionPlayMaker newAction = (ActionPlayMaker) CreateInstance <ActionPlayMaker>();
+			ActionPlayMaker newAction = CreateNew<ActionPlayMaker> ();
 			newAction.linkedObject = playmakerFSM;
 			newAction.eventName = eventToCall;
 			newAction.fsmName = fsmName;

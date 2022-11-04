@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionRename.cs"
  * 
@@ -10,6 +10,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -29,26 +30,23 @@ namespace AC
 		protected Hotspot runtimeHotspot;
 
 		public string newName;
+		public int newNameParameterID = -1;
 		public int lineID = -1;
-		
-		
-		public ActionRename ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Hotspot;
-			title = "Rename";
-			lineID = -1;
-			description = "Renames a Hotspot, or an NPC with a Hotspot component.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+
+		public override ActionCategory Category { get { return ActionCategory.Hotspot; }}
+		public override string Title { get { return "Rename"; }}
+		public override string Description { get { return "Renames a Hotspot, or an NPC with a Hotspot component."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeHotspot = AssignFile <Hotspot> (parameters, parameterID, constantID, hotspot);
+			newName = AssignString (parameters, newNameParameterID, newName);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeHotspot && !string.IsNullOrEmpty (newName))
 			{
@@ -61,7 +59,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Hotspot to rename:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -77,13 +75,15 @@ namespace AC
 				hotspot = IDToField <Hotspot> (hotspot, constantID, false);
 			}
 			
-			newName = EditorGUILayout.TextField ("New label:", newName);
-			
-			AfterRunningOption ();
+			newNameParameterID = Action.ChooseParameterGUI ("New label:", parameters, newNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
+			if (newNameParameterID < 0)
+			{
+				newName = EditorGUILayout.TextField ("New label:", newName);
+			}
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -94,7 +94,7 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (hotspot != null && !string.IsNullOrEmpty (newName))
 			{
@@ -102,11 +102,22 @@ namespace AC
 			}
 			return string.Empty;
 		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (hotspot && hotspot.gameObject == gameObject) return true;
+				if (constantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
 		
 		#endif
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -121,6 +132,12 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			newName = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -160,11 +177,16 @@ namespace AC
 
 		public bool CanTranslate (int index)
 		{
-			return (!string.IsNullOrEmpty (newName));
+			if (newNameParameterID < 0)
+			{
+				return (!string.IsNullOrEmpty (newName));
+			}
+			return false;
 		}
 
 		#endif
 
+		#endregion
 
 
 		/**
@@ -176,7 +198,7 @@ namespace AC
 		 */
 		public static ActionRename CreateNew (Hotspot hotspotToRename, string newName, int translationID = -1)
 		{
-			ActionRename newAction = (ActionRename) CreateInstance <ActionRename>();
+			ActionRename newAction = CreateNew<ActionRename> ();
 			newAction.hotspot = hotspotToRename;
 			newAction.newName = newName;
 			newAction.lineID = translationID;

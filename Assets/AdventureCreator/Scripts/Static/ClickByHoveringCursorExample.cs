@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ClickByHoveringCursorExample.cs"
  * 
@@ -19,20 +19,18 @@ using UnityEngine;
 namespace AC
 {
 
-	/*
-	 * <summary>This script serves as an example of how you can override AC's input system to invoke Hotspot and Menu clicks by hovering over them for a set period of time.
-	 *	It works by calling custom events whenever a Hotspot or Menu is hovered over that begin an internal countdown to a manual "mouse click".
+	/**
+	 * This script serves as an example of how you can override AC's input system to invoke Hotspot and Menu clicks by hovering over them for a set period of time.
+	 * It works by calling custom events whenever a Hotspot or Menu is hovered over that begin an internal countdown to a manual "mouse click".
 	 *
-	 *	It is compatible with the "World Space Cursor Example" script as well.
+	 * It is compatible with the "World Space Cursor Example" script as well.
 	 *
-	 *	To use it, add it to any GameObject in the scene, and set the "Hover Duration" value in the Inspector to suit.
+	 * To use it, add it to any GameObject in the scene, and set the "Hover Duration" value in the Inspector to suit.
 	 *
-	 *	If you wish to modify or extend the feature (for example, to add a UI that shows the countdown), you can duplicated this script and amend it to suit your needs.</summary>
+	 * If you wish to modify or extend the feature (for example, to add a UI that shows the countdown), you can duplicated this script and amend it to suit your needs.
 	 */
 	[AddComponentMenu("Adventure Creator/3rd-party/Click by hovering cursor example")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_click_by_hovering_cursor_example.html")]
-	#endif
 	public class ClickByHoveringCursorExample : MonoBehaviour
 	{
 

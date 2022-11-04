@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"FootstepSounds.cs"
  * 
@@ -21,12 +21,12 @@ namespace AC
 	 * The component stores an array of AudioClips, one of which is played at random whenever the PlayFootstep method is called.
 	 * This method should be invoked as part of a Unity AnimationEvent: http://docs.unity3d.com/Manual/animeditor-AnimationEvents.html
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_footstep_sounds.html")]
-	#endif
 	[AddComponentMenu("Adventure Creator/Characters/Footstep sounds")]
 	public class FootstepSounds: MonoBehaviour
 	{
+
+		#region Variables
 
 		/** An array of footstep AudioClips to play at random */
 		public AudioClip[] footstepSounds;
@@ -40,7 +40,9 @@ namespace AC
 		/** The Player or NPC that this component is for */
 		public Char character;
 		/** If True, and character is assigned, sounds will only play when the character is grounded */
-		public bool doGroundedCheck;
+		public bool doGroundedCheck = false;
+		/** If True, and character is assigned, sounds will only play when the character is moving */
+		public bool doMovementCheck = true;
 
 		/** How much the audio pitch can randomly vary by */
 		public float pitchVariance = 0f;
@@ -52,14 +54,19 @@ namespace AC
 		/** The separation time between sounds when running */
 		public float runSeparationTime = 0.25f;
 
-		private int lastIndex;
-		private AudioSource audioSource;
-		private float delayTime;
+		protected float originalRelativeSound = 1f;
+		protected int lastIndex;
+		protected AudioSource audioSource;
+		protected float delayTime;
+
+		#endregion
+
+
+		#region UnityStandards
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
-			if (soundToPlayFrom != null)
+			if (soundToPlayFrom)
 			{
 				audioSource = soundToPlayFrom.GetComponent <AudioSource>();
 			}
@@ -73,10 +80,12 @@ namespace AC
 				character = GetComponent <Char>();
 			}
 			delayTime = walkSeparationTime / 2f;
+
+			RecordOriginalRelativeSound ();
 		}
 
 
-		private void Update ()
+		protected void Update ()
 		{
 			if (character == null || footstepPlayMethod == FootstepPlayMethod.ViaAnimationEvents) return;
 
@@ -95,44 +104,56 @@ namespace AC
 				delayTime = walkSeparationTime / 2f;
 			}
 		}
-		
 
-		/**
-		 * Plays one of the footstepSounds at random on the assigned Sound object.
-		 */
+		#endregion
+
+
+		#region PublicFunctions		
+
+		/** Plays one of the footstepSounds at random on the assigned Sound object. */
 		public void PlayFootstep ()
 		{
-			if (audioSource != null && footstepSounds.Length > 0 &&
-			    (character == null || character.charState == CharState.Move))
+			if (audioSource && footstepSounds.Length > 0 &&
+			    (!doMovementCheck || character == null || character.charState == CharState.Move))
 			{
-				if (doGroundedCheck && character != null)
+				if (doGroundedCheck && character && !character.IsGrounded (true))
 				{
-					if (!character.IsGrounded (true))
-					{
-						return;
-					}
+					return;
 				}
 
 				bool doRun = (character.isRunning && runSounds.Length > 0) ? true : false;
 				if (doRun)
 				{
-					PlaySound (runSounds);
+					PlaySound (runSounds, doRun);
 				}
 				else
 				{
-					PlaySound (footstepSounds);
+					PlaySound (footstepSounds, doRun);
 				}
 			}
 		}
 
+		/** Records the associated Sound component's relative volume. */
+		public void RecordOriginalRelativeSound ()
+		{
+			if (soundToPlayFrom)
+			{
+				originalRelativeSound = soundToPlayFrom.relativeVolume;
+			}
+		}
 
-		private void PlaySound (AudioClip[] clips)
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void PlaySound (AudioClip[] clips, bool isRunSound)
 		{
 			if (clips == null) return;
 
 			if (clips.Length == 1)
 			{
-				PlaySound (clips[0]);
+				PlaySound (clips[0], isRunSound);
 				return;
 			}
 
@@ -146,12 +167,12 @@ namespace AC
 				}
 			}
 
-			PlaySound (clips[newIndex]);
+			PlaySound (clips[newIndex], isRunSound);
 			lastIndex = newIndex;
 		}
 
 
-		private void PlaySound (AudioClip clip)
+		protected void PlaySound (AudioClip clip, bool isRunSound)
 		{
 			if (clip == null) return;
 
@@ -163,30 +184,24 @@ namespace AC
 				audioSource.pitch = randomPitch;
 			}
 
-			if (volumeVariance > 0f)
+			float localVolume = (volumeVariance > 0f) ? (1f - Random.Range (0f, volumeVariance)): 1f;
+			
+			if (soundToPlayFrom)
 			{
-				float randomVolume = 1f - Random.Range (0f, volumeVariance);
-
-				if (soundToPlayFrom != null)
+				if (soundToPlayFrom.audioSource)
 				{
-					soundToPlayFrom.ChangeRelativeVolume (randomVolume);
+					soundToPlayFrom.audioSource.PlayOneShot (clip, localVolume);
 				}
-				else
-				{
-					audioSource.volume = randomVolume;
-				}
-			}
-
-			if (soundToPlayFrom != null)
-			{
-				soundToPlayFrom.Play (false);
+				if (KickStarter.eventManager) KickStarter.eventManager.Call_OnPlayFootstepSound (character, this, !isRunSound, soundToPlayFrom.audioSource, clip);
 			}
 			else
 			{
-				audioSource.loop = false;
-				audioSource.Play ();
+				audioSource.PlayOneShot (clip, localVolume);
+				if (KickStarter.eventManager) KickStarter.eventManager.Call_OnPlayFootstepSound (character, this, !isRunSound, audioSource, clip);
 			}
 		}
+
+		#endregion
 
 	}
 

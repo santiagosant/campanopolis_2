@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDocumentCheck.cs"
  * 
@@ -20,20 +20,16 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionDocumentCheck : ActionCheck
+	public class ActionDocumentCheck : ActionCheck, IDocumentReferencerAction
 	{
 
 		public int documentID;
 		public int parameterID = -1;
 
 		
-		public ActionDocumentCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Document;
-			title = "Check";
-			description = "Checks to see if a particular Document is in the Player's possession.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Document; }}
+		public override string Title { get { return "Check"; }}
+		public override string Description { get { return "Checks to see if a particular Document is in the Player's possession."; }}
 
 
 		public override void AssignValues (List<ActionParameter> parameters)
@@ -50,7 +46,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Check carrying:", parameters, parameterID, ParameterType.Document);
 			if (parameterID < 0)
@@ -60,7 +56,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			Document document = KickStarter.inventoryManager.GetDocument (documentID);
 			if (document != null)
@@ -71,10 +67,21 @@ namespace AC
 		}
 
 
-		public override int GetDocumentReferences (List<ActionParameter> parameters, int _docID)
+		public int GetNumDocumentReferences (int _docID, List<ActionParameter> parameters)
 		{
 			if (parameterID < 0 && documentID == _docID)
 			{
+				return 1;
+			}
+			return 0;
+		}
+
+
+		public int UpdateDocumentReferences (int oldDocumentID, int newDocumentID, List<ActionParameter> actionParameters)
+		{
+			if (parameterID < 0 && documentID == oldDocumentID)
+			{
+				documentID = newDocumentID;
 				return 1;
 			}
 			return 0;
@@ -90,7 +97,7 @@ namespace AC
 		 */
 		public static ActionDocumentCheck CreateNew (int documentID)
 		{
-			ActionDocumentCheck newAction = (ActionDocumentCheck) CreateInstance <ActionDocumentCheck>();
+			ActionDocumentCheck newAction = CreateNew<ActionDocumentCheck> ();
 			newAction.documentID = documentID;
 			return newAction;
 		}

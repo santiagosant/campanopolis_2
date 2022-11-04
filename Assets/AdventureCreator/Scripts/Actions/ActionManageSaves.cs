@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionManageSaves.cs"
  * 
@@ -29,42 +29,36 @@ namespace AC
 		public int saveIndex = 0;
 		public int saveIndexParameterID = -1;
 
-		public int varID;
+		[SerializeField] private int varID;
+		public string customLabel;
+		public bool preProcessTokens = true;
 		public int slotVarID;
 		
 		public string menuName = "";
 		public string elementName = "";
 		
 		
-		public ActionManageSaves ()
+		public override ActionCategory Category { get { return ActionCategory.Save; }}
+		public override string Title { get { return "Manage saves"; }}
+		public override string Description { get { return "Renames and deletes save game files."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Save;
-			title = "Manage saves";
-			description = "Renames and deletes save game files.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
+			UpgradeSelf ();
 			saveIndex = AssignInteger (parameters, saveIndexParameterID, saveIndex);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			string newSaveLabel = "";
+			string newSaveLabel = string.Empty;
 			if (manageSaveType == ManageSaveType.RenameSave)
 			{
-				GVar gVar = GlobalVariables.GetVariable (varID);
-				if (gVar != null)
+				newSaveLabel = customLabel;
+				if (preProcessTokens)
 				{
-					newSaveLabel = gVar.textVal;
-				}
-				else
-				{
-					LogWarning ("Could not " + manageSaveType.ToString () + " - no variable found.");
-					return 0f;
+					newSaveLabel = AdvGame.ConvertTokens (newSaveLabel);
 				}
 			}
 
@@ -75,7 +69,7 @@ namespace AC
 				GVar gVar = GlobalVariables.GetVariable (slotVarID);
 				if (gVar != null)
 				{
-					i = gVar.val;
+					i = gVar.IntegerValue;
 				}
 				else
 				{
@@ -88,38 +82,57 @@ namespace AC
 				if (manageSaveType == ManageSaveType.DeleteSave)
 				{
 					SaveSystem.DeleteSave (0);
+					return 0f;
 				}
 				else if (manageSaveType == ManageSaveType.RenameSave)
 				{
+					LogWarning ("The Autosave file cannot be renamed.");
 					return 0f;
 				}
 			}
-			
-			if (menuName != "" && elementName != "")
+
+			if (selectSaveType != SelectSaveType.Autosave && selectSaveType != SelectSaveType.SetSaveID)
 			{
-				MenuElement menuElement = PlayerMenus.GetElementWithName (menuName, elementName);
-				if (menuElement != null && menuElement is MenuSavesList)
+				if (!string.IsNullOrEmpty (menuName) && !string.IsNullOrEmpty (elementName))
 				{
-					MenuSavesList menuSavesList = (MenuSavesList) menuElement;
-					i += menuSavesList.GetOffset ();
+					MenuElement menuElement = PlayerMenus.GetElementWithName (menuName, elementName);
+					if (menuElement != null && menuElement is MenuSavesList)
+					{
+						MenuSavesList menuSavesList = (MenuSavesList) menuElement;
+						i += menuSavesList.GetOffset ();
+					}
+					else
+					{
+						LogWarning ("Cannot find SavesList element '" + elementName + "' in Menu '" + menuName + "'.");
+					}
 				}
 				else
 				{
-					LogWarning ("Cannot find SavesList element '" + elementName + "' in Menu '" + menuName + "'.");
+					LogWarning ("No SavesList element referenced when trying to find save slot " + i.ToString ());
 				}
-			}
-			else
-			{
-				LogWarning ("No SavesList element referenced when trying to find save slot " + i.ToString ());
 			}
 			
 			if (manageSaveType == ManageSaveType.DeleteSave)
 			{
-				KickStarter.saveSystem.DeleteSave (i, -1, false);
+				if (selectSaveType == SelectSaveType.SetSaveID)
+				{
+					SaveSystem.DeleteSave (i);
+				}
+				else
+				{
+					KickStarter.saveSystem.DeleteSave (i, -1, false);
+				}
 			}
 			else if (manageSaveType == ManageSaveType.RenameSave)
 			{
-				KickStarter.saveSystem.RenameSave (newSaveLabel, i);
+				if (selectSaveType == SelectSaveType.SetSaveID)
+				{
+					KickStarter.saveSystem.RenameSaveByID (newSaveLabel, i);
+				}
+				else
+				{
+					KickStarter.saveSystem.RenameSave (newSaveLabel, i);
+				}
 			}
 			
 			return 0f;
@@ -128,13 +141,15 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
+			UpgradeSelf ();
 			manageSaveType = (ManageSaveType) EditorGUILayout.EnumPopup ("Method:", manageSaveType);
 			
 			if (manageSaveType == ManageSaveType.RenameSave)
 			{
-				varID = AdvGame.GlobalVariableGUI ("Label as String variable:", varID, VariableType.String);
+				customLabel = EditorGUILayout.TextField ("New label text:", customLabel);
+				preProcessTokens = EditorGUILayout.Toggle ("Pre-process tokens?", preProcessTokens);
 			}
 
 			string _action = "delete";
@@ -159,15 +174,23 @@ namespace AC
 			else if (selectSaveType == SelectSaveType.Autosave && manageSaveType == ManageSaveType.RenameSave)
 			{
 				EditorGUILayout.HelpBox ("The AutoSave cannot be renamed.", MessageType.Warning);
-				AfterRunningOption ();
 				return;
 			}
+			else if (selectSaveType == SelectSaveType.SetSaveID)
+			{
+				saveIndexParameterID = Action.ChooseParameterGUI ("Save ID to " + _action + ":", parameters, saveIndexParameterID, ParameterType.Integer);
+				if (saveIndexParameterID == -1)
+				{
+					saveIndex = EditorGUILayout.IntField ("Save ID to " + _action + ":", saveIndex);
+				}
+			}
 
-			EditorGUILayout.Space ();
-			menuName = EditorGUILayout.TextField ("Menu with SavesList:", menuName);
-			elementName = EditorGUILayout.TextField ("SavesList element:", elementName);
-
-			AfterRunningOption ();
+			if (selectSaveType != SelectSaveType.Autosave && selectSaveType != SelectSaveType.SetSaveID)
+			{
+				EditorGUILayout.Space ();
+				menuName = EditorGUILayout.TextField ("Menu with SavesList:", menuName);
+				elementName = EditorGUILayout.TextField ("SavesList element:", elementName);
+			}
 		}
 		
 		
@@ -175,8 +198,58 @@ namespace AC
 		{
 			return manageSaveType.ToString ();
 		}
-		
+
+
+		public override int GetNumVariableReferences (VariableLocation location, int varID, List<ActionParameter> parameters, Variables variables = null, int variablesConstantID = 0)
+		{
+			int thisNumReferences = 0;
+			UpgradeSelf ();
+
+			if (manageSaveType == ManageSaveType.RenameSave)
+			{
+				string tokenText = AdvGame.GetVariableTokenText (location, varID, variablesConstantID);
+				if (!string.IsNullOrEmpty (customLabel) && customLabel.ToLower ().Contains (tokenText))
+				{
+					thisNumReferences ++;
+				}
+			}
+
+			thisNumReferences += base.GetNumVariableReferences (location, varID, parameters, variables, variablesConstantID);
+			return thisNumReferences;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables variables = null, int variablesConstantID = 0)
+		{
+			int thisNumReferences = 0;
+			UpgradeSelf ();
+
+			if (manageSaveType == ManageSaveType.RenameSave)
+			{
+				string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, variablesConstantID);
+				if (!string.IsNullOrEmpty (customLabel) && customLabel.ToLower ().Contains (oldTokenText))
+				{
+					string newTokenText = AdvGame.GetVariableTokenText (location, newVarID, variablesConstantID);
+					customLabel = customLabel.Replace (oldTokenText, newTokenText);
+					thisNumReferences++;
+				}
+			}
+
+			thisNumReferences += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, variables, variablesConstantID);
+			return thisNumReferences;
+		}
+
 		#endif
+
+
+		public void UpgradeSelf ()
+		{
+			if (string.IsNullOrEmpty (customLabel) && varID >= 0)
+			{
+				customLabel = "[var:" + varID + "]";
+				varID = -1;
+			}
+		}
 
 
 		/**
@@ -188,7 +261,7 @@ namespace AC
 		 */
 		public static ActionManageSaves CreateNew_DeleteSave (string menuName, string savesListElementName, int slotIndex = -1)
 		{
-			ActionManageSaves newAction = (ActionManageSaves) CreateInstance <ActionManageSaves>();
+			ActionManageSaves newAction = CreateNew<ActionManageSaves> ();
 			newAction.manageSaveType = ManageSaveType.DeleteSave;
 			newAction.selectSaveType = (slotIndex < 0) ? SelectSaveType.Autosave : SelectSaveType.SetSlotIndex;
 			newAction.saveIndex = slotIndex;
@@ -208,7 +281,7 @@ namespace AC
 		 */
 		public static ActionManageSaves CreateNew_RenameSave (string menuName, string savesListElementName, int labelGlobalStringVariableID, int slotIndex)
 		{
-			ActionManageSaves newAction = (ActionManageSaves) CreateInstance <ActionManageSaves>();
+			ActionManageSaves newAction = CreateNew<ActionManageSaves> ();
 			newAction.manageSaveType = ManageSaveType.RenameSave;
 			newAction.selectSaveType = SelectSaveType.SetSlotIndex;
 			newAction.slotVarID = labelGlobalStringVariableID;

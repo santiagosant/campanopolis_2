@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberVariables.cs"
  * 
@@ -17,14 +17,18 @@ namespace AC
 	/** This script is attached to Variables components in the scene we wish to save the state of. */
 	[RequireComponent (typeof (Variables))]
 	[AddComponentMenu("Adventure Creator/Save system/Remember Variables")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_variables.html")]
-	#endif
 	public class RememberVariables : Remember
 	{
 
-		private bool loadedData = false;
+		#region Variables
 
+		private Variables variables;
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		public override string SaveData ()
 		{
@@ -46,35 +50,26 @@ namespace AC
 			VariablesData data = Serializer.LoadScriptData <VariablesData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			Variables.vars = SaveSystem.UnloadVariablesData (data.variablesData, Variables.vars);
+			Variables.vars = SaveSystem.UnloadVariablesData (data.variablesData, true, Variables.vars);
 
 			foreach (GVar var in Variables.vars)
 			{
-				var.Upload (VariableLocation.Component);
+				var.Upload (VariableLocation.Component, Variables);
+				var.BackupValue ();
 			}
 
 			loadedData = true;
 		}
 
-
-		/**
-		 * Checks if data has been loaded for this component.
-		 */
-		public bool LoadedData
-		{
-			get
-			{
-				return loadedData;
-			}
-		}
+		#endregion
 
 
-		private Variables variables;
+		#region GetSet
+
 		private Variables Variables
 		{
 			get
@@ -87,12 +82,12 @@ namespace AC
 			}
 		}
 
+		#endregion
+
 	}
 
 
-	/**
-	 * A data container used by the RememberVariables script.
-	 */
+	/** A data container used by the RememberVariables script. */
 	[System.Serializable]
 	public class VariablesData : RememberData
 	{

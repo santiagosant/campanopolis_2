@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionType.cs"
  * 
@@ -21,6 +21,8 @@ namespace AC
 	public class ActionType
 	{
 
+		#region Variables
+
 		/** The Action's filename */
 		public string fileName;
 		/** The Action's category (ActionList, Camera, Character, Container, Dialogue, Engine, Hotspot, Input, Inventory, Menu, Moveable, Object, Player, Save, Sound, ThirdParty, Variable, Custom) */
@@ -33,7 +35,11 @@ namespace AC
 		public bool isEnabled;
 		/** The Action's colour, when displayed in the ActionList Editor window */
 		public Color color;
-		
+
+		#endregion
+
+
+		#region Constructors
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -43,9 +49,9 @@ namespace AC
 		public ActionType (string _fileName, Action _action)
 		{
 			fileName = _fileName;
-			category = _action.category;
-			title = _action.title;
-			description = _action.description;
+			category = _action.Category;
+			title = _action.Title;
+			description = _action.Description;
 			isEnabled = true;
 			color = Color.white;
 		}
@@ -61,7 +67,16 @@ namespace AC
 			color = _actionType.color;
 		}
 
+		#endregion
 
+
+		#region PublicFunctions
+
+		/**
+		 * <summary>Compares the values with that of another ActionType instance to see if they are all equal.</summary>
+		 * <param name = "_actionType">The ActionType instance to compare</param>
+		 * <summary>True if the values match</summary>
+		 */
 		public bool IsMatch (ActionType _actionType)
 		{
 			if (_actionType != null && description == _actionType.description && title == _actionType.title && category == _actionType.category)
@@ -87,6 +102,8 @@ namespace AC
 			}
 			return (category.ToString () + ": " + title);
 		}
+
+		#endregion
 		
 	}
 

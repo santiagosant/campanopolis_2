@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Paths.cs"
  * 
@@ -22,11 +22,11 @@ namespace AC
 	 * Characters can be made to move along a path in one direction only, back-and-forth, or choose nodes at random.
 	 * ActionLists can also be set to run when a character reaches each node.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_paths.html")]
-	#endif
-	public class Paths : MonoBehaviour
+	public class Paths : MonoBehaviour, iActionListAssetReferencer
 	{
+
+		#region Variables
 
 		/** A List of nodes (Vector3) that define the path */
 		public List<Vector3> nodes = new List<Vector3>();
@@ -45,8 +45,14 @@ namespace AC
 		/** The time, in seconds, that a character will wait at each node before continuing along the path */
 		public float nodePause;
 
+		private Transform _transform;
 
-		private void Awake ()
+		#endregion
+
+
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			if (nodePause < 0f)
 			{
@@ -55,14 +61,70 @@ namespace AC
 
 			if (nodes == null || nodes.Count == 0)
 			{
-				nodes.Add (transform.position);
+				nodes.Add (Transform.position);
 			}
 			else
 			{
-				nodes[0] = transform.position;
+				nodes[0] = Transform.position;
 			}
 		}
-		
+
+
+		private void OnDrawGizmos ()
+		{
+			// Draws a blue line from this transform to the target
+			#if UNITY_EDITOR
+			Gizmos.color = ACEditorPrefs.PathGizmoColor;
+			#else
+			Gizmos.color = Color.blue;
+			#endif
+			int i;
+			int numNodes = nodes.Count;
+
+			if (nodes.Count > 0)
+			{
+				nodes[0] = Transform.position;
+			}
+
+			if (pathType == AC_PathType.IsRandom && numNodes > 1)
+			{
+				for (i = 1; i < numNodes; i++)
+				{
+					for (int j = 0; j < numNodes; j++)
+					{
+						if (i != j)
+						{
+							ConnectNodes (i,j);
+						}
+					}
+				}
+			}
+			else
+			{
+				if (numNodes > 1)
+				{
+					for (i = 1; i<numNodes; i++)
+					{
+						Gizmos.DrawIcon (nodes[i], string.Empty, true);
+						
+						ConnectNodes (i, i - 1);
+					}
+				}
+				
+				if (pathType == AC_PathType.Loop && !teleportToStart)
+				{
+					if (numNodes > 2)
+					{
+						ConnectNodes (numNodes - 1, 0);
+					}
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks if the next node is the final one.</summary>
@@ -95,9 +157,9 @@ namespace AC
 				targetPosition = AdvGame.GetScreenNavMesh (targetPosition);
 			}
 
-			if (KickStarter.navigationManager != null)
+			if (KickStarter.navigationManager)
 			{
-				pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (transform.position, targetPosition);
+				pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (Transform.position, targetPosition);
 			}
 			else
 			{
@@ -128,7 +190,7 @@ namespace AC
 				List<Vector3> newNodes = new List<Vector3>();
 				
 				newNodes.Clear ();
-				newNodes.Add (this.transform.position);
+				newNodes.Add (Transform.position);
 
 				nodeCommands.Clear ();
 
@@ -139,7 +201,7 @@ namespace AC
 						// If first point, ignore if same as position
 						if (SceneSettings.IsUnity2D ())
 						{
-							Vector2 testPoint = new Vector2 (transform.position.x, transform.position.y);
+							Vector2 testPoint = new Vector2 (Transform.position.x, Transform.position.y);
 							Vector2 testPoint2 = new Vector2 (pointData[0].x, pointData[0].y);
 							if ((testPoint - testPoint2).magnitude < 0.001f)
 							{
@@ -148,7 +210,7 @@ namespace AC
 						}
 						else
 						{
-							Vector3 testPoint = new Vector3 (transform.position.x, pointData[0].y, transform.position.z);
+							Vector3 testPoint = new Vector3 (Transform.position.x, pointData[0].y, Transform.position.z);
 							if ((testPoint - pointData[0]).magnitude < 0.001f)
 							{
 								continue;
@@ -168,10 +230,11 @@ namespace AC
 		 * <summary>Gets the next node along a path, given the current one.</summary>
 		 * <param name = "currentNode">The index number of the current node</param>
 		 * <param name = "prevNode">The index number of the previous node (used for determining the direction along which the path is being traversed)</param>
-		 * <param name = "playerControlled">True if the Player prefab is moving along the path during gameplay</param>
+		 * <param name = "playerControlled">True if the Player is moving along the path during gameplay</param>
+		 * <param name = "lockedPathType">The type of Path, if the Player is moving along it during gameplay</param>
 		 * <returns>The index number of the next node</returns>
 		 */
-		public int GetNextNode (int currentNode, int prevNode, bool playerControlled)
+		public int GetNextNode (int currentNode, int prevNode, bool playerControlled = false, AC_PathType lockedPathType = AC_PathType.ForwardOnly)
 		{
 			int numNodes = nodes.Count;
 
@@ -179,136 +242,91 @@ namespace AC
 			{
 				return -1;
 			}
-			else if (playerControlled)
+			
+			if (playerControlled)
 			{
-				if (currentNode == 0)
+				switch (pathType)
 				{
-					return 1;
-				}
-				else if (currentNode >= numNodes - 1)
-				{
-					return -1;
-				}
+					case AC_PathType.ReverseOnly:
+						if (currentNode <= 0 && lockedPathType == AC_PathType.Loop)
+						{
+							return numNodes - 1;
+						}
+						return currentNode - 1;
 
-				return (currentNode + 1);
+					default:
+						if (currentNode >= numNodes - 1)
+						{
+							if (lockedPathType == AC_PathType.Loop)
+							{
+								return 0;
+							}
+							return -1;
+						}
+						return currentNode + 1;
+				}
 			}
 			else
 			{
-				if (pathType == AC_PathType.ForwardOnly)
+				switch (pathType)
 				{
-					if (currentNode == numNodes - 1)
-					{
-						return -1;
-					}
+					case AC_PathType.ForwardOnly:
+						if (currentNode == numNodes - 1)
+						{
+							return -1;
+						}
+						return (currentNode + 1);
 
-					return (currentNode + 1);
-				}
-				else if (pathType == AC_PathType.Loop)
-				{
-					if (currentNode == numNodes-1)
-					{
-						return 0;
-					}
+					case AC_PathType.Loop:
+						if (currentNode == numNodes - 1)
+						{
+							return 0;
+						}
+						return (currentNode + 1);
 
-					return (currentNode + 1);
-				}
-				else if (pathType == AC_PathType.ReverseOnly)
-				{
-					if (currentNode == 0)
-					{
-						return -1;
-					}
-					return (currentNode - 1);
-				}
-				else if (pathType == AC_PathType.PingPong)
-				{
-					if (prevNode > currentNode)
-					{
-						// Going backwards
+					case AC_PathType.ReverseOnly:
 						if (currentNode == 0)
 						{
-							return 1;
+							return -1;
+						}
+						return (currentNode - 1);
+
+					case AC_PathType.PingPong:
+						if (prevNode > currentNode)
+						{
+							// Going backwards
+							if (currentNode == 0)
+							{
+								return 1;
+							}
+							return (currentNode - 1);
 						}
 						else
 						{
-							return (currentNode - 1);
+							// Going forwards
+							if (currentNode == numNodes - 1)
+							{
+								return (currentNode - 1);
+							}
+							return (currentNode + 1);
 						}
-					}
-					else
-					{
-						// Going forwards
-						if (currentNode == numNodes-1)
-						{
-							return (currentNode - 1);
-						}
-						
-						return (currentNode + 1);
-					}
-				}
-				else if (pathType == AC_PathType.IsRandom)
-				{
-					if (numNodes > 0)
-					{
-						int randomNode = Random.Range (0, numNodes);
-						
-						while (randomNode == currentNode)
-						{
-							randomNode = Random.Range (0, numNodes);
-						}
-						
-						return (randomNode);
-					}
-					
-					return 0;
-				}
-				return -1;
-			}
-		}
-		
-		
-		private void OnDrawGizmos ()
-		{
-			// Draws a blue line from this transform to the target
-			Gizmos.color = Color.blue;
-			int i;
-			int numNodes = nodes.Count;
 
-			if (nodes.Count > 0)
-			{
-				nodes[0] = transform.position;
-			}
-
-			if (pathType == AC_PathType.IsRandom && numNodes > 1)
-			{
-				for (i=1; i<numNodes; i++)
-				{
-					for (int j=0; j<numNodes; j++)
-					{
-						if (i != j)
+					case AC_PathType.IsRandom:
+						if (numNodes > 0)
 						{
-							ConnectNodes (i,j);
+							int randomNode = Random.Range (0, numNodes);
+
+							while (randomNode == currentNode)
+							{
+								randomNode = Random.Range (0, numNodes);
+							}
+
+							return (randomNode);
 						}
-					}
-				}
-			}
-			else
-			{
-				if (numNodes > 1)
-				{
-					for (i=1; i<numNodes; i++)
-					{
-						Gizmos.DrawIcon (nodes[i], "", true);
-						
-						ConnectNodes (i, i - 1);
-					}
-				}
-				
-				if (pathType == AC_PathType.Loop && !teleportToStart)
-				{
-					if (numNodes > 2)
-					{
-						ConnectNodes (numNodes-1, 0);
-					}
+						return 0;
+
+					default:
+						return -1;
 				}
 			}
 		}
@@ -381,9 +399,37 @@ namespace AC
 
 			return 0f;
 		}
+
+
+		/**
+		 * <summary>Gets the index of the node that's nearest to a given position</summary>
+		 * <param name = "position">The position to query</param>
+		 * <returns>The index of the node that's nearest to the position</returns>
+		 */
+		public int GetNearestNode (Vector3 position)
+		{
+			int winningIndex = 0;
+			float winningSqrDist = Mathf.Infinity;
+
+			for (int i = 0; i < nodes.Count; i++)
+			{
+				float sqrDist = (position - nodes[i]).sqrMagnitude;
+				if (sqrDist < winningSqrDist)
+				{
+					winningIndex = i;
+					winningSqrDist = sqrDist;
+				}
+			}
+
+			return winningIndex;
+		}
+
+		#endregion
 		
+
+		#region ProtectedFunctions
 		
-		private void ConnectNodes (int a, int b)
+		protected void ConnectNodes (int a, int b)
 		{
             Vector3 PosA = nodes[a] + (Vector3.up * 0.001f);
 			Vector3 PosB = nodes[b] + (Vector3.up * 0.001f);
@@ -391,7 +437,7 @@ namespace AC
 		}
 
 
-		private Vector3[] SetMaxDistances (Vector3[] pointArray, float maxNodeDistance)
+		protected Vector3[] SetMaxDistances (Vector3[] pointArray, float maxNodeDistance)
 		{
 			if (maxNodeDistance <= 0f || pointArray.Length <= 1)
 			{
@@ -433,10 +479,37 @@ namespace AC
 			return pointList.ToArray ();
 		}
 
+		#endregion
+
+
+		#region GetSet
+
+		/** Gets the position of the last node in the Path */
+		public Vector3 Destination
+		{
+			get
+			{
+				return nodes[nodes.Count-1];
+			}
+		}
+
+
+		/** A cache of the Path's transform component */
+		public Transform Transform
+		{
+			get
+			{
+				if (_transform == null) _transform = transform;
+				return _transform;
+			}
+		}
+
+		#endregion
+
 
 		#if UNITY_EDITOR
-		private bool relativeMode;
-		private Vector3 lastFramePosition;
+		protected bool relativeMode;
+		protected Vector3 lastFramePosition;
 
 		public bool RelativeMode
 		{
@@ -462,8 +535,22 @@ namespace AC
 				lastFramePosition = value;
 			}
 		}
+
+
+		public bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (commandSource == ActionListSource.AssetFile)
+			{
+				foreach (NodeCommand command in nodeCommands)
+				{
+					if (command.actionListAsset == actionListAsset) return true;
+				}
+			}
+			return false;
+		}
+
 		#endif
-		
+
 	}
 
 
@@ -498,9 +585,9 @@ namespace AC
 
 		public void SetParameter (ActionListSource source, GameObject gameObject)
 		{
-			if (source == ActionListSource.InScene && cutscene != null)
+			if (source == ActionListSource.InScene && cutscene)
 			{
-				if (cutscene.useParameters && parameterID >= 0 && cutscene.parameters.Count > parameterID)
+				if (parameterID >= 0 && cutscene.NumParameters > parameterID)
 				{
 					ActionParameter parameter = cutscene.GetParameter (parameterID);
 					if (parameter != null)
@@ -514,9 +601,9 @@ namespace AC
 					cutscene.Interact ();
 				}
 			}
-			else if (source == ActionListSource.AssetFile && actionListAsset != null)
+			else if (source == ActionListSource.AssetFile && actionListAsset)
 			{
-				if (actionListAsset.useParameters && parameterID >= 0 && actionListAsset.parameters.Count > parameterID)
+				if (parameterID >= 0 && actionListAsset.NumParameters > parameterID)
 				{
 					int idToSend = 0;
 					if (gameObject.GetComponent <ConstantID>())

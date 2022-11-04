@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"PlayerMovement.cs"
  * 
@@ -20,57 +20,12 @@ namespace AC
 	 * This script analyses the variables in PlayerInput, and moves the character based on the control style, defined in the SettingsManager.
 	 * It should be placed on the GameEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_player_movement.html")]
-	#endif
 	public class PlayerMovement : MonoBehaviour
 	{
 
-		private FirstPersonCamera firstPersonCamera;
-		private float moveStraightToCursorUpdateTime;
-
-
-		public void OnStart ()
-		{
-			AssignFPCamera ();
-		}
-
-
-		/**
-		 * Updates the first-person camera, if appropriate.
-		 * This is called every frame by StateHandler.
-		 */
-		public void UpdateFPCamera ()
-		{
-			if (firstPersonCamera != null)
-			{
-				firstPersonCamera._UpdateFPCamera ();
-			}
-		}
-
-
-		/**
-		 * A<summary>ssigns the first-person camera as the FirstPersonCamera component placed as a child component on the Player preab.</summary>
-		 * <returns>The Transform of the FirstPersonCamera component, if one is present on the Player.</returns>
-		 */
-		public Transform AssignFPCamera ()
-		{
-			if (KickStarter.player)
-			{
-				firstPersonCamera = KickStarter.player.GetComponentInChildren<FirstPersonCamera>();
-
-				if (firstPersonCamera == null && KickStarter.settingsManager.movementMethod == MovementMethod.FirstPerson && KickStarter.player.FirstPersonCamera == null)
-				{
-					ACDebug.LogWarning ("Could not find a FirstPersonCamera script on the Player - one is necessary for first-person movement.", KickStarter.player);
-				}
-
-				if (firstPersonCamera != null)
-				{
-					return firstPersonCamera.transform;
-				}
-			}
-			return null;
-		}
+		protected float moveStraightToCursorUpdateTime;
+		protected GameObject clickPrefabInstance;
 
 
 		/**
@@ -79,11 +34,11 @@ namespace AC
 		 */
 		public void UpdatePlayerMovement ()
 		{
-			if (KickStarter.settingsManager && KickStarter.player && KickStarter.playerInput && KickStarter.playerInteraction)
+			if (KickStarter.player)
 			{
 				UpdateMoveStraightToCursorTime ();
 
-				if (KickStarter.playerInput.activeArrows != null)
+				if (KickStarter.playerInput.activeArrows)
 				{
 					return;
 				}
@@ -95,8 +50,8 @@ namespace AC
 						return;
 					}
 				}
-
-				if (KickStarter.settingsManager.disableMovementWhenInterationMenusAreOpen && KickStarter.player && KickStarter.stateHandler.IsInGameplay ())
+				
+				if (KickStarter.settingsManager.disableMovementWhenInterationMenusAreOpen && KickStarter.stateHandler.IsInGameplay ())
 				{
 					if (KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick &&
 						KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseHotspotThenInteraction &&
@@ -112,10 +67,10 @@ namespace AC
 				{
 					return;
 				}
-
+				
 				if (KickStarter.playerInput.GetMouseState () == MouseState.SingleClick && !KickStarter.playerMenus.IsInteractionMenuOn () && !KickStarter.playerMenus.IsMouseOverMenu () && !KickStarter.playerInteraction.IsMouseOverHotspot ())
 				{
-					if (KickStarter.playerInteraction.GetHotspotMovingTo () != null)
+					if (KickStarter.playerInteraction.GetHotspotMovingTo ())
 					{
 						KickStarter.playerInteraction.StopMovingToHotspot ();
 					}
@@ -123,7 +78,7 @@ namespace AC
 					KickStarter.playerInteraction.DeselectHotspot (false);
 				}
 
-				if (KickStarter.playerInteraction.GetHotspotMovingTo () != null && KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick && KickStarter.playerInput.GetMoveKeys () != Vector2.zero)
+				if (KickStarter.playerInteraction.GetHotspotMovingTo () && KickStarter.settingsManager.movementMethod != MovementMethod.PointAndClick && KickStarter.playerInput.GetMoveKeys ().sqrMagnitude > 0f)
 				{
 					KickStarter.playerInteraction.StopMovingToHotspot ();
 				}
@@ -168,32 +123,37 @@ namespace AC
 					case MovementMethod.FirstPerson:
 						if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
 						{
-							if (KickStarter.settingsManager.firstPersonTouchScreen == FirstPersonTouchScreen.OneTouchToTurnAndTwoTouchesToMove)
+							switch (KickStarter.settingsManager.firstPersonTouchScreen)
 							{
-								if (Input.touchCount == 1)
-								{
+								case FirstPersonTouchScreen.OneTouchToTurnAndTwoTouchesToMove:
+									if (Input.touchCount == 1)
+									{
+										FirstPersonControlPlayer ();
+										DragPlayerLook ();
+									}
+									else
+									{
+										DragPlayerTouch (KickStarter.playerInput.GetMoveKeys ());
+									}
+									break;
+
+								case FirstPersonTouchScreen.OneTouchToMoveAndTurn:
+									FirstPersonControlPlayer ();
+									DragPlayer (false, KickStarter.playerInput.GetMoveKeys ());
+									break;
+
+								case FirstPersonTouchScreen.TouchControlsTurningOnly:
 									FirstPersonControlPlayer ();
 									DragPlayerLook ();
-								}
-								else
-								{
-									DragPlayerTouch (KickStarter.playerInput.GetMoveKeys ());
-								}
-							}
-							else if (KickStarter.settingsManager.firstPersonTouchScreen == FirstPersonTouchScreen.OneTouchToMoveAndTurn)
-							{
-								FirstPersonControlPlayer ();
-								DragPlayer (false, KickStarter.playerInput.GetMoveKeys ());
-							}
-							else if (KickStarter.settingsManager.firstPersonTouchScreen == FirstPersonTouchScreen.TouchControlsTurningOnly)
-							{
-								FirstPersonControlPlayer ();
-								DragPlayerLook ();
-							}
-							else if (KickStarter.settingsManager.firstPersonTouchScreen == FirstPersonTouchScreen.CustomInput)
-							{
-								FirstPersonControlPlayer ();
-								DirectControlPlayer (true, KickStarter.playerInput.GetMoveKeys ());
+									break;
+
+								case FirstPersonTouchScreen.CustomInput:
+									FirstPersonControlPlayer ();
+									DirectControlPlayer (true, KickStarter.playerInput.GetMoveKeys ());
+									break;
+
+								default:
+									break;
 							}
 						}
 						else
@@ -208,8 +168,8 @@ namespace AC
 
 
 		// Straight to cursor functions
-		private float moveStraightToCursorHoldTime;
-		private void UpdateMoveStraightToCursorTime ()
+		protected float moveStraightToCursorHoldTime;
+		protected void UpdateMoveStraightToCursorTime ()
 		{
 			if (moveStraightToCursorUpdateTime > 0f)
 			{
@@ -242,10 +202,11 @@ namespace AC
 			}
 		}
 
-		private bool movingFromHold;
-		private void MoveStraightToCursor ()
+
+		protected bool movingFromHold;
+		protected void MoveStraightToCursor ()
 		{
-			if (KickStarter.playerInput.AllDirectionsLocked ())
+			if (KickStarter.player.AllDirectionsLocked ())
 			{
 				if (KickStarter.player.charState == CharState.Move)
 				{
@@ -264,6 +225,13 @@ namespace AC
 				}
 			}
 
+			if (KickStarter.playerInput.GetMouseState () == MouseState.DoubleClick && KickStarter.settingsManager.singleTapStraight && KickStarter.settingsManager.doubleClickMovement != DoubleClickMovement.Disabled && KickStarter.settingsManager.singleTapStraightPathfind)
+			{
+				movingFromHold = false;
+				PointControlPlayer ();
+				return;
+			}
+
 			if (KickStarter.playerInput.GetMouseState () == MouseState.SingleClick && KickStarter.settingsManager.singleTapStraight)
 			{
 				movingFromHold = false;
@@ -275,7 +243,7 @@ namespace AC
 				}
 
 				Vector3 clickPoint = GetStraightToCursorClickPoint ();
-				Vector3 moveDirection = clickPoint - KickStarter.player.transform.position;
+				Vector3 moveDirection = clickPoint - KickStarter.player.Transform.position;
 				
 				if (clickPoint != Vector3.zero)
 				{
@@ -288,13 +256,18 @@ namespace AC
 						
 						bool run = (moveDirection.magnitude > KickStarter.settingsManager.dragRunThreshold);
 
-						if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysRun)
-						{
-							run = true;
-						}
-						else if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysWalk)
-						{
-							run = false;
+						switch (KickStarter.player.runningLocked)
+						{ 
+							case PlayerMoveLock.AlwaysRun:
+								run = true;
+								break;
+
+							case PlayerMoveLock.AlwaysWalk:
+								run = false;
+								break;
+
+							default:
+								break;
 						}
 
 						List<Vector3> pointArray = new List<Vector3>();
@@ -313,7 +286,7 @@ namespace AC
 			else if (KickStarter.playerInput.GetDragState () == DragState.Player && moveStraightToCursorHoldTime <= 0f && (!KickStarter.settingsManager.singleTapStraight || KickStarter.playerInput.CanClick ()))
 			{
 				Vector3 clickPoint = GetStraightToCursorClickPoint ();
-				Vector3 moveDirection = clickPoint - KickStarter.player.transform.position;
+				Vector3 moveDirection = clickPoint - KickStarter.player.Transform.position;
 
 				if (clickPoint != Vector3.zero)
 				{
@@ -324,18 +297,31 @@ namespace AC
 							moveDirection = new Vector3 (moveDirection.x, 0f, moveDirection.y);
 						}
 
-						bool run = (moveDirection.magnitude > KickStarter.settingsManager.dragRunThreshold);
-
-						if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysRun)
+						bool run;
+						if (KickStarter.settingsManager.singleTapStraight && KickStarter.settingsManager.doubleClickMovement == DoubleClickMovement.MakesPlayerRun && KickStarter.settingsManager.singleTapStraightPathfind && KickStarter.player.isRunning)
 						{
 							run = true;
 						}
-						else if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysWalk)
+						else
 						{
-							run = false;
+							run = (moveDirection.magnitude > KickStarter.settingsManager.dragRunThreshold);
 						}
 
-						if (KickStarter.settingsManager.pathfindUpdateFrequency > 0f)// && moveStraightToCursorUpdateTime == 0f)
+						switch (KickStarter.player.runningLocked)
+						{
+							case PlayerMoveLock.AlwaysRun:
+								run = true;
+								break;
+
+							case PlayerMoveLock.AlwaysWalk:
+								run = false;
+								break;
+
+							default:
+								break;
+						}
+
+						if (KickStarter.settingsManager.pathfindUpdateFrequency > 0f)
 						{
 							if (moveStraightToCursorUpdateTime <= 0f)
 							{
@@ -345,11 +331,12 @@ namespace AC
 								}
 								else
 								{
-									Vector3[] pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (KickStarter.player.transform.position, clickPoint, KickStarter.player);
+									Vector3[] pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (KickStarter.player.Transform.position, clickPoint, KickStarter.player);
 									PointMovePlayer (pointArray, run);
 									moveStraightToCursorUpdateTime = KickStarter.settingsManager.pathfindUpdateFrequency;
 
 									movingFromHold = true;
+									return;
 								}
 							}
 						}
@@ -420,22 +407,23 @@ namespace AC
 		}
 
 
-		private Vector3 GetStraightToCursorClickPoint ()
+		protected Vector3 GetStraightToCursorClickPoint ()
 		{
 			Vector2 simulatedMouse = KickStarter.playerInput.GetMousePosition ();
 
 			Vector3 clickPoint = ClickPoint (simulatedMouse);
+			
 			if (clickPoint == Vector3.zero)
 			{
 				// Move Ray down screen until we hit something
-				if (KickStarter.settingsManager.walkableClickRange > 0f && ((int) Screen.height * KickStarter.settingsManager.walkableClickRange) > 1)
+				if (KickStarter.settingsManager.walkableClickRange > 0f && ((int) ACScreen.height * KickStarter.settingsManager.walkableClickRange) > 1)
 				{
 					float maxIterations = 100f;
-					float stepSize = Screen.height / maxIterations; // was fixed at 4f
+					float stepSize = ACScreen.height / maxIterations; // was fixed at 4f
 
 					if (KickStarter.settingsManager.navMeshSearchDirection == NavMeshSearchDirection.StraightDownFromCursor)
 					{
-						for (float i=1f; i<Screen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
+						for (float i=1f; i< ACScreen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
 						{
 							// Down
 							clickPoint = ClickPoint (new Vector2 (simulatedMouse.x, simulatedMouse.y - i));
@@ -443,7 +431,7 @@ namespace AC
 						}
 					}
 
-					for (float i=1f; i<Screen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
+					for (float i=1f; i< ACScreen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
 					{
 						// Up
 						clickPoint = ClickPoint (new Vector2 (simulatedMouse.x, simulatedMouse.y + i));
@@ -522,7 +510,7 @@ namespace AC
 				else
 				{
 					Vector3 pos = screenPosition;
-					pos.z = KickStarter.player.transform.position.z - KickStarter.CameraMain.transform.position.z;
+					pos.z = KickStarter.player.Transform.position.z - KickStarter.CameraMainTransform.position.z;
 
 					if (onNavMesh)
 					{
@@ -543,7 +531,7 @@ namespace AC
 					}
 				}
 				
-				if (hit.collider != null)
+				if (hit.collider)
 				{
 					return hit.point;
 				}
@@ -575,7 +563,7 @@ namespace AC
 		
 		// Drag functions
 
-		private void DragPlayer (bool doRotation, Vector2 moveKeys)
+		protected void DragPlayer (bool doRotation, Vector2 moveKeys)
 		{
 			if (KickStarter.playerInput.GetDragState () == DragState.None)
 			{
@@ -600,7 +588,7 @@ namespace AC
 				}
 				else
 				{
-					moveDirectionInput = (moveKeys.y * KickStarter.mainCamera.ForwardVector ()) + (moveKeys.x * KickStarter.mainCamera.RightVector ());
+					moveDirectionInput = (moveKeys.y * MainCamera.ForwardVector ()) + (moveKeys.x * MainCamera.RightVector ());
 				}
 				
 				if (KickStarter.playerInput.IsDragMoveSpeedOverWalkThreshold ())
@@ -636,7 +624,7 @@ namespace AC
 		}
 
 
-		private void DragPlayerTouch (Vector2 moveKeys)
+		protected void DragPlayerTouch (Vector2 moveKeys)
 		{
 			if (KickStarter.playerInput.GetDragState () == DragState.None)
 			{
@@ -650,14 +638,14 @@ namespace AC
 			
 			if (KickStarter.playerInput.GetDragState () == DragState.Player)
 			{
-				Vector3 moveDirectionInput = (moveKeys.y * KickStarter.mainCamera.ForwardVector ()) + (moveKeys.x * KickStarter.mainCamera.RightVector ());
+				Vector3 moveDirectionInput = (moveKeys.y * MainCamera.ForwardVector ()) + (moveKeys.x * MainCamera.RightVector ());
 
 				if (KickStarter.playerInput.IsDragMoveSpeedOverWalkThreshold ())
 				{
 					KickStarter.player.isRunning = KickStarter.playerInput.IsPlayerControlledRunning ();
 					KickStarter.player.charState = CharState.Move;
 
-					KickStarter.player.SetMoveDirection (KickStarter.player.transform.position + moveDirectionInput);
+					KickStarter.player.SetMoveDirection (KickStarter.player.Transform.position + moveDirectionInput);
 				}
 				else
 				{
@@ -671,52 +659,75 @@ namespace AC
 
 
 		// Direct-control functions
-		
-		private void DirectControlPlayer (bool isFirstPerson, Vector2 moveKeys)
+
+		private Vector2 lastFrameMoveKeys;
+		private Vector3 cameraAlignedInput;
+
+		protected void DirectControlPlayer (bool isFirstPerson, Vector2 moveKeys)
 		{
 			KickStarter.player.CancelPathfindRecalculations ();
 			if (KickStarter.settingsManager.directMovementType == DirectMovementType.RelativeToCamera)
 			{
-				if (moveKeys != Vector2.zero)
+				if (moveKeys.sqrMagnitude > 0f)
 				{
-					Vector3 moveDirectionInput = Vector3.zero;
-
-					if (SceneSettings.IsTopDown ())
+					// When using input keys, releasing both simultaneously sometimes has a 1-frame lag.
+					// Here, this is countered by detecting a change and skipping the input
+					bool releasedOneAxis = false;
+					if ((moveKeys.x == 0f && lastFrameMoveKeys.x != 0f) ||
+						(moveKeys.y == 0f && lastFrameMoveKeys.y != 0f))
 					{
-						moveDirectionInput = (moveKeys.y * Vector3.forward) + (moveKeys.x * Vector3.right);
+						releasedOneAxis = true;
 					}
-					else
+
+					lastFrameMoveKeys = moveKeys;
+					if (releasedOneAxis)
 					{
-						if (!isFirstPerson && KickStarter.settingsManager.directMovementPerspective && SceneSettings.CameraPerspective == CameraPerspective.ThreeD)
+						return;
+					}
+
+					if (!KickStarter.playerInput.IsCameraLockSnapped ())
+					{
+						if (SceneSettings.IsTopDown ())
 						{
-							Vector3 forwardVector = (KickStarter.player.transform.position - KickStarter.CameraMain.transform.position).normalized;
-							Vector3 rightVector = -Vector3.Cross (forwardVector, KickStarter.CameraMain.transform.up);
-							moveDirectionInput = (moveKeys.y * forwardVector) + (moveKeys.x * rightVector);
+							cameraAlignedInput = (moveKeys.y * Vector3.forward) + (moveKeys.x * Vector3.right);
 						}
 						else
 						{
-							moveDirectionInput = (moveKeys.y * KickStarter.mainCamera.ForwardVector ()) + (moveKeys.x * KickStarter.mainCamera.RightVector ());
+							if (!isFirstPerson && KickStarter.settingsManager.directMovementPerspective && SceneSettings.CameraPerspective == CameraPerspective.ThreeD)
+							{
+								Vector3 forwardVector = (KickStarter.player.Transform.position - KickStarter.CameraMainTransform.position).normalized;
+								Vector3 rightVector = -Vector3.Cross (forwardVector, KickStarter.CameraMainTransform.up);
+								cameraAlignedInput = (moveKeys.y * forwardVector) + (moveKeys.x * rightVector);
+							}
+							else
+							{
+								cameraAlignedInput = (moveKeys.y * MainCamera.ForwardVector ()) + (moveKeys.x * MainCamera.RightVector ());
+							}
 						}
 					}
 
 					KickStarter.player.isRunning = KickStarter.playerInput.IsPlayerControlledRunning ();
+					if (isFirstPerson && moveKeys.y < 0f && !KickStarter.player.canRunInReverse) KickStarter.player.isRunning = false;
 					KickStarter.player.charState = CharState.Move;
 
-					if (!KickStarter.playerInput.cameraLockSnap)
+					if (isFirstPerson)
 					{
-						if (isFirstPerson)
-						{
-							KickStarter.player.SetMoveDirection (moveDirectionInput);
-						}
-						else
-						{
-							KickStarter.player.SetLookDirection (moveDirectionInput, KickStarter.settingsManager.directTurnsInstantly);
-							KickStarter.player.SetMoveDirectionAsForward ();
-						}
+						KickStarter.player.SetMoveDirection (cameraAlignedInput, AC.KickStarter.settingsManager.firstPersonMovementSmoothing);
+					}
+					else
+					{
+						KickStarter.player.SetLookDirection (cameraAlignedInput, KickStarter.settingsManager.directTurnsInstantly);
+						KickStarter.player.SetMoveDirectionAsForward ();
 					}
 				}
-				else if (KickStarter.player.charState == CharState.Move && KickStarter.playerInteraction.GetHotspotMovingTo () == null)
+				else if (KickStarter.player.charState == CharState.Move && KickStarter.playerInteraction.GetHotspotMovingTo () == null && !KickStarter.player.IsPathfinding ())
 				{
+					if (KickStarter.settingsManager.stopTurningWhenReleaseInput && !isFirstPerson)
+					{
+						KickStarter.player.SetLookDirection (KickStarter.player.TransformForward, false);
+						KickStarter.player.SetMoveDirectionAsForward ();
+					}
+
 					KickStarter.player.charState = CharState.Decelerate;
 				}
 			}
@@ -762,7 +773,7 @@ namespace AC
 				}
 				else if (moveKeys.y < 0f)
 				{
-					KickStarter.player.isRunning = KickStarter.playerInput.IsPlayerControlledRunning ();
+					KickStarter.player.isRunning = KickStarter.player.canRunInReverse && KickStarter.playerInput.IsPlayerControlledRunning ();
 					KickStarter.player.charState = CharState.Move;
 					KickStarter.player.SetMoveDirectionAsBackward ();
 				}
@@ -783,11 +794,11 @@ namespace AC
 		}
 
 
-		private void DirectControlPlayerPath (Vector2 moveKeys)
+		protected void DirectControlPlayerPath (Vector2 moveKeys)
 		{
 			if (moveKeys != Vector2.zero)
 			{
-				Vector3 moveDirectionInput = Vector3.zero;
+				Vector3 moveDirectionInput;
 
 				if (SceneSettings.IsTopDown ())
 				{
@@ -795,14 +806,30 @@ namespace AC
 				}
 				else
 				{
-					moveDirectionInput = (moveKeys.y * KickStarter.mainCamera.ForwardVector ()) + (moveKeys.x * KickStarter.mainCamera.RightVector ());
+					moveDirectionInput = (moveKeys.y * MainCamera.ForwardVector ()) + (moveKeys.x * MainCamera.RightVector ());
+
+					if (SceneSettings.IsUnity2D ())
+					{
+						moveDirectionInput = new Vector3 (moveDirectionInput.x, moveDirectionInput.z, moveDirectionInput.y);
+					}
 				}
 
-				if (Vector3.Dot (moveDirectionInput, KickStarter.player.GetMoveDirection ()) > 0f)
+				Vector3 direction = KickStarter.player.GetPath ().nodes[KickStarter.player.GetTargetNode ()] - KickStarter.player.Transform.position;
+				if (SceneSettings.IsUnity2D ())
+				{
+					direction.z = 0f;
+				}
+
+				float dotProduct = Vector3.Dot (moveDirectionInput, direction.normalized);
+				if (dotProduct > 0.5f)
 				{
 					// Move along path, because movement keys are in the path's forward direction
 					KickStarter.player.isRunning = KickStarter.playerInput.IsPlayerControlledRunning ();
 					KickStarter.player.charState = CharState.Move;
+				}
+				else if (dotProduct < -0.5f)
+				{
+					KickStarter.player.ReverseDirectPathDirection ();
 				}
 			}
 			else
@@ -817,19 +844,19 @@ namespace AC
 
 		// Point/click functions
 		
-		private void PointControlPlayer ()
+		protected void PointControlPlayer ()
 		{
 			if (KickStarter.playerInput.IsCursorLocked ())
 			{
 				return;
 			}
 
-			if (!KickStarter.mainCamera.IsPointInCamera (KickStarter.playerInput.GetMousePosition ()))
+			if (KickStarter.mainCamera && !KickStarter.mainCamera.IsPointInCamera (KickStarter.playerInput.GetMousePosition ()))
 			{
 				return;
 			}
 
-			if (KickStarter.playerInput.AllDirectionsLocked ())
+			if (KickStarter.player.AllDirectionsLocked ())
 			{
 				if (KickStarter.player.GetPath () == null && KickStarter.player.charState == CharState.Move)
 				{
@@ -837,10 +864,10 @@ namespace AC
 				}
 				return;
 			}
-
+			
 			if ((KickStarter.playerInput.GetMouseState () == MouseState.SingleClick || KickStarter.playerInput.GetMouseState () == MouseState.DoubleClick) && !KickStarter.playerMenus.IsInteractionMenuOn () && !KickStarter.playerMenus.IsMouseOverMenu () && !KickStarter.playerInteraction.IsMouseOverHotspot () && KickStarter.playerCursor)
 			{
-				if (KickStarter.playerCursor.GetSelectedCursor () < 0)
+				if (KickStarter.playerCursor.GetSelectedCursor () < 0 || KickStarter.playerCursor.IsInWalkMode ())
 				{
 					if (KickStarter.settingsManager.doubleClickMovement == DoubleClickMovement.RequiredToWalk && KickStarter.playerInput.GetMouseState () == MouseState.SingleClick)
 					{
@@ -852,7 +879,7 @@ namespace AC
 						return;
 					}
 
-					if (KickStarter.runtimeInventory.SelectedItem != null && !KickStarter.settingsManager.canMoveWhenActive && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick && !KickStarter.settingsManager.inventoryDisableLeft)
+					if (InvInstance.IsValid (KickStarter.runtimeInventory.SelectedInstance) && !KickStarter.settingsManager.canMoveWhenActive && KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick && !KickStarter.settingsManager.inventoryDisableLeft)
 					{
 						return;
 					}
@@ -863,10 +890,53 @@ namespace AC
 						doubleClick = true;
 					}
 
-					if (KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseHotspotThenInteraction && KickStarter.playerMenus != null)
+					if (KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseHotspotThenInteraction && KickStarter.playerMenus)
 					{
 						KickStarter.playerMenus.CloseInteractionMenus ();
 					}
+
+					#if UNITY_2019_1_OR_NEWER
+					if (SceneSettings.IsUnity2D () && KickStarter.settingsManager.navMeshSearchDirection == NavMeshSearchDirection.RadiallyOutwardsFromCursor && KickStarter.sceneSettings.navMesh)//&& KickStarter.sceneSettings.navMesh.gameObject.layer == LayerMask.NameToLayer (KickStarter.settingsManager.navMeshLayer))
+					{
+						int numPolys = KickStarter.sceneSettings.navMesh.PolygonCollider2Ds.Length;
+
+						if (numPolys > 0)
+						{
+							Vector3 bestClickPoint = Vector3.zero;
+							float bestDist = Mathf.Infinity;
+
+							Vector3 screenPoint = KickStarter.playerInput.GetMousePosition ();
+							float depth = Mathf.Abs (KickStarter.sceneSettings.navMesh.transform.position.z - KickStarter.mainCamera.Transform.position.z);
+							screenPoint.z = depth;
+							Vector3 worldPoint = KickStarter.CameraMain.ScreenToWorldPoint (screenPoint);
+
+							for (int i = 0; i < numPolys; i++)
+							{
+								PolygonCollider2D polygonCollider2D = KickStarter.sceneSettings.navMesh.PolygonCollider2Ds[i];
+								if (polygonCollider2D)
+								{
+									Vector3 clickPoint = polygonCollider2D.ClosestPoint (worldPoint);
+									
+									if (numPolys == 1)
+									{
+										ProcessHit (clickPoint, null, doubleClick);
+										return;
+									}
+
+									float dist = (clickPoint - worldPoint).sqrMagnitude;
+									if (i == 0 || dist < bestDist)
+									{
+										bestDist = dist;
+										bestClickPoint = clickPoint;
+									}
+								}
+							}
+
+							ProcessHit (bestClickPoint, null, doubleClick);
+							return;
+						}
+					}
+					#endif
 
 					Vector3 simulatedMouse = KickStarter.playerInput.GetMousePosition ();
 
@@ -879,10 +949,10 @@ namespace AC
 					{
 						// Move Ray down screen until we hit something
 
-						if (KickStarter.settingsManager.walkableClickRange > 0f && ((int) Screen.height * KickStarter.settingsManager.walkableClickRange) > 1)
+						if (KickStarter.settingsManager.walkableClickRange > 0f && ((int) ACScreen.height * KickStarter.settingsManager.walkableClickRange) > 1)
 						{
 							float maxIterations = 100f;
-							float stepSize = Screen.height / maxIterations; // was fixed at 4f
+							float stepSize = ACScreen.height / maxIterations; // was fixed at 4f
 
 							if (KickStarter.settingsManager.navMeshSearchDirection == NavMeshSearchDirection.StraightDownFromCursor)
 							{
@@ -896,7 +966,7 @@ namespace AC
 								}
 								else
 								{
-									for (float i=1f; i<Screen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
+									for (float i=1f; i< ACScreen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
 									{
 										// Down
 										if (RaycastNavMesh (new Vector2 (simulatedMouse.x, simulatedMouse.y - i), doubleClick))
@@ -907,10 +977,10 @@ namespace AC
 								}
 							}
 
-							for (float i=1f; i<Screen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
+							if (SceneSettings.IsUnity2D ())
 							{
 								// Up
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x, simulatedMouse.y + i), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, Vector2.up, doubleClick))
 								{
 									return;
 								}
@@ -918,40 +988,90 @@ namespace AC
 								if (KickStarter.settingsManager.navMeshSearchDirection == NavMeshSearchDirection.RadiallyOutwardsFromCursor)
 								{
 									// Down
-									if (RaycastNavMesh (new Vector2 (simulatedMouse.x, simulatedMouse.y - i), doubleClick))
+									if (SearchForNavMesh2D (simulatedMouse, -Vector2.up, doubleClick))
 									{
 										return;
 									}
 								}
 								// Left
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, -Vector2.right, doubleClick))
 								{
 									return;
 								}
 								// Right
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, Vector2.right, doubleClick))
 								{
 									return;
 								}
 								// DownLeft
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y - i), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, -Vector2.one, doubleClick))
 								{
 									return;
 								}
 								// DownRight
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y - i), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, new Vector2 (1f, -1f), doubleClick))
 								{
 									return;
 								}
 								// UpLeft
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y + i), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, new Vector2 (-1f, 1f), doubleClick))
 								{
 									return;
 								}
 								// UpRight
-								if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y + i), doubleClick))
+								if (SearchForNavMesh2D (simulatedMouse, Vector2.one, doubleClick))
 								{
 									return;
+								}
+							}
+							else
+							{
+								for (float i=1f; i< ACScreen.height * KickStarter.settingsManager.walkableClickRange; i+=stepSize)
+								{
+									// Up
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x, simulatedMouse.y + i), doubleClick))
+									{
+										return;
+									}
+
+									if (KickStarter.settingsManager.navMeshSearchDirection == NavMeshSearchDirection.RadiallyOutwardsFromCursor)
+									{
+										// Down
+										if (RaycastNavMesh (new Vector2 (simulatedMouse.x, simulatedMouse.y - i), doubleClick))
+										{
+											return;
+										}
+									}
+									// Left
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y), doubleClick))
+									{
+										return;
+									}
+									// Right
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y), doubleClick))
+									{
+										return;
+									}
+									// DownLeft
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y - i), doubleClick))
+									{
+										return;
+									}
+									// DownRight
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y - i), doubleClick))
+									{
+										return;
+									}
+									// UpLeft
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x - i, simulatedMouse.y + i), doubleClick))
+									{
+										return;
+									}
+									// UpRight
+									if (RaycastNavMesh (new Vector2 (simulatedMouse.x + i, simulatedMouse.y + i), doubleClick))
+									{
+										return;
+									}
 								}
 							}
 						}
@@ -970,50 +1090,69 @@ namespace AC
 		}
 
 
-		private bool ProcessHit (Vector3 hitPoint, GameObject hitObject, bool run)
+		protected bool ProcessHit (Vector3 hitPoint, GameObject hitObject, bool run)
 		{
-			if (hitObject.layer != LayerMask.NameToLayer (KickStarter.settingsManager.navMeshLayer))
+			if (hitObject && hitObject.layer != LayerMask.NameToLayer (KickStarter.settingsManager.navMeshLayer))
 			{
 				return false;
 			}
 
-			if (Vector3.Distance (hitPoint, KickStarter.player.transform.position) < KickStarter.settingsManager.GetDestinationThreshold ())
+			if (Vector3.Distance (hitPoint, KickStarter.player.Transform.position) < KickStarter.settingsManager.GetDestinationThreshold ())
 			{
 				return true;
 			}
 
-			if (!run)
-			{
-				ShowClick (hitPoint);
-			}
-
-			if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysRun)
+			bool canShowClick = !run;
+			
+			if (KickStarter.player.runningLocked == PlayerMoveLock.AlwaysRun)
 			{
 				run = true;
 			}
-			else if (KickStarter.playerInput.runLock == PlayerMoveLock.AlwaysWalk)
+			else if (KickStarter.player.runningLocked == PlayerMoveLock.AlwaysWalk)
 			{
 				run = false;
 			}
-			else if (Vector3.Distance (hitPoint, KickStarter.player.transform.position) < KickStarter.player.runDistanceThreshold)
+			else if (Vector3.Distance (hitPoint, KickStarter.player.Transform.position) < KickStarter.player.runDistanceThreshold)
 			{
 				run = false;
 			}
 
-			Vector3[] pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (KickStarter.player.transform.position, hitPoint, KickStarter.player);
+			Vector3[] pointArray = KickStarter.navigationManager.navigationEngine.GetPointsArray (KickStarter.player.Transform.position, hitPoint, KickStarter.player);
 			PointMovePlayer (pointArray, run);
+
+			if (canShowClick)
+			{
+				switch (KickStarter.settingsManager.clickMarkerPosition)
+				{
+					case ClickMarkerPosition.ColliderContactPoint:
+						ShowClick (hitPoint);
+						break;
+
+					case ClickMarkerPosition.PlayerDestination:
+						if (pointArray.Length > 0)
+							ShowClick (pointArray[pointArray.Length - 1]);
+						break;
+				}
+			}
+
 			return true;
 		}
 
 
-		private void PointMovePlayer (Vector3[] pointArray, bool run)
+		protected void PointMovePlayer (Vector3[] pointArray, bool run)
 		{
+			if (KickStarter.player.AllDirectionsLocked ())
+			{
+				ACDebug.LogWarning ("Cannot move the Player because their Movement has been locked.");
+				return;
+			}
+
 			KickStarter.eventManager.Call_OnPointAndClick (pointArray, run);
 			KickStarter.player.MoveAlongPoints (pointArray, run);
 		}
 
 
-		private bool SearchForNavMesh2D (Vector2 mousePosition, Vector2 direction, bool run)
+		protected bool SearchForNavMesh2D (Vector2 mousePosition, Vector2 direction, bool run)
 		{
 			RaycastHit2D hit;
 			if (KickStarter.mainCamera.IsOrthographic ())
@@ -1028,7 +1167,7 @@ namespace AC
 			else
 			{
 				Vector3 pos = mousePosition;
-				pos.z = KickStarter.player.transform.position.z - KickStarter.CameraMain.transform.position.z;
+				pos.z = KickStarter.player.Transform.position.z - KickStarter.CameraMainTransform.position.z;
 
 				hit = UnityVersionHandler.Perform2DRaycast (
 					KickStarter.CameraMain.ScreenToWorldPoint (pos),
@@ -1038,7 +1177,7 @@ namespace AC
 					);
 			}
 
-			if (hit.collider != null)
+			if (hit.collider)
 			{
 				return ProcessHit (hit.point, hit.collider.gameObject, run);
 			}
@@ -1047,12 +1186,15 @@ namespace AC
 		}
 
 
-		private bool RaycastNavMesh (Vector3 mousePosition, bool run)
+		protected bool RaycastNavMesh (Vector3 mousePosition, bool run)
 		{
-			if (mousePosition.x < 0f || mousePosition.y < 0f || mousePosition.x > Screen.width || mousePosition.y > Screen.height)
+			if (KickStarter.settingsManager.ignoreOffScreenNavMesh)
 			{
-				// Out of camera bounds, ignore
-				return false;
+				if (mousePosition.x < 0f || mousePosition.y < 0f || mousePosition.x > ACScreen.width || mousePosition.y > ACScreen.height)
+				{
+					// Out of camera bounds, ignore
+					return false;
+				}
 			}
 
 			if (KickStarter.navigationManager.Is2D ())
@@ -1063,22 +1205,20 @@ namespace AC
 					hit = UnityVersionHandler.Perform2DRaycast (
 						KickStarter.CameraMain.ScreenToWorldPoint (new Vector2 (mousePosition.x, mousePosition.y)),
 						Vector2.zero,
-						KickStarter.settingsManager.navMeshRaycastLength
-						);
+						KickStarter.settingsManager.navMeshRaycastLength);
 				}
 				else
 				{
 					Vector3 pos = mousePosition;
-					pos.z = KickStarter.player.transform.position.z - KickStarter.CameraMain.transform.position.z;
+					pos.z = KickStarter.player.Transform.position.z - KickStarter.CameraMainTransform.position.z;
 
 					hit = UnityVersionHandler.Perform2DRaycast (
 						KickStarter.CameraMain.ScreenToWorldPoint (pos),
 						Vector2.zero,
-						KickStarter.settingsManager.navMeshRaycastLength
-						);
+						KickStarter.settingsManager.navMeshRaycastLength);
 				}
 
-				if (hit.collider != null)
+				if (hit.collider)
 				{
 					return ProcessHit (hit.point, hit.collider.gameObject, run);
 				}
@@ -1088,7 +1228,7 @@ namespace AC
 				Ray ray = KickStarter.CameraMain.ScreenPointToRay (mousePosition);
 				RaycastHit hit = new RaycastHit();
 				
-				if (KickStarter.settingsManager && KickStarter.sceneSettings && Physics.Raycast (ray, out hit, KickStarter.settingsManager.navMeshRaycastLength))
+				if (Physics.Raycast (ray, out hit, KickStarter.settingsManager.navMeshRaycastLength))
 				{
 					return ProcessHit (hit.point, hit.collider.gameObject, run);
 				}
@@ -1097,12 +1237,11 @@ namespace AC
 		}
 
 
-		private GameObject clickPrefabInstance;
-		private void ShowClick (Vector3 clickPoint)
+		protected void ShowClick (Vector3 clickPoint)
 		{
 			if (KickStarter.settingsManager && KickStarter.settingsManager.clickPrefab)
 			{
-				if (clickPrefabInstance != null && clickPrefabInstance.activeSelf)
+				if (clickPrefabInstance && clickPrefabInstance.activeSelf)
 				{
 					KickStarter.sceneChanger.ScheduleForDeletion (clickPrefabInstance);
 				}
@@ -1114,22 +1253,20 @@ namespace AC
 		
 		// First-person functions
 
-		private void FirstPersonControlPlayer ()
+		protected void FirstPersonControlPlayer ()
 		{
 			Vector2 freeAim = KickStarter.playerInput.GetFreeAim ();
-			if (freeAim.magnitude > KickStarter.settingsManager.dragWalkThreshold / 10f)
+			if (freeAim.magnitude > KickStarter.settingsManager.dragWalkThreshold * 30f * Time.deltaTime)
 			{
 				freeAim.Normalize ();
-				freeAim *= KickStarter.settingsManager.dragWalkThreshold / 10f;
+				freeAim *= KickStarter.settingsManager.dragWalkThreshold * 30f * Time.deltaTime;
 			}
-
-			//float rotationX = KickStarter.player.transform.localEulerAngles.y + freeAim.x * firstPersonCamera.sensitivity.x;
-			//float rotationX = KickStarter.player.TransformRotation.eulerAngles.y + (freeAim.x * firstPersonCamera.sensitivity.x);
+			
 			float rotationX = KickStarter.player.TransformRotation.eulerAngles.y;
-			if (firstPersonCamera != null)
+			if (KickStarter.player.FirstPersonCameraComponent)
 			{
-				rotationX += (freeAim.x * firstPersonCamera.sensitivity.x);
-				firstPersonCamera.IncreasePitch (-freeAim.y);
+				rotationX += (freeAim.x * KickStarter.player.FirstPersonCameraComponent.sensitivity.x);
+				KickStarter.player.FirstPersonCameraComponent.IncreasePitch (-freeAim.y);
 			}
 			else
 			{
@@ -1142,9 +1279,9 @@ namespace AC
 		}
 
 
-		private void DragPlayerLook ()
+		protected void DragPlayerLook ()
 		{
-			if (KickStarter.playerInput.AllDirectionsLocked ())
+			if (KickStarter.player.AllDirectionsLocked ())
 			{
 				return;
 			}
@@ -1164,11 +1301,28 @@ namespace AC
 		}
 
 
-		private bool UnityUIBlocksClick ()
+		protected virtual bool UnityUIBlocksClick ()
 		{
 			if (KickStarter.settingsManager.unityUIClicksAlwaysBlocks)
 			{
-				if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen || KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick || KickStarter.settingsManager.movementMethod == MovementMethod.StraightToCursor || KickStarter.settingsManager.movementMethod == MovementMethod.Drag)
+				#if !UNITY_EDITOR
+				if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen)
+				{
+					if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
+					{
+						if (KickStarter.playerMenus.EventSystem.IsPointerOverGameObject(Input.GetTouch(0).fingerId))
+						{
+							return true;
+						}
+					}
+					return false;
+				}
+				#endif
+
+				if (KickStarter.settingsManager.inputMethod == InputMethod.TouchScreen ||
+					KickStarter.settingsManager.movementMethod == MovementMethod.PointAndClick || 
+					KickStarter.settingsManager.movementMethod == MovementMethod.StraightToCursor || 
+					KickStarter.settingsManager.movementMethod == MovementMethod.Drag)
 				{
 					return KickStarter.playerMenus.EventSystem.IsPointerOverGameObject ();
 				}
@@ -1177,11 +1331,14 @@ namespace AC
 		}
 
 
-		private void OnDestroy ()
+		public GameObject ClickPrefabInstance
 		{
-			firstPersonCamera = null;
+			get
+			{
+				return clickPrefabInstance;
+			}
 		}
-		
+
 	}
 
 }

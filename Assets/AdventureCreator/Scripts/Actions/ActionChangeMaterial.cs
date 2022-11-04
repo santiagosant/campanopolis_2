@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionChangeMaterial.cs"
  * 
@@ -27,27 +27,27 @@ namespace AC
 		public int parameterID = -1;
 
 		public bool isPlayer;
+		public int playerID = -1;
+
 		public GameObject obToAffect;
-		private GameObject runtimeObToAffect;
+		protected GameObject runtimeObToAffect;
+
 		public int materialIndex;
 		public Material newMaterial;
 		public int newMaterialParameterID = -1;
-		
-		
-		public ActionChangeMaterial ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Object;
-			title = "Change material";
-			description = "Changes the material on any scene-based mesh object.";
-		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Object; }}
+		public override string Title { get { return "Change material"; }}
+		public override string Description { get { return "Changes the material on any scene-based mesh object."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				runtimeObToAffect = GetPlayerRenderer (KickStarter.player);
+				Player player = AssignPlayer (playerID, parameters, parameterID);
+				runtimeObToAffect = GetPlayerRenderer (player);
 			}
 			else
 			{
@@ -58,7 +58,7 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeObToAffect && newMaterial)
 			{
@@ -76,10 +76,19 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Affect player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				parameterID = Action.ChooseParameterGUI ("Object to affect:", parameters, parameterID, ParameterType.GameObject);
 				if (parameterID >= 0)
@@ -103,16 +112,14 @@ namespace AC
 			{
 				newMaterial = (Material) EditorGUILayout.ObjectField ("New material:", newMaterial, typeof (Material), false);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			GameObject obToUpdate = obToAffect;
 
-			if (isPlayer)
+			if (isPlayer && (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
 			{
 				if (!fromAssetFile && GameObject.FindObjectOfType <Player>() != null)
 				{
@@ -147,18 +154,39 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (obToAffect && obToAffect == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
-		private GameObject GetPlayerRenderer (Player player)
+		protected GameObject GetPlayerRenderer (Player player)
 		{
 			if (player == null)
 			{
 				return null;
 			}
 
-			if (player.spriteChild != null && player.spriteChild.GetComponent <Renderer>())
+			if (player.spriteChild && player.spriteChild.GetComponent <Renderer>())
 			{
 			    return player.spriteChild.gameObject;
 			}
@@ -183,7 +211,7 @@ namespace AC
 		 */
 		public static ActionChangeMaterial CreateNew (Renderer renderer, Material newMaterial, int materialIndex = 0)
 		{
-			ActionChangeMaterial newAction = (ActionChangeMaterial) CreateInstance <ActionChangeMaterial>();
+			ActionChangeMaterial newAction = CreateNew<ActionChangeMaterial> ();
 			newAction.obToAffect = (renderer != null) ? renderer.gameObject : null;
 			newAction.newMaterial = newMaterial;
 			newAction.materialIndex = materialIndex;

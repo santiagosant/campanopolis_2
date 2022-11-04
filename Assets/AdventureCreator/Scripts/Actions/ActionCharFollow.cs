@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharFollow.cs"
  * 
@@ -11,6 +11,7 @@
  * 
 */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -35,6 +36,11 @@ namespace AC
 		public Char charToFollow;
 		protected Char runtimeCharToFollow;
 		public bool followPlayer;
+		public int followPlayerID = -1;
+
+		public bool movePlayer;
+		public int movePlayerID = 0;
+
 		public bool faceWhenIdle;
 		public float updateFrequency = 2f;
 		public float followDistance = 1f;
@@ -42,25 +48,52 @@ namespace AC
 		public enum FollowType { StartFollowing, StopFollowing };
 		public FollowType followType;
 		public bool randomDirection = false;
-		
-		
-		public ActionCharFollow ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "NPC follow";
-			description = "Makes an NPC follow another Character, whether it be a fellow NPC or the Player. If they exceed a maximum distance from their target, they will run towards them. Note that making an NPC move via another Action will make them stop following anyone.";
-		}
+		public bool followAcrossScenes = false;
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "NPC follow"; }}
+		public override string Description { get { return "Makes an NPC follow another Character, whether it be a fellow NPC or the Player. If they exceed a maximum distance from their target, they will run towards them. Note that making an NPC move via another Action will make them stop following anyone."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			runtimeNpcToMove = AssignFile <NPC> (parameters, npcToMoveParameterID, npcToMoveID, npcToMove);
-			runtimeCharToFollow = AssignFile <Char> (parameters, charToFollowParameterID, charToFollowID, charToFollow);
+			if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && movePlayer)
+			{
+				runtimeNpcToMove = AssignPlayer (movePlayerID, parameters, npcToMoveParameterID);
+			}
+			else
+			{
+				runtimeNpcToMove = AssignFile<NPC> (parameters, npcToMoveParameterID, npcToMoveID, npcToMove);
+			}
+
+			if (followType == FollowType.StartFollowing)
+			{
+				if (followPlayer)
+				{
+					runtimeCharToFollow = AssignPlayer (followPlayerID, parameters, charToFollowParameterID);
+				}
+				else
+				{
+					runtimeCharToFollow = AssignFile<Char> (parameters, charToFollowParameterID, charToFollowID, charToFollow);
+				}
+
+				if (runtimeNpcToMove != null && runtimeNpcToMove == runtimeCharToFollow)
+				{
+					LogWarning ("The character " + runtimeNpcToMove.GetName () + " cannot follow themselves!", runtimeNpcToMove);
+					runtimeNpcToMove = null;
+				}
+
+				if (runtimeNpcToMove != null && runtimeNpcToMove == KickStarter.player)
+				{
+					runtimeNpcToMove = null;
+					LogWarning ("The active Player cannot follow another character.");
+				}
+			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeNpcToMove)
 			{
@@ -70,9 +103,10 @@ namespace AC
 					return 0f;
 				}
 
-				if (followPlayer || (runtimeCharToFollow != null && runtimeCharToFollow != (Char) runtimeNpcToMove))
+				if (runtimeCharToFollow != null)
 				{
-					runtimeNpcToMove.FollowAssign (runtimeCharToFollow, followPlayer, updateFrequency, followDistance, followDistanceMax, faceWhenIdle, randomDirection);
+					bool _followPlayer = (runtimeCharToFollow == KickStarter.player);
+					runtimeNpcToMove.FollowAssign (runtimeCharToFollow, _followPlayer, updateFrequency, followDistance, followDistanceMax, faceWhenIdle, randomDirection, followAcrossScenes);
 				}
 			}
 
@@ -82,28 +116,63 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			npcToMoveParameterID = Action.ChooseParameterGUI ("NPC to affect:", parameters, npcToMoveParameterID, ParameterType.GameObject);
-			if (npcToMoveParameterID >= 0)
+			bool ignoreNPC = false;
+
+			if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
 			{
-				npcToMoveID = 0;
-				npcToMove = null;
+				movePlayer = EditorGUILayout.Toggle ("Move inactive Player?", movePlayer);
+				if (movePlayer)
+				{
+					ignoreNPC = true;
+					npcToMoveParameterID = ChooseParameterGUI ("Move Player ID:", parameters, npcToMoveParameterID, ParameterType.Integer);
+					if (npcToMoveParameterID < 0)
+						movePlayerID = ChoosePlayerGUI (movePlayerID, false);
+				}
 			}
-			else
+
+			if (!ignoreNPC)
 			{
-				npcToMove = (NPC) EditorGUILayout.ObjectField ("NPC to affect:", npcToMove, typeof(NPC), true);
-				
-				npcToMoveID = FieldToID <NPC> (npcToMove, npcToMoveID);
-				npcToMove = IDToField <NPC> (npcToMove, npcToMoveID, false);
+				npcToMoveParameterID = Action.ChooseParameterGUI ("NPC to affect:", parameters, npcToMoveParameterID, ParameterType.GameObject);
+				if (npcToMoveParameterID >= 0)
+				{
+					npcToMoveID = 0;
+					npcToMove = null;
+				}
+				else
+				{
+					npcToMove = (NPC)EditorGUILayout.ObjectField ("NPC to affect:", npcToMove, typeof (NPC), true);
+
+					npcToMoveID = FieldToID<NPC> (npcToMove, npcToMoveID);
+					npcToMove = IDToField<NPC> (npcToMove, npcToMoveID, false);
+				}
 			}
 
 			followType = (FollowType) EditorGUILayout.EnumPopup ("Follow type:", followType);
 			if (followType == FollowType.StartFollowing)
 			{
+				EditorGUILayout.Space ();
+
 				followPlayer = EditorGUILayout.Toggle ("Follow Player?", followPlayer);
-				
-				if (!followPlayer)
+
+				if (followPlayer)
+				{
+					if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+					{
+						charToFollowParameterID = ChooseParameterGUI ("Follow Player ID:", parameters, charToFollowParameterID, ParameterType.Integer);
+						if (charToFollowParameterID < 0)
+						{
+							followPlayerID = ChoosePlayerGUI (followPlayerID, true);
+
+							if (movePlayer && npcToMoveParameterID < 0 && movePlayerID == followPlayerID)
+							{
+								EditorGUILayout.HelpBox ("A character cannot follow themselves.", MessageType.Warning);
+							}
+						}
+					}
+				}
+				else
 				{
 					charToFollowParameterID = Action.ChooseParameterGUI ("Character to follow:", parameters, charToFollowParameterID, ParameterType.GameObject);
 					if (charToFollowParameterID >= 0)
@@ -126,7 +195,6 @@ namespace AC
 							charToFollow = IDToField <Char> (charToFollow, charToFollowID, false);
 						}
 					}
-
 				}
 
 				randomDirection = EditorGUILayout.Toggle ("Randomise position?", randomDirection);
@@ -146,40 +214,42 @@ namespace AC
 					EditorGUILayout.HelpBox ("Maximum distance must be greater than minimum distance.", MessageType.Warning);
 				}
 
-				if (followPlayer)
-				{
-					faceWhenIdle = EditorGUILayout.Toggle ("Faces Player when idle?", faceWhenIdle);
-				}
-				else
-				{
-					faceWhenIdle = EditorGUILayout.Toggle ("Faces character when idle?", faceWhenIdle);
+				faceWhenIdle = EditorGUILayout.Toggle ("Face when idle?", faceWhenIdle);
+
+				if (movePlayer && followPlayer && followPlayerID < 0 && charToFollowParameterID < 0)
+				{ 
+					followAcrossScenes = EditorGUILayout.Toggle ("Follow across scenes?", followAcrossScenes);
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
-				if (!followPlayer && charToFollow != null && charToFollow.GetComponent <NPC>())
+				if (!followPlayer && charToFollow != null && !charToFollow.IsPlayer)
 				{
 					AddSaveScript <RememberNPC> (charToFollow);
 				}
-				AddSaveScript <RememberNPC> (npcToMove);
+				if (!movePlayer || (KickStarter.settingsManager == null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
+				{
+					AddSaveScript<RememberNPC> (npcToMove);
+				}
 			}
 
 			if (!followPlayer)
 			{
 				AssignConstantID <Char> (charToFollow, charToFollowID, charToFollowParameterID);
 			}
-			AssignConstantID <NPC> (npcToMove, npcToMoveID, npcToMoveParameterID);
+			if (!movePlayer || (KickStarter.settingsManager == null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
+			{
+				AssignConstantID<NPC> (npcToMove, npcToMoveID, npcToMoveParameterID);
+			}
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (npcToMove != null)
 			{
@@ -202,6 +272,41 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (npcToMoveParameterID < 0)
+			{
+				if (npcToMove && npcToMove.gameObject == _gameObject) return true;
+				if (npcToMoveID == id) return true;
+			}
+			if (!followPlayer && charToFollowParameterID < 0)
+			{
+				if (charToFollow && charToFollow.gameObject == _gameObject) return true;
+				if (charToFollowID == id) return true;
+			}
+			if (followPlayer && _gameObject && _gameObject.GetComponent <Player>() != null) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (movePlayer)
+			{
+				if (_playerID < 0) return false;
+				if (movePlayerID < 0 && npcToMoveParameterID < 0) return true;
+				if (npcToMoveParameterID < 0 && movePlayerID == _playerID) return true;
+			}
+			if (followPlayer)
+			{
+				if (_playerID < 0) return true;
+				if (followPlayerID < 0 && charToFollowParameterID < 0) return true;
+				if (charToFollowParameterID < 0 && followPlayerID == _playerID) return true;
+			}
+			return false;
+		}
+
 		#endif
 
 
@@ -218,7 +323,7 @@ namespace AC
 		 */
 		public static ActionCharFollow CreateNew_Start (NPC npcToMove, AC.Char characterToFollow, float minimumDistance, float maximumDistance, float updateFrequency = 2f, bool randomisePosition = false, bool faceCharacterWhenIdle = false)
 		{
-			ActionCharFollow newAction = (ActionCharFollow) CreateInstance <ActionCharFollow>();
+			ActionCharFollow newAction = CreateNew<ActionCharFollow> ();
 			newAction.followType = FollowType.StartFollowing;
 			newAction.npcToMove = npcToMove;
 			newAction.charToFollow = characterToFollow;
@@ -238,7 +343,7 @@ namespace AC
 		 */
 		public static ActionCharFollow CreateNew_Stop (NPC npcToMove)
 		{
-			ActionCharFollow newAction = (ActionCharFollow) CreateInstance <ActionCharFollow>();
+			ActionCharFollow newAction = CreateNew<ActionCharFollow> ();
 			newAction.followType = FollowType.StopFollowing;
 			newAction.npcToMove = npcToMove;
 			return newAction;

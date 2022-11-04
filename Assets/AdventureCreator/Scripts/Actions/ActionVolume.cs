@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVolume.cs"
  * 
@@ -9,6 +9,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -34,16 +35,12 @@ namespace AC
 		public int changeTimeParameterID = -1;
 
 
-		public ActionVolume ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Sound;
-			title = "Change volume";
-			description = "Alters the 'relative volume' of any Sound object.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override ActionCategory Category { get { return ActionCategory.Sound; }}
+		public override string Title { get { return "Change volume"; }}
+		public override string Description { get { return "Alters the 'relative volume' of any Sound object."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeSoundObject = AssignFile <Sound> (parameters, parameterID, constantID, soundObject);
 			newRelativeVolume = AssignFloat (parameters, newRelativeVolumeParameterID, newRelativeVolume);
@@ -51,14 +48,14 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
-				if (runtimeSoundObject != null)
+				if (runtimeSoundObject)
 				{
 					runtimeSoundObject.ChangeRelativeVolume (newRelativeVolume, changeTime);
-
+					
 					if (willWait && changeTime > 0f)
 					{
 						isRunning = true;
@@ -77,7 +74,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Sound object:", parameters, parameterID, ParameterType.GameObject);
 			if (parameterID >= 0)
@@ -93,13 +90,13 @@ namespace AC
 				soundObject = IDToField <Sound> (soundObject, constantID, false);
 			}
 
-			newRelativeVolumeParameterID = Action.ChooseParameterGUI ("New relative volume:", parameters, parameterID, ParameterType.Float);
+			newRelativeVolumeParameterID = Action.ChooseParameterGUI ("New relative volume:", parameters, newRelativeVolumeParameterID, ParameterType.Float);
 			if (newRelativeVolumeParameterID < 0)
 			{
 				newRelativeVolume = EditorGUILayout.Slider ("New relative volume:", newRelativeVolume, 0f, 1f);
 			}
 
-			changeTimeParameterID = Action.ChooseParameterGUI ("Change time (s):", parameters, parameterID, ParameterType.Float);
+			changeTimeParameterID = Action.ChooseParameterGUI ("Change time (s):", parameters, changeTimeParameterID, ParameterType.Float);
 			if (changeTimeParameterID < 0)
 			{
 				changeTime = EditorGUILayout.Slider ("Change time (s):", changeTime, 0f, 10f);
@@ -109,12 +106,10 @@ namespace AC
 			{
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -124,7 +119,7 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (soundObject != null)
 			{
@@ -132,7 +127,18 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (soundObject && soundObject.gameObject == gameObject) return true;
+				return (constantID == id && id != 0);
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
+		}
+
 		#endif
 
 
@@ -146,7 +152,7 @@ namespace AC
 		 */
 		public static ActionVolume CreateNew (Sound sound, float newRelativeVolume, float transitionTime = 0.5f, bool waitUntilFinish = false)
 		{
-			ActionVolume newAction = (ActionVolume) CreateInstance <ActionVolume>();
+			ActionVolume newAction = CreateNew<ActionVolume> ();
 			newAction.soundObject = sound;
 			newAction.newRelativeVolume = newRelativeVolume;
 			newAction.changeTime = transitionTime;

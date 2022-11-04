@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCheckMultipleTemplate.cs"
  * 
@@ -20,39 +20,38 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionCheckMultipleTemplate : ActionCheckMultiple
+	public class ActionCheckMultipleTemplate : Action
 	{
 		
+		// Declare properties here
+		public override ActionCategory Category { get { return ActionCategory.Custom; }}
+		public override string Title { get { return "Check multiple template"; }}
+		public override string Description { get { return "This is a blank 'Check multiple' Action template."; }}
+		public override int NumSockets { get { return numSockets; }}
+		
+		
 		// Declare variables here
+		int numSockets = 3;
 		
-		
-		public ActionCheckMultipleTemplate ()
+
+		public override int GetNextOutputIndex ()
 		{
-			this.isDisplayed = true;
-			category = ActionCategory.Custom;
-			title = "Check multiple template";
-			description = "This is a blank 'Check multiple' Action template.";
-		}
+			// Here, we decide which output socket to follow (starting from 0).  Here, we choose one at random:
+			int outputSocketIndex = Random.Range (0, numSockets);
 
-
-		override public ActionEnd End (List<Action> actions)
-		{
-			// Here, we decide which output socket to follow (starting from 0)
-			int outputSocketIndex = 0;
-
-			// Then, we pass this index number onto ProcessResult and return the result
-			return ProcessResult (outputSocketIndex, actions);
+			// Then, we return this value
+			return outputSocketIndex;
 		}
 
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			// Action-specific Inspector GUI code here.
 
-			// Set the number of output sockets here if dynamic, or in the constructor if fixed
-			numSockets = 3;
+			// We can define the number of output sockets with the NumSockets property. Here, we use it to return the variable below, allowing us to dynamically set how many sockets are available
+			numSockets = EditorGUILayout.DelayedIntField ("# of sockets:", numSockets);
 		}
 		
 
@@ -61,14 +60,6 @@ namespace AC
 			// (Optional) Return a string used to describe the specific action's job.
 
 			return string.Empty;
-		}
-
-
-		protected override string GetSocketLabel (int i)
-		{
-			// (Optional) Return an output socket's label, given the index number (starting from 1).
-
-			return "Option " + i.ToString () + ":";
 		}
 
 		#endif

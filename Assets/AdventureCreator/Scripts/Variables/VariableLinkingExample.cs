@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"VariableLinkingExample.cs"
  * 
@@ -21,9 +21,7 @@ namespace AC
 	 * Whenever the AC variable is read or modified, it will be synchronised with this script's 'My Custom Integer' property.
 	 */
 	[AddComponentMenu("Adventure Creator/3rd-party/Variable linking example")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_variable_linking_example.html")]
-	#endif
 	public class VariableLinkingExample : MonoBehaviour
 	{
 

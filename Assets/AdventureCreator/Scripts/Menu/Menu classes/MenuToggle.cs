@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuToggle.cs"
  * 
@@ -35,6 +35,9 @@ namespace AC
 		public ActionListAsset actionListOnClick = null;
 		/** The text that's displayed on-screen */
 		public string label;
+		/** A string to append to the label, before the value */
+		public string labelSuffix = defaultLabelSuffix;
+		private const string defaultLabelSuffix = " : ";
 		/** If True, then the toggle will be in its "on" state by default */
 		public bool isOn;
 		/** The special FX applied to the text (None, Outline, Shadow, OutlineAndShadow) */
@@ -63,18 +66,20 @@ namespace AC
 		/** The translation ID of the 'off' text, as set within SpeechManager */
 		public int offTextLineID = -1;
 
+		#if TextMeshProIsPresent
+		private TMPro.TextMeshProUGUI uiText;
+		#else
 		private Text uiText;
+		#endif
 		private string fullText;
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiToggle = null;
 			uiText = null;
 			label = "Toggle";
+			labelSuffix = defaultLabelSuffix;
 			isOn = false;
 			isVisible = true;
 			isClickable = true;
@@ -121,6 +126,7 @@ namespace AC
 
 			uiText = null;
 			label = _element.label;
+			labelSuffix = _element.labelSuffix;
 			isOn = _element.isOn;
 			textEffects = _element.textEffects;
 			outlineSize = _element.outlineSize;
@@ -142,23 +148,28 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			uiToggle = LinkUIElement <Toggle> (canvas);
 			if (uiToggle)
 			{
+				#if TextMeshProIsPresent
+				uiText = uiToggle.GetComponentInChildren <TMPro.TextMeshProUGUI>();
+				#else
 				uiText = uiToggle.GetComponentInChildren <Text>();
+				#endif
 
 				uiToggle.interactable = isClickable;
 				if (isClickable)
 				{
-					uiToggle.onValueChanged.AddListener ((isOn) => {
-					ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
-					});
+					if (addEventListeners)
+					{
+						uiToggle.onValueChanged.AddListener ((isOn) => {
+						ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
+						});
+					}
+
+					CreateHoverSoundHandler (uiToggle, _menu, 0);
 				}
 			}
 		}
@@ -174,11 +185,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of the element.</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiToggle)
@@ -205,17 +211,21 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuToggle)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			if (source != MenuSource.AdventureCreator)
 			{
 				uiToggle = LinkedUiGUI <Toggle> (uiToggle, "Linked Toggle:", source, "The Unity UI Toggle this is linked to");
 				uiSelectableHideStyle = (UISelectableHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiSelectableHideStyle, apiPrefix + ".uiSelectableHideStyle", "The method by which this element is hidden from view when made invisible");
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 			}
 
 			label = CustomGUILayout.TextField ("Label text:", label, apiPrefix + ".label", "The text that's displayed on-screen");
+			if (!string.IsNullOrEmpty (label))
+			{
+				labelSuffix = CustomGUILayout.TextField ("Label suffix:", labelSuffix, apiPrefix + ".labelSuffix", "A string to append to the label, before the value");
+			}
 			appendState = CustomGUILayout.Toggle ("Append state to label?", appendState, apiPrefix + ".appendState", "If True, then the state (On/Off) will be added to the display label");
 			if (appendState)
 			{
@@ -262,8 +272,9 @@ namespace AC
 					actionListOnClick = (ActionListAsset) CustomGUILayout.ObjectField <ActionListAsset> ("ActionList on click:", actionListOnClick, false, apiPrefix + ".actionListOnClick", "An ActionList asset that will run when the element is clicked on");
 				}
 				alternativeInputButton = CustomGUILayout.TextField ("Alternative input button:", alternativeInputButton, apiPrefix + ".alternativeInputButton", "The name of the input button that triggers the element when pressed");
+				ChangeCursorGUI (menu);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -283,8 +294,8 @@ namespace AC
 		{
 			int numFound = 0;
 
-			string tokenText = "[var:" + _varID.ToString () + "]";
-			if (label.Contains (tokenText))
+			string tokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, _varID);
+			if (label.ToLower ().Contains (tokenText))
 			{
 				numFound ++;
 			}
@@ -294,39 +305,96 @@ namespace AC
 				numFound ++;
 			}
 
-			return numFound + base.GetVariableReferences (_varID);
+			return numFound;
 		}
-		
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			if (label.ToLower ().Contains (oldTokenText))
+			{
+				string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, newVarID);
+				label = label.Replace (oldTokenText, newTokenText);
+				numFound++;
+			}
+
+			if (toggleType == AC_ToggleType.Variable && varID == oldVarID)
+			{
+				numFound++;
+				varID = newVarID;
+			}
+
+			return numFound;
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (isClickable && toggleType != AC_ToggleType.Subtitles && actionListOnClick == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiToggle && uiToggle.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiToggle && uiToggle.gameObject == gameObject)
+			{
+				return 0;
+			}
+			if (uiText && uiText.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
 			CalculateValue ();
 
-			fullText = TranslateLabel (label, languageNumber);
+			fullText = TranslateLabel (languageNumber);
 			if (appendState)
 			{
+				if (!string.IsNullOrEmpty (fullText))
+				{
+					fullText += labelSuffix;
+				}
+
 				if (languageNumber == 0)
 				{
 					if (isOn)
 					{
-						fullText += " : " + onText;
+						fullText += onText;
 					}
 					else
 					{
-						fullText += " : " + offText;
+						fullText += offText;
 					}
 				}
 				else
 				{
 					if (isOn)
 					{
-						fullText += " : " + KickStarter.runtimeLanguages.GetTranslation (onText, onTextLineID, languageNumber);
+						fullText += KickStarter.runtimeLanguages.GetTranslation (onText, onTextLineID, languageNumber, GetTranslationType (0));
 					}
 					else
 					{
-						fullText += " : " + KickStarter.runtimeLanguages.GetTranslation (offText, offTextLineID, languageNumber);
+						fullText += KickStarter.runtimeLanguages.GetTranslation (offText, offTextLineID, languageNumber, GetTranslationType (0));
 					}
 				}
 			}
@@ -343,13 +411,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -361,11 +422,11 @@ namespace AC
 			}
 			
 			Rect rect = ZoomRect (relativeRect, zoom);
-			if (isOn && onTexture != null)
+			if (isOn && onTexture)
 			{
 				GUI.DrawTexture (rect, onTexture, ScaleMode.StretchToFill, true, 0f);
 			}
-			else if (!isOn && offTexture != null)
+			else if (!isOn && offTexture)
 			{
 				GUI.DrawTexture (rect, offTexture, ScaleMode.StretchToFill, true, 0f);
 			}
@@ -379,32 +440,39 @@ namespace AC
 				GUI.Label (rect, fullText, _style);
 			}
 		}
-		
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element</returns>
-		 */
+
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
+		}
+
+
 		public override string GetLabel (int slot, int languageNumber)
 		{
+			string baseLabel = TranslateLabel (languageNumber);
+
 			if (appendState)
 			{
+				if (!string.IsNullOrEmpty (baseLabel))
+				{
+					baseLabel += labelSuffix;
+				}
+
 				if (isOn)
 				{
-					return TranslateLabel (label, languageNumber) + " : " + KickStarter.runtimeLanguages.GetTranslation (onText, onTextLineID, languageNumber);
+					return baseLabel + KickStarter.runtimeLanguages.GetTranslation (onText, onTextLineID, languageNumber, GetTranslationType (0));
 				}
 				
-				return TranslateLabel (label, languageNumber) + " : " + KickStarter.runtimeLanguages.GetTranslation (offText, offTextLineID, languageNumber);
+				return baseLabel + KickStarter.runtimeLanguages.GetTranslation (offText, offTextLineID, languageNumber, GetTranslationType (0));
 			}
-			return TranslateLabel (label, languageNumber);
+			return baseLabel;
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiToggle != null)
+			if (uiToggle)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiToggle.gameObject);
 			}
@@ -412,19 +480,14 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (!_menu.IsClickable ())
 			{
-				return;
+				return false;
 			}
 
-			if (uiToggle != null)
+			if (uiToggle)
 			{
 				isOn = uiToggle.isOn;
 			}
@@ -440,33 +503,30 @@ namespace AC
 				}
 			}
 
-			if (toggleType == AC_ToggleType.Subtitles)
+			switch (toggleType)
 			{
-				Options.SetSubtitles (isOn);
-			}
-			else if (toggleType == AC_ToggleType.Variable)
-			{
-				if (varID >= 0)
-				{
-					GVar var = GlobalVariables.GetVariable (varID);
-					if (var.type == VariableType.Boolean)
+				case AC_ToggleType.Subtitles:
+					Options.SetSubtitles (isOn);
+					break;
+
+				case AC_ToggleType.Variable:
+					if (varID >= 0)
 					{
-						if (isOn)
+						GVar var = GlobalVariables.GetVariable (varID);
+						if (var.type == VariableType.Boolean)
 						{
-							var.val = 1;
+							var.IntegerValue = (isOn) ? 1 : 0;
+							var.Upload (VariableLocation.Global);
 						}
-						else
-						{
-							var.val = 0;
-						}
-						var.Upload (VariableLocation.Global);
 					}
-				}
-			}
-			
-			if (toggleType == AC_ToggleType.CustomScript)
-			{
-				MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
+					break;
+
+				case AC_ToggleType.CustomScript:
+					MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
+					break;
+
+				default:
+					break;
 			}
 
 			if (actionListOnClick)
@@ -474,7 +534,7 @@ namespace AC
 				AdvGame.RunActionListAsset (actionListOnClick);
 			}
 
-			base.ProcessClick (_menu, _slot, _mouseState);
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
@@ -499,7 +559,7 @@ namespace AC
 					GVar var = GlobalVariables.GetVariable (varID);
 					if (var != null && var.type == VariableType.Boolean)
 					{
-						if (var.val == 1)
+						if (var.IntegerValue == 1)
 						{
 							isOn = true;
 						}
@@ -522,16 +582,16 @@ namespace AC
 			int languageNumber = Options.GetLanguage ();
 			if (appendState)
 			{
-				AutoSize (new GUIContent (TranslateLabel (label, languageNumber) + " : Off"));
+				AutoSize (new GUIContent (TranslateLabel (languageNumber) + " : Off"));
 			}
 			else
 			{
-				AutoSize (new GUIContent (TranslateLabel (label, languageNumber)));
+				AutoSize (new GUIContent (TranslateLabel (languageNumber)));
 			}
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 		
 		public string GetTranslatableString (int index)
 		{
@@ -566,8 +626,31 @@ namespace AC
 			}
 		}
 
+		
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC_TextType.MenuElement;
+		}
+
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (index == 0)
+			{
+				label = updatedText;
+			}
+			else if (index == 1)
+			{
+				onText = updatedText;
+			}
+			else
+			{
+				offText = updatedText;
+			}
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -609,12 +692,6 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC_TextType.MenuElement;
-		}
-
-
 		public string GetOwner (int index)
 		{
 			return title;
@@ -644,6 +721,8 @@ namespace AC
 		}
 		
 		#endif
+
+		#endregion
 
 	}
 	

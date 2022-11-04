@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberShapeable.cs"
  * 
@@ -20,25 +20,19 @@ namespace AC
 	 * Attach this to Shapeable objects with shapekey values you wish to save.
 	 */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Shapeable")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_shapeable.html")]
-	#endif
 	public class RememberShapeable : Remember
 	{
 
-		/**
-		 * <summary>Serialises appropriate GameObject values into a string.</summary>
-		 * <returns>The data, serialised as a string</returns>
-		 */
 		public override string SaveData ()
 		{
 			ShapeableData shapeableData = new ShapeableData();
 			shapeableData.objectID = constantID;
 			shapeableData.savePrevented = savePrevented;
 
-			if (GetComponent <Shapeable>())
+			Shapeable shapeable = GetComponent <Shapeable>();
+			if (shapeable)
 			{
-				Shapeable shapeable = GetComponent <Shapeable>();
 				List<int> activeKeyIDs = new List<int>();
 				List<float> values = new List<float>();
 				
@@ -56,20 +50,15 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Deserialises a string of data, and restores the GameObject to its previous state.</summary>
-		 * <param name = "stringData">The data, serialised as a string</param>
-		 */
 		public override void LoadData (string stringData)
 		{
 			ShapeableData data = Serializer.LoadScriptData <ShapeableData> (stringData);
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (GetComponent <Shapeable>())
+			Shapeable shapeable = GetComponent <Shapeable>();
+			if (shapeable)
 			{
-				Shapeable shapeable = GetComponent <Shapeable>();
-
 				int[] activeKeyIDs = StringToIntArray (data._activeKeyIDs);
 				float[] values = StringToFloatArray (data._values);
 

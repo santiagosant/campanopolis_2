@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"BackgroundImageUI.cs"
  * 
@@ -24,16 +24,19 @@ namespace AC
 		public RawImage rawImage;
 		public Texture emptyTexture;
 
-		private RectTransform rawImageRectTransform;
+		protected RectTransform rawImageRectTransform;
 
 		#endregion
 
 
 		#region UnityStandards
 
-		private void Start ()
+		protected void Start ()
 		{
-			rawImageRectTransform = rawImage.GetComponent <RectTransform>();
+			if (rawImage)
+			{
+				rawImageRectTransform = rawImage.GetComponent <RectTransform>();
+			}
 			CorrectLayer ();
 		}
 
@@ -53,7 +56,7 @@ namespace AC
 			if (canvas.worldCamera == null)
 			{
 				BackgroundCamera backgroundCamera = Object.FindObjectOfType <BackgroundCamera>();
-				if (backgroundCamera != null)
+				if (backgroundCamera)
 				{
 					canvas.worldCamera = backgroundCamera.GetComponent <Camera>();
 				}
@@ -100,14 +103,14 @@ namespace AC
 		#endregion
 
 
-		#region PrivateFunctions
+		#region ProtectedFunctions
 
-		private void AssignCamera ()
+		protected void AssignCamera ()
 		{
 			if (canvas.worldCamera == null)
 			{
 				BackgroundCamera backgroundCamera = Object.FindObjectOfType <BackgroundCamera>();
-				if (backgroundCamera != null)
+				if (backgroundCamera)
 				{
 					canvas.worldCamera = backgroundCamera.GetComponent <Camera>();
 				}
@@ -119,7 +122,7 @@ namespace AC
 		}
 
 
-		private void CorrectLayer ()
+		protected void CorrectLayer ()
 		{
 			if (LayerMask.NameToLayer (KickStarter.settingsManager.backgroundImageLayer) == -1)
 			{
@@ -144,13 +147,12 @@ namespace AC
 			{
 				if (instance == null)
 				{ 
-					instance = (BackgroundImageUI) Object.FindObjectOfType <BackgroundImageUI>();
+					instance = FindObjectOfType <BackgroundImageUI>();
 					if (instance == null)
 					{
-						GameObject newInstanceOb = (GameObject) Instantiate (Resources.Load (Resource.backgroundImageUI));
+						GameObject newInstanceOb = Instantiate (Resource.BackgroundImageUI);
 						instance = newInstanceOb.GetComponent <BackgroundImageUI>();
-						newInstanceOb.name = Resource.backgroundImageUI;
-
+						newInstanceOb.name = Resource.BackgroundImageUI.name;
 					}
 				}
 				instance.CorrectLayer ();

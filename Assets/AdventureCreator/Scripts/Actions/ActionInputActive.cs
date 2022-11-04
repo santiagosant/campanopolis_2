@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionInputCheck.cs"
  * 
@@ -11,7 +11,7 @@
  */
 
 using System.Collections.Generic;
-
+using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -27,16 +27,12 @@ namespace AC
 		public bool newState;
 
 		
-		public ActionInputActive ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Input;
-			title = "Toggle active";
-			description = "Enables or disables an Active Input";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Input; }}
+		public override string Title { get { return "Toggle active"; }}
+		public override string Description { get { return "Enables or disables an Active Input"; }}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (KickStarter.settingsManager != null && KickStarter.settingsManager.activeInputs != null)
 			{
@@ -61,8 +57,13 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
+			if (GUILayout.Button ("Actve Inputs window"))
+			{
+				ActiveInputsEditor.Init ();
+			}
+
 			int tempNumber = -1;
 
 			if (KickStarter.settingsManager != null && KickStarter.settingsManager.activeInputs != null && KickStarter.settingsManager.activeInputs.Count > 0)
@@ -84,7 +85,7 @@ namespace AC
 				{
 					// Wasn't found (was deleted?), so revert to zero
 					if (activeInputID != 0)
-						ACDebug.LogWarning ("Previously chosen active input no longer exists!");
+						LogWarning ("Previously chosen active input no longer exists!");
 					tempNumber = 0;
 					activeInputID = 0;
 				}
@@ -95,12 +96,10 @@ namespace AC
 			}
 			else
 			{
-				EditorGUILayout.HelpBox ("No active inputs exist! They can be defined in Adventure Creator -> Editors -> Active Inputs.", MessageType.Info);
+				EditorGUILayout.HelpBox ("No active inputs exist!", MessageType.Info);
 				activeInputID = 0;
 				tempNumber = 0;
 			}
-
-			AfterRunningOption ();
 		}
 		
 		#endif
@@ -114,7 +113,7 @@ namespace AC
 		 */
 		public static ActionInputActive CreateNew (int activeInputID, ChangeType changeType)
 		{
-			ActionInputActive newAction = (ActionInputActive) CreateInstance <ActionInputActive>();
+			ActionInputActive newAction = CreateNew<ActionInputActive> ();
 			newAction.activeInputID = activeInputID;
 			newAction.newState = (changeType == ChangeType.Enable);
 			return newAction;

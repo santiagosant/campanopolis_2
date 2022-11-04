@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionEnd.cs"
  * 
@@ -12,9 +12,7 @@
 namespace AC
 {
 
-	/**
-	 * A data container for the variables that determine what happens when an Action has completed running.
-	 */
+	/** A data container for the variables that determine what happens when an Action has completed running. */
 	[System.Serializable]
 	public class ActionEnd
 	{
@@ -31,9 +29,7 @@ namespace AC
 		public ActionListAsset linkedAsset;
 
 
-		/**
-		 * The default Constructor.
-		 */
+		/* The default Constructor. */
 		public ActionEnd (bool stopAfter = false)
 		{
 			resultAction = (stopAfter) ? ResultAction.Stop : ResultAction.Continue;
@@ -58,35 +54,32 @@ namespace AC
 		}
 
 
-		/**
-		 * A Constructor that sets skipAction explicitly.
-		 */
+		/** A Constructor that sets skipAction explicitly. */
 		public ActionEnd (int _skipAction)
 		{
 			resultAction = ResultAction.Continue;
 			skipAction = _skipAction;
-			skipActionActual = null;
-			linkedCutscene = null;
-			linkedAsset = null;
 		}
 
 
 		public ActionEnd (Action actionAfter)
 		{
-			this.resultAction = ResultAction.Skip;
-			this.skipActionActual = actionAfter;
+			resultAction = ResultAction.Skip;
+			skipActionActual = actionAfter;
 		}
 
 
 		public ActionEnd (Cutscene cutsceneAfter)
 		{
-			this.linkedCutscene = cutsceneAfter;
+			resultAction = ResultAction.RunCutscene;
+			linkedCutscene = cutsceneAfter;
 		}
 
 
 		public ActionEnd (ActionListAsset actionListAssetAfter)
 		{
-			this.linkedAsset = actionListAssetAfter;
+			resultAction = ResultAction.RunCutscene;
+			linkedAsset = actionListAssetAfter;
 		}
 
 	}

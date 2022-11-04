@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberTrigger.cs"
  * 
@@ -15,39 +15,49 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * Attach this script to Trigger objects in the scene whose on/off state you wish to save.
-	 */
+	/** Attach this script to Trigger objects in the scene whose on/off state you wish to save. */
 	[AddComponentMenu("Adventure Creator/Save system/Remember Trigger")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_trigger.html")]
-	#endif
 	public class RememberTrigger : Remember
 	{
+
+		#region Variables
 
 		/** Whether the Trigger should be enabled or not when the game begins */
 		public AC_OnOff startState = AC_OnOff.On;
 
-		private bool loadedData = false;
+		#endregion
 
-		
-		private void Awake ()
+
+		#region UnityStandards
+
+		protected override void Start ()
 		{
+			base.Start ();
+
 			if (loadedData) return;
 
-			if (GameIsPlaying () && GetComponent <AC_Trigger>())
+			if (GameIsPlaying () && isActiveAndEnabled)
 			{
-				if (startState == AC_OnOff.On)
-				{
-					GetComponent <AC_Trigger>().TurnOn ();
-				}
-				else
-				{
-					GetComponent <AC_Trigger>().TurnOff ();
+				AC_Trigger trigger = GetComponent<AC_Trigger>();
+				if (trigger)
+				{ 
+					if (startState == AC_OnOff.On)
+					{
+						trigger.TurnOn ();
+					}
+					else
+					{
+						trigger.TurnOff ();
+					}
 				}
 			}
 		}
-		
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Serialises appropriate GameObject values into a string.</summary>
@@ -59,17 +69,22 @@ namespace AC
 			triggerData.objectID = constantID;
 			triggerData.savePrevented = savePrevented;
 
-			if (GetComponent <Collider>())
+			Collider _collider = GetComponent <Collider>();
+			if (_collider)
 			{
-				triggerData.isOn = GetComponent <Collider>().enabled;
-			}
-			else if (GetComponent <Collider2D>())
-			{
-				triggerData.isOn = GetComponent <Collider2D>().enabled;
+				triggerData.isOn = _collider.enabled;
 			}
 			else
 			{
-				triggerData.isOn = false;
+				Collider2D _collider2D = GetComponent <Collider2D>();
+				if (_collider2D)
+				{
+					triggerData.isOn = _collider2D.enabled;
+				}
+				else
+				{
+					triggerData.isOn = false;
+				}
 			}
 
 			return Serializer.SaveScriptData <TriggerData> (triggerData);
@@ -85,22 +100,28 @@ namespace AC
 			TriggerData data = Serializer.LoadScriptData <TriggerData> (stringData);
 			if (data == null)
 			{
-				loadedData = false;
 				return;
 			}
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			if (GetComponent <Collider>())
+			Collider _collider = GetComponent <Collider>();
+			if (_collider)
 			{
-				GetComponent <Collider>().enabled = data.isOn;
+				_collider.enabled = data.isOn;
 			}
-			else if (GetComponent <Collider2D>())
+			else 
 			{
-				GetComponent <Collider2D>().enabled = data.isOn;
+				Collider2D _collider2D = GetComponent <Collider2D>();
+				if (_collider2D)
+				{
+					_collider2D.enabled = data.isOn;
+				}
 			}
 
 			loadedData = true;
 		}
+
+		#endregion
 
 	}
 

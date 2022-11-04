@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionAmbience.cs"
  * 
@@ -39,19 +39,15 @@ namespace AC
 		public MusicAction musicAction;
 
 		public float loopingOverlapTime = 0f;
-		private Ambience ambience;
+		protected Ambience ambience;
 			
 		
-		public ActionAmbience ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Sound;
-			title = "Play ambience";
-			description = "Plays or queues ambience clips.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Sound; }}
+		public override string Title { get { return "Play ambience"; }}
+		public override string Description { get { return "Plays or queues ambience clips."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			trackID = AssignInteger (parameters, trackIDParameterID, trackID);
 			fadeTime = AssignFloat (parameters, fadeTimeParameterID, fadeTime);
@@ -60,7 +56,7 @@ namespace AC
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (ambience == null) return 0f;
 
@@ -92,7 +88,7 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			if (ambience == null) return;
 
@@ -100,40 +96,37 @@ namespace AC
 		}
 
 
-		private bool CanWaitComplete ()
+		protected bool CanWaitComplete ()
 		{
 			return (!loop && !isQueued && (musicAction == MusicAction.Play || musicAction == MusicAction.Crossfade));
 		}
 
 
-		private float Perform (float _time)
+		protected float Perform (float _time)
 		{
-			if (ambience != null)
+			switch (musicAction)
 			{
-				if (musicAction == MusicAction.Play)
-				{
+				case MusicAction.Play:
 					return ambience.Play (trackID, loop, isQueued, _time, resumeIfPlayedBefore, 0, loopingOverlapTime);
-				}
-				else if (musicAction == MusicAction.Crossfade)
-				{
+
+				case MusicAction.Crossfade:
 					return ambience.Crossfade (trackID, loop, isQueued, _time, resumeIfPlayedBefore, 0, loopingOverlapTime);
-				}
-				else if (musicAction == MusicAction.Stop)
-				{
+
+				case MusicAction.Stop:
 					return ambience.StopAll (_time);
-				}
-				else if (musicAction == MusicAction.ResumeLastStopped)
-				{
+
+				case MusicAction.ResumeLastStopped:
 					return ambience.ResumeLastQueue (_time, resumeFromStart);
-				}
+
+				default:
+					return 0f;
 			}
-			return 0f;
 		}
-		
+
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (AdvGame.GetReferences ().settingsManager != null)
 			{
@@ -198,12 +191,10 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("A Settings Manager must be defined for this Action to function correctly. Please go to your Game Window and assign one.", MessageType.Warning);
 			}
-
-			AfterRunningOption ();
 		}
 
 
-		private int GetTrackIndex (MusicStorage[] musicStorages, List<ActionParameter> parameters, bool showGUI = true)
+		protected int GetTrackIndex (MusicStorage[] musicStorages, List<ActionParameter> parameters, bool showGUI = true)
 		{
 			int trackIndex = -1;
 			List<string> labelList = new List<string>();
@@ -254,7 +245,7 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			string labelAdd = musicAction.ToString ();
 			if (musicAction == MusicAction.Play &&
@@ -262,9 +253,13 @@ namespace AC
 			    AdvGame.GetReferences ().settingsManager.ambienceStorages != null)
 			{
 				int trackIndex = GetTrackIndex (AdvGame.GetReferences ().settingsManager.ambienceStorages.ToArray (), null, false);
-				if (trackIndex >= 0)
+				if (trackIndex >= 0 && trackIndex < AdvGame.GetReferences ().settingsManager.ambienceStorages.Count)
 				{
-					labelAdd += " " + AdvGame.GetReferences ().settingsManager.ambienceStorages[trackIndex].audioClip.name.ToString ();
+					AudioClip clip = AdvGame.GetReferences ().settingsManager.ambienceStorages[trackIndex].audioClip;
+					if (clip != null)
+					{
+						labelAdd += " " + clip.name.ToString ();
+					}
 				}
 			}
 
@@ -286,7 +281,7 @@ namespace AC
 		 */
 		public static ActionAmbience CreateNew_Play (int trackID, bool loop = true, bool addToQueue = false, float transitionTime = 0f, bool doCrossfade = false, bool waitUntilFinish = false)
 		{
-			ActionAmbience newAction = (ActionAmbience) CreateInstance <ActionAmbience>();
+			ActionAmbience newAction = CreateNew<ActionAmbience> ();
 			newAction.musicAction = doCrossfade ? MusicAction.Crossfade : MusicAction.Play;
 			newAction.trackID = trackID;
 			newAction.loop = loop;
@@ -305,7 +300,7 @@ namespace AC
 		 */
 		public static ActionAmbience CreateNew_Stop (float transitionTime = 0f, bool waitUntilFinish = false)
 		{
-			ActionAmbience newAction = (ActionAmbience) CreateInstance <ActionAmbience>();
+			ActionAmbience newAction = CreateNew<ActionAmbience> ();
 			newAction.musicAction = MusicAction.Stop;
 			newAction.fadeTime = transitionTime;
 			newAction.willWait = waitUntilFinish;
@@ -322,7 +317,7 @@ namespace AC
 		 */
 		public static ActionAmbience CreateNew_ResumeLastTrack (float transitionTime = 0f, bool doRestart = false, bool waitUntilFinish = false)
 		{
-			ActionAmbience newAction = (ActionAmbience) CreateInstance <ActionAmbience>();
+			ActionAmbience newAction = CreateNew<ActionAmbience> ();
 			newAction.musicAction = MusicAction.ResumeLastStopped;
 			newAction.fadeTime = transitionTime;
 			newAction.resumeFromStart = doRestart;

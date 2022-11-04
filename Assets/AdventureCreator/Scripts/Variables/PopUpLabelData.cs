@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"PopUpLabelData.cs"
  * 
@@ -18,24 +18,34 @@ using UnityEditor;
 namespace AC
 {
 
-	/**
-	 * A data container for PopUp labels that are shared amongst multiple variables.
-	 */
+	/** A data container for PopUp labels that are shared amongst multiple variables. */
 	[System.Serializable]
 	public class PopUpLabelData : ITranslatable
 	{
 
-		[SerializeField] private string editorLabel = "";
-		[SerializeField] private int id = 1;
-		[SerializeField] private string[] labels = new string[0];
-		[SerializeField] private int lineID = -1;
-		[SerializeField] private bool canTranslate = false;
+		#region Variables
 
+		#if UNITY_EDITOR
+		[SerializeField] protected string editorLabel = "";
+		#endif
+		[SerializeField] protected int id = 1;
+		[SerializeField] protected string[] labels = new string[0];
+		[SerializeField] protected int lineID = -1;
+		[SerializeField] protected bool canTranslate = false;
+
+		public const int MaxPresets = 50;
+
+		#endregion
+
+
+		#region Constructors
 
 		/** The default Constructor */
 		public PopUpLabelData (int[] idArray, string[] existingLabels, int _lineID)
 		{
+			#if UNITY_EDITOR
 			editorLabel = "New label set";
+			#endif
 			labels = new string[0];
 			lineID = _lineID;
 
@@ -58,10 +68,12 @@ namespace AC
 			}
 		}
 
+		#endregion
+
 
 		#if UNITY_EDITOR
 
-		public void ShowGUI (bool canEdit)
+		public void ShowGUI (bool canEdit, Object objectToRecord)
 		{
 			List<string> popUpList = new List<string>();
 			if (labels != null && labels.Length > 0)
@@ -83,6 +95,7 @@ namespace AC
 
 					if (GUILayout.Button ("-", GUILayout.MaxWidth (20f)))
 					{
+						if (objectToRecord != null) Undo.RecordObject (objectToRecord, "Delete PopUp value");
 						popUpList.RemoveAt (i);
 						EditorGUIUtility.editingTextField = false;
 						i=-1;
@@ -93,6 +106,7 @@ namespace AC
 
 				if (GUILayout.Button ("Add new value"))
 				{
+					if (objectToRecord != null) Undo.RecordObject (objectToRecord, "Add PopUp value");
 					popUpList.Add (string.Empty);
 				}
 				labels = popUpList.ToArray ();
@@ -112,6 +126,11 @@ namespace AC
 			else if (canTranslate)
 			{
 				EditorGUILayout.LabelField ("Labels can be translated");
+			}
+
+			if (GUI.changed)
+			{
+				EditorUtility.SetDirty (objectToRecord);
 			}
 
 			EditorGUILayout.HelpBox ("Changes made to this preset will affect all PopUp variables that refer to it.", MessageType.Info);
@@ -150,6 +169,8 @@ namespace AC
 		#endif
 
 
+		#region PublicFunctions
+
 		/**
 		 * <summary>Gets a label value</summary>
 		 * <param name = "index">The label's index number</param>
@@ -164,6 +185,43 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		/**
+		* <summary>Gets if the data can be translated</summary>
+		* <returns>True if the data can be translated</returns>
+		*/
+		public bool CanTranslate ()
+		{
+			if (canTranslate)
+			{
+				return !string.IsNullOrEmpty (GetPopUpsString ());
+			}
+			return false;
+		}
+
+
+		/** 
+		 * <summary>Gets all Popup values combined into a single string</summary>
+		 * <returns>All Popup values combined into a single string</returns>
+		 */
+		public string GetPopUpsString ()
+		{
+			string result = string.Empty;
+			foreach (string label in labels)
+			{
+				result += label + "]";
+			}
+			if (result.Length > 0)
+			{
+				return result.Substring (0, result.Length-1);
+			}
+			return string.Empty;
+		}
+
+		#endregion
+
+
+		#region GetSet
 
 		/** A unique identifier */
 		public int ID
@@ -195,29 +253,27 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Gets if the data can be translated</summary>
-		 * <returns>True if the data can be translated</returns>
-		 */
-		public bool CanTranslate ()
+		/** An array of the labels */
+		public string[] Labels
 		{
-			if (canTranslate)
+			get
 			{
-				return !string.IsNullOrEmpty (GetPopUpsString ());
+				return labels;
 			}
-			return false;
 		}
 
+		#endregion
 
-		/** ITranslatable implementation */
 
-		public virtual string GetTranslatableString (int index)
+		#region ITranslatable
+
+		public string GetTranslatableString (int index)
 		{
 			return GetPopUpsString ();
 		}
 
 
-		public virtual int GetTranslationID (int index)
+		public int GetTranslationID (int index)
 		{
 			return lineID;
 		}
@@ -225,19 +281,36 @@ namespace AC
 
 		#if UNITY_EDITOR
 
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			string[] updatedLabels = updatedText.Split ("]"[0]);
+			if (updatedLabels.Length > 0 && labels.Length == updatedLabels.Length)
+			{
+				for (int i=0; i<updatedLabels.Length; i++)
+				{
+					labels[i] = updatedLabels[i];
+				}
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot update PopUp labels with translation ID = " + lineID + " due to mismatching arrray.");
+			}
+		}
+
+
 		public int GetNumTranslatables ()
 		{
 			return 1;
 		}
 
 
-		public virtual bool HasExistingTranslation (int index)
+		public bool HasExistingTranslation (int index)
 		{
 			return lineID > -1;
 		}
 
 
-		public virtual void SetTranslationID (int index, int _lineID)
+		public void SetTranslationID (int index, int _lineID)
 		{
 			lineID = _lineID;
 		}
@@ -255,13 +328,13 @@ namespace AC
 		}
 
 
-		public virtual AC_TextType GetTranslationType (int index)
+		public AC_TextType GetTranslationType (int index)
 		{
 			return AC_TextType.Variable;
 		}
 
 
-		public virtual bool CanTranslate (int index)
+		public bool CanTranslate (int index)
 		{
 			if (canTranslate)
 			{
@@ -272,20 +345,7 @@ namespace AC
 
 		#endif
 
-
-		public string GetPopUpsString ()
-		{
-			string result = string.Empty;
-			foreach (string label in labels)
-			{
-				result += label + "]";
-			}
-			if (result.Length > 0)
-			{
-				return result.Substring (0, result.Length-1);
-			}
-			return string.Empty;
-		}
+		#endregion
 
 	}
 

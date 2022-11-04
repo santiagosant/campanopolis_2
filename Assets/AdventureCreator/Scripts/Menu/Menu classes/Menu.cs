@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Menu.cs"
  * 
@@ -14,10 +14,14 @@
 
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Serialization;
 using System.Collections.Generic;
-
 #if UNITY_EDITOR
 using UnityEditor;
+#endif
+#if AddressableIsPresent
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 #endif
 
 namespace AC
@@ -34,9 +38,13 @@ namespace AC
 
 		/** The source of the Menu's display information (AdventureCreator, UnityUiPrefab, UnityUiInScene) */ 
 		public MenuSource menuSource = MenuSource.AdventureCreator;
-		/** If a Menu links to Unity UI, the linked Canvas prefab */
-		public Canvas canvas;
+		[SerializeField] private Canvas canvas;
 		private Canvas runtimeCanvas = null;
+
+		/** The Addressable key for the UI Prefab, if the Addressable system is used */
+		public string canvasAssetKey;
+		private int awaitingAddressable;
+
 		/** The ConstantID number of the canvas */
 		public int canvasID = 0;
 		/** A RectTransform that describes the Menu's screen space */
@@ -48,8 +56,7 @@ namespace AC
 		/** The position method for Unity UI-based menus (AbovePlayer, AboveSpeakingCharacter, AppearAtCursorAndFreeze, FollowCursor, Manual, OnHotspot) */
 		public UIPositionType uiPositionType = UIPositionType.Manual;
 
-		/** If True, the Menu is locked off, and won't ever be displayed */
-		public bool isLocked = false;
+		[SerializeField] [FormerlySerializedAs ("isLocked")] private bool _isLocked = false;
 		/** A unique identifier */
 		public int id;
 		/** A name for the Menu, used in PlayerMenus to identify it */
@@ -82,7 +89,7 @@ namespace AC
 		public ActionListAsset actionListOnTurnOff = null;
 		/** If True, the Menu will update while fading out */
 		public bool updateWhenFadeOut = true;
-		/** If True, and the SettingsManager's takeSaveScreenshots = True, then the Menu will be hidden from view if enabled while a save-game screenshot is being taken */
+		/** If True, and save-game screenshots are enabled in the SettingsManager, then the Menu will be hidden from view if enabled while a save-game screenshot is being taken */
 		public bool hideDuringSaveScreenshots = true;
 
 		/** If True, the Menu will be positioned such that it is always completely within the screen boundary */
@@ -160,7 +167,7 @@ namespace AC
 		public Speech speech;
 
 		// Interaction menus
-		private InvItem forItem;
+		private InvInstance forInvInstance;
 		private Hotspot forHotspot;
 
 		private CanvasScaler canvasScaler;
@@ -176,8 +183,7 @@ namespace AC
 		private GameState gameStateWhenTurnedOn;
 		private bool isEnabled;
 		private bool isDisabledForScreenshot = false;
-		private string idString;
-
+		
 		private bool canDoSmoothing = false;
 		private int elementCount = -1;
 
@@ -198,6 +204,7 @@ namespace AC
 		{
 			menuSource = MenuSource.AdventureCreator;
 			canvas = null;
+			canvasAssetKey = string.Empty;
 			runtimeCanvas = null;
 			canvasID = 0;
 			uiPositionType = UIPositionType.Manual;
@@ -241,7 +248,7 @@ namespace AC
 			showWhenPaused = false;
 			canClickInCutscene = false;
 			id = 0;
-			isLocked = false;
+			_isLocked = false;
 			updateWhenFadeOut = true;
 			hideDuringSaveScreenshots = true;
 			positionSmoothing = false;
@@ -290,12 +297,13 @@ namespace AC
 				canvasID = _menu.canvasID;
 				rectTransform = _menu.rectTransform;
 				rectTransformID = _menu.rectTransformID;
+				canvasAssetKey = _menu.canvasAssetKey;
 			}
 			uiTransitionType = _menu.uiTransitionType;
 			uiPositionType = _menu.uiPositionType;
 
 			id = _menu.id;
-			isLocked = _menu.isLocked;
+			_isLocked = _menu._isLocked;
 			title = _menu.title;
 			manualSize = _menu.manualSize;
 			autoSizeEveryFrame = _menu.autoSizeEveryFrame;
@@ -345,13 +353,18 @@ namespace AC
 			hideDuringSaveScreenshots = _menu.hideDuringSaveScreenshots;
 			positionSmoothing = _menu.positionSmoothing;
 
-			idString = id.ToString ();
 			elementCount = -1;
 
 			elements = new List<MenuElement>();
 			bool ignoreUnityUI = (Application.isPlaying && !fromEditor && _menu.menuSource == MenuSource.AdventureCreator);
 			foreach (MenuElement _element in _menu.elements)
 			{
+				if (_element == null)
+				{
+					Debug.LogWarning ("Null element found in menu " + title);
+					continue;
+				}
+
 				MenuElement newElement = _element.DuplicateSelf (fromEditor, ignoreUnityUI);
 				elements.Add (newElement);
 			}
@@ -361,9 +374,10 @@ namespace AC
 
 
 		/**
-		 * Instantiates and initialises a linked Unity UI Canvas, if Unity UI is used for display.
-		 */
-		public void LoadUnityUI ()
+		 * <summary>Instantiates and initialises a linked Unity UI Canvas, if Unity UI is used for display.</summary>
+		 * <param name="addEventListeners">If True, then event listeners will be added to interactive UI components</param>
+		 **/
+		public void LoadUnityUI (bool addEventListeners = true)
 		{
 			if (!IsUnityUI ())
 			{
@@ -373,7 +387,7 @@ namespace AC
 			LocateLocalCanvas ();
 			EnableUI ();
 
-			if (RuntimeCanvas != null)
+			if (RuntimeCanvas)
 			{
 				rectTransform = Serializer.GetGameObjectComponent <RectTransform> (rectTransformID, RuntimeCanvas.gameObject);
 				if (RuntimeCanvas.worldCamera == null)
@@ -381,28 +395,39 @@ namespace AC
 					RuntimeCanvas.worldCamera = KickStarter.CameraMain;
 				}
 
-				if (rectTransform != null && rectTransform.gameObject == RuntimeCanvas.gameObject)
+				if (rectTransform && rectTransform.gameObject == RuntimeCanvas.gameObject)
 				{
 					ACDebug.LogWarning ("The menu '" + title + "' uses its Canvas for its RectTransform boundary. The RectTransform boundary should instead be a child object of the Canvas.", RuntimeCanvas.gameObject);
 				}
 
-				SetParent ();
-
 				canvasGroup = RuntimeCanvas.GetComponent <CanvasGroup>();
 				canvasScaler = RuntimeCanvas.GetComponent <CanvasScaler>();
 				canvasAnimator = RuntimeCanvas.GetComponent <Animator>();
+
+				if (uiTransitionType == UITransition.CanvasGroupFade)
+				{
+					if (canvasGroup == null)
+					{
+						ACDebug.LogWarning ("No Canvas Group component attached to UI prefab " + RuntimeCanvas.name + " - cannot perform fade transition", RuntimeCanvas);
+					}
+					else if (fadeSpeed > 0f && !IsOn ())
+					{
+						canvasGroup.alpha = 0f;
+					}
+				}
 			}
 			else
 			{
-				ACDebug.LogWarning ("The Menu '" + title + "' has its Source set to " + menuSource.ToString () + ", but no Linked Canvas can be found!");
+				if (awaitingAddressable == 0)
+				{
+					ACDebug.LogWarning ("The Menu '" + title + "' has its Source set to " + menuSource.ToString () + ", but no Linked Canvas can be found!");
+				}
+				return;
 			}
 
-			if (IsUnityUI ())
+			foreach (MenuElement _element in elements)
 			{
-				foreach (MenuElement _element in elements)
-				{
-					_element.LoadUnityUI (this, RuntimeCanvas);
-				}
+				_element.LoadUnityUI (this, RuntimeCanvas, addEventListeners);
 			}
 
 			if (!isDuplicate)
@@ -415,7 +440,7 @@ namespace AC
 
 		private void SetAnimState ()
 		{
-			if (IsUnityUI () && uiTransitionType == UITransition.CustomAnimation && fadeSpeed > 0f && RuntimeCanvas != null && canvasAnimator != null)
+			if (IsUnityUI () && uiTransitionType == UITransition.CustomAnimation && fadeSpeed > 0f && RuntimeCanvas && canvasAnimator)
 			{
 				if (!RuntimeCanvas.gameObject.activeSelf)
 				{
@@ -449,33 +474,16 @@ namespace AC
 
 
 		/**
-		 * Places the linked Canvas in the "_UI" hierarchy folder, if Unity UI is used for display.
-		 */
-		public void SetParent ()
-		{
-			#if UNITY_5_4_OR_NEWER
-			return;
-			#else
-
-			if (GetsDuplicated ()) return;
-
-			GameObject uiOb = GameObject.Find ("_UI");
-			if (uiOb != null && RuntimeCanvas != null && RuntimeCanvas.renderMode != RenderMode.WorldSpace)
-			{
-				uiOb.transform.position = Vector3.zero;
-				RuntimeCanvas.transform.SetParent (uiOb.transform);
-			}
-
-			#endif
-		}
-
-
-		/**
 		 * <summary>Checks if the Menu gets duplicated for either each subtitle line or Hotspot.</summary>
 		 * <returns>True if the Menu gets duplicated for either each subtitle line or Hotspot.</returns>
 		 */
 		public bool GetsDuplicated ()
 		{
+			if (menuSource == MenuSource.UnityUiInScene)
+			{
+				return false;
+			}
+
 			if (oneMenuPerSpeech)
 			{
 				return (appearType == AppearType.WhenSpeechPlays);
@@ -500,7 +508,7 @@ namespace AC
 			if (GetsDuplicated ()) return;
 
 			GameObject uiOb = GameObject.Find ("_UI");
-			if (uiOb != null && RuntimeCanvas != null)
+			if (uiOb && RuntimeCanvas)
 			{
 				if (RuntimeCanvas.transform.parent == uiOb.transform)
 				{
@@ -510,23 +518,13 @@ namespace AC
 		}
 
 
-		/**
-		 * Initialises the Menu when the game begins.
-		 */
+		/** Initialises the Menu when the game begins. */
 		public void Initalise ()
 		{
-			if (appearType == AppearType.Manual && enabledOnStart && !isLocked)
-			{
-				transitionProgress = 1f;
-				EnableUI ();
-				TurnOn (false);
-			}
-			else
-			{
-				transitionProgress = 0f;
-				DisableUI ();
-				TurnOff (false);
-			}
+			transitionProgress = 0f;
+			DisableUI ();
+			TurnOff (false);
+			
 			if (transitionType == MenuTransition.Zoom)
 			{
 				zoomAmount = 0f;
@@ -542,41 +540,42 @@ namespace AC
 		}
 
 
-		/**
-		 * Enables the associated Unity UI canvas, if source != MenuSource.AdventureCreator
-		 */
+		public void EnableOnStart ()
+		{
+			if (appearType == AppearType.Manual && enabledOnStart && !isLocked)
+			{
+				transitionProgress = 1f;
+				EnableUI ();
+				TurnOn (false);
+			}
+		}
+
+
+		/** Enables the associated Unity UI canvas, if source != MenuSource.AdventureCreator */
 		public void EnableUI ()
 		{
 			if (menuSource == MenuSource.AdventureCreator || (GetsDuplicated () && !isDuplicate)) return;
 
-			if (RuntimeCanvas != null)
+			if (RuntimeCanvas)
 			{
 				RuntimeCanvas.gameObject.SetActive (true);
 				RuntimeCanvas.enabled = true;
 
-				if (isDuplicate && uiTransitionType == UITransition.CanvasGroupFade && canvasGroup != null && fadeSpeed > 0f)
+				if (uiTransitionType == UITransition.CanvasGroupFade)
 				{
-					canvasGroup.alpha = 0f;
-				}
-
-				if (CanCurrentlyKeyboardControl () && IsClickable ())
-				{
-					if (selected_element == null)
+					if (canvasGroup && isDuplicate && uiTransitionType == UITransition.CanvasGroupFade && fadeSpeed > 0f)
 					{
-						// If manually set with 'Menu: Select element' Action, don't select any element
-						KickStarter.playerMenus.FindFirstSelectedElement ();
+						canvasGroup.alpha = 0f;
 					}
 				}
 			}
 		}
 
 
-		/**
-		 * Disables the associated Unity UI canvas, if source != MenuSource.AdventureCreator
-		 */
+		/** Disables the associated Unity UI canvas, if source != MenuSource.AdventureCreator */
 		public void DisableUI ()
 		{
-			if (RuntimeCanvas != null && menuSource != MenuSource.AdventureCreator)
+			if (RuntimeCanvas && menuSource != MenuSource.AdventureCreator)
 			{
 				isEnabled = false;
 				isFading = false;
@@ -596,7 +595,7 @@ namespace AC
 
 			if (deleteUIWhenTurnOff)
 			{
-				if (RuntimeCanvas != null)
+				if (RuntimeCanvas)
 				{
 					KickStarter.sceneChanger.ScheduleForDeletion (RuntimeCanvas.gameObject);
 				}
@@ -605,29 +604,10 @@ namespace AC
 		}
 
 
-		/**
-		 * Makes all linked UI elements interactive, if the Menu is drawn with Unity UI.
-		 */
-		public void MakeUIInteractive ()
+		/** Updates the interactablity state of the UI elements, if the Menu is drawn with Unity UI. */
+		public void UpdateInteractability ()
 		{
-			SetUIInteractableState (true);
-		}
-
-
-		/**
-		 * Makes all linked UI elements non-interactive, if the Menu is drawn with Unity UI.
-		 */
-		public void MakeUINonInteractive ()
-		{
-			if (!IsClickable ())
-			{
-				SetUIInteractableState (false);
-			}
-		}
-
-
-		private void SetUIInteractableState (bool state)
-		{
+			bool state = IsClickable ();
 			if (menuSource != MenuSource.AdventureCreator)
 			{
 				foreach (MenuElement element in elements)
@@ -647,12 +627,12 @@ namespace AC
 			title = CustomGUILayout.TextField ("Menu name:", title, apiPrefix + ".title", "A name for the menu");
 			menuSource = (MenuSource) CustomGUILayout.EnumPopup ("Source:", menuSource, apiPrefix + ".menuSource", "The source of the menu's display information");
 
-			isLocked = CustomGUILayout.Toggle ("Start game locked off?", isLocked, apiPrefix + ".isLocked", "If True, the menu is locked off, and won't ever be displayed - even if the conditions for its 'Appear type' are met");
-			ignoreMouseClicks = CustomGUILayout.Toggle ("Ignore Cursor clicks?", ignoreMouseClicks, apiPrefix + ".ignoreMouseClicks", "If True, then mouse clicks will be ineffective");
+			_isLocked = CustomGUILayout.Toggle ("Start game locked off?", _isLocked, apiPrefix + ".isLocked", "If True, the menu is locked off, and won't ever be displayed - even if the conditions for its 'Appear type' are met");
+			ignoreMouseClicks = CustomGUILayout.Toggle ("Ignore input?", ignoreMouseClicks, apiPrefix + ".ignoreMouseClicks", "If True, then input will be ineffective");
 			actionListOnTurnOn = ActionListAssetMenu.AssetGUI ("ActionList when turn on:", actionListOnTurnOn, title + "_TurnOn", apiPrefix + ".actionListOnTurnOn", "The ActionList asset to run whenever the menu is enabled");
 			actionListOnTurnOff = ActionListAssetMenu.AssetGUI ("ActionList when turn off:", actionListOnTurnOff, title + "_TurnOff", apiPrefix + ".actionListOnTurnOff", "The ActionList asset to run whenever the menu is disabled");
 
-			if (actionListOnTurnOff != null && ShouldTurnOffWhenLoading ())
+			if (actionListOnTurnOff && ShouldTurnOffWhenLoading ())
 			{
 				EditorGUILayout.HelpBox ("The 'ActionList when turn off' will not be run if the Menu is turned off as a result of loading a save game.  The SaveList element's 'ActionList after load' should be used instead.", MessageType.Warning);
 			}
@@ -689,13 +669,16 @@ namespace AC
 					EditorGUILayout.HelpBox ("Multiple character names should be separated by a colon ';'", MessageType.Info);
 				}
 
-				oneMenuPerSpeech = CustomGUILayout.Toggle ("Duplicate for each line?", oneMenuPerSpeech, apiPrefix + ".oneMenuPerSpeech", "If True, then a new instance of the menu will be created for each speech line");
-				if (oneMenuPerSpeech)
+				if (menuSource != MenuSource.UnityUiInScene)
 				{
-					speechProximityLimit = (SpeechProximityLimit) CustomGUILayout.EnumPopup ("Limit by speaker proximity:", speechProximityLimit, apiPrefix + ".speechProximityLimit", "Determines how the menu is affected by proximity to the speaking character");
-					if (speechProximityLimit != SpeechProximityLimit.NoLimit)
+					oneMenuPerSpeech = CustomGUILayout.Toggle ("Duplicate for each line?", oneMenuPerSpeech, apiPrefix + ".oneMenuPerSpeech", "If True, then a new instance of the menu will be created for each speech line");
+					if (oneMenuPerSpeech)
 					{
-						speechProximityDistance = CustomGUILayout.FloatField ("Max distance from speaker:", speechProximityDistance, apiPrefix + ".speechProximityDistance", "The maximum distance from the speaker to display speech for");
+						speechProximityLimit = (SpeechProximityLimit) CustomGUILayout.EnumPopup ("Limit by speaker proximity:", speechProximityLimit, apiPrefix + ".speechProximityLimit", "Determines how the menu is affected by proximity to the speaking character");
+						if (speechProximityLimit != SpeechProximityLimit.NoLimit)
+						{
+							speechProximityDistance = CustomGUILayout.FloatField ("Max distance from speaker:", speechProximityDistance, apiPrefix + ".speechProximityDistance", "The maximum distance from the speaker to display speech for");
+						}
 					}
 				}
 
@@ -729,7 +712,7 @@ namespace AC
 				}
 			}
 
-			if (KickStarter.settingsManager != null && KickStarter.settingsManager.takeSaveScreenshots)
+			if (KickStarter.settingsManager && KickStarter.settingsManager.saveScreenshots != SaveScreenshots.Never)
 			{
 				hideDuringSaveScreenshots = CustomGUILayout.Toggle ("Hide in save screenshots?", hideDuringSaveScreenshots, apiPrefix + ".hideDuringSaveScreenshots", "If True, the Menu will be hidden while taking save-game screenshots");
 			}
@@ -886,13 +869,22 @@ namespace AC
 
 				if (isInScene)
 				{
-					canvas = (Canvas) CustomGUILayout.ObjectField <Canvas> ("Linked Canvas:", canvas, isInScene, apiPrefix + ".canvas", "The in-scene Canvas GameObject that renders the menu");
+					canvas = (Canvas) CustomGUILayout.ObjectField <Canvas> ("Linked Canvas:", canvas, isInScene, apiPrefix + ".RuntimeCanvas", "The in-scene Canvas GameObject that renders the menu");
 					canvasID = Menu.FieldToID <Canvas> (canvas, canvasID);
 					canvas = Menu.IDToField <Canvas> (canvas, canvasID, menuSource);
 				}
 				else
 				{
-					canvas = (Canvas) CustomGUILayout.ObjectField <Canvas> ("Linked Canvas prefab:", canvas, isInScene, apiPrefix + ".canvas", "The Canvas prefab that renders the menu. This will be spawned into the scene automatically at runtime");
+					if (KickStarter.menuManager.useAddressables)
+					{
+						#if AddressableIsPresent
+						canvasAssetKey = CustomGUILayout.DelayedTextField ("Canvas asset key:", canvasAssetKey, apiPrefix + ".canvasAssetKey", "The Addressable asset key that reference the menu's linked Canvas prefab");
+						#endif
+					}
+					else
+					{
+						canvas = (Canvas) CustomGUILayout.ObjectField <Canvas> ("Linked Canvas prefab:", canvas, isInScene, apiPrefix + ".canvas", "The Canvas prefab that renders the menu. This will be spawned into the scene automatically at runtime");
+					}
 				}
 
 				rectTransform = (RectTransform) CustomGUILayout.ObjectField <RectTransform> ("RectTransform boundary:", rectTransform, true, apiPrefix + ".rectTransform", "A RectTransform that describes the Menu's screen space.");
@@ -904,7 +896,7 @@ namespace AC
 				{
 					firstSelectedElement = CustomGUILayout.TextField ("First selected Element:", firstSelectedElement, apiPrefix + ".firstSelectedElement", "The name of the element to automatically select when the Menu is turned on");
 
-					if (string.IsNullOrEmpty (firstSelectedElement))
+					if (!ignoreMouseClicks && string.IsNullOrEmpty (firstSelectedElement) && elements != null && elements.Count > 0)
 					{
 						EditorGUILayout.HelpBox ("For menus to be directly-navigable, an element to select must be defined above.", MessageType.Warning);
 					}
@@ -930,7 +922,7 @@ namespace AC
 				return _constantID;
 			}
 			
-			if (field.GetComponent <ConstantID>() != null)
+			if (field.GetComponent <ConstantID>())
 			{
 				if (!field.gameObject.activeInHierarchy && field.GetComponent <ConstantID>().constantID == 0)
 				{
@@ -958,13 +950,13 @@ namespace AC
 			T newField = field;
 			if (_constantID != 0)
 			{
-				newField = Serializer.returnComponent <T> (_constantID);
-				if (newField != null && source == MenuSource.UnityUiInScene)
+				newField = ConstantID.GetComponent <T> (_constantID);
+				if (newField && source == MenuSource.UnityUiInScene)
 				{
 					field = newField;
 				}
 				
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.BeginHorizontal ();
 				EditorGUILayout.LabelField ("Recorded ConstantID: " + _constantID.ToString (), EditorStyles.miniLabel);
 				if (field == null && source == MenuSource.UnityUiInScene)
@@ -975,7 +967,7 @@ namespace AC
 					}
 				}
 				EditorGUILayout.EndHorizontal ();
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 			return field;
 		}
@@ -997,6 +989,57 @@ namespace AC
 				}
 			}
 			return numFound;
+		}
+
+
+		/**
+		 * <summary>Updates references the Menu makes to a global variable</summary>
+		 * <param name = "oldVarID">The global variable's original ID number</param>
+		 * <param name = "newVarID">The global variable's new ID number</param>
+		 * <returns>The number of references the Menu makes to the variable</returns>
+		 */
+		public int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+			foreach (MenuElement element in elements)
+			{
+				if (element != null)
+				{
+					numFound += element.UpdateVariableReferences (oldVarID, newVarID);
+				}
+			}
+			return numFound;
+		}
+
+
+		/**
+		 * <summary>Checks if the Menu makes reference to a particular GameObject</summary>
+		 * <param name = "gameObject">The GameObject to check for</param>
+		 * <param name = "id">The GameObject's associated ConstantID value</param>
+		 * <returns>True if the Menu references the GameObject</param>
+		 */
+		public bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (IsUnityUI ())
+			{
+				if (canvas && canvas.gameObject == gameObject) return true;
+				if (rectTransform&& rectTransform.gameObject == gameObject) return true;
+				return (canvasID == id || rectTransformID == id);
+			}
+			return false;
+		}
+
+
+		/**
+		 * <summary>Checks if the Menu makes reference to a particular ActionList asset</summary>
+		 * <param name = "actionListAsset">The ActionList to check for</param>
+		 * <returns>True if the Menu references the ActionList</param>
+		 */
+		public bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (actionListOnTurnOn == actionListAsset) return true;
+			if (actionListOnTurnOff == actionListAsset) return true;
+			return false;
 		}
 
 		#endif
@@ -1074,7 +1117,7 @@ namespace AC
 		{
 			if (IsUnityUI ())
 			{
-				if (RuntimeCanvas != null && rectTransform != null && RuntimeCanvas.renderMode == RenderMode.WorldSpace)
+				if (RuntimeCanvas && rectTransform && RuntimeCanvas.renderMode == RenderMode.WorldSpace)
 				{
 					rectTransform.transform.position = _position;
 					UpdateDefaultRectTransformLocalPosition ();
@@ -1093,14 +1136,14 @@ namespace AC
 		 */
 		public void SetCentre (Vector2 _position, bool useAspectRatio = false)
 		{
-			if (useAspectRatio && KickStarter.settingsManager != null && !KickStarter.settingsManager.forceAspectRatio)
+			if (useAspectRatio && KickStarter.settingsManager && KickStarter.settingsManager.AspectRatioEnforcement == AspectRatioEnforcement.NoneEnforced)
 			{
 				useAspectRatio = false;
 			}
-
+			
 			if (IsUnityUI ())
 			{
-				if (RuntimeCanvas != null && rectTransform != null)
+				if (RuntimeCanvas && rectTransform)
 				{
 					if (RuntimeCanvas.renderMode != RenderMode.WorldSpace)
 					{
@@ -1109,18 +1152,19 @@ namespace AC
 							_position = KickStarter.mainCamera.CorrectScreenPositionForUnityUI (_position);
 						}
 
+						Rect safeScreenRect = ACScreen.safeArea;
+
 						if (fitWithinScreen)
 						{
+							_position -= safeScreenRect.position;
 							float minLeft = rectTransform.sizeDelta.x * (1f - rectTransform.pivot.x) * RuntimeCanvas.scaleFactor * rectTransform.localScale.x;
 							float minTop = rectTransform.sizeDelta.y * (1f - rectTransform.pivot.y) * RuntimeCanvas.scaleFactor * rectTransform.localScale.y;
 							
 							float maxLeft = rectTransform.sizeDelta.x * rectTransform.pivot.x * RuntimeCanvas.scaleFactor * rectTransform.localScale.x;
 							float maxTop = rectTransform.sizeDelta.y * rectTransform.pivot.y * RuntimeCanvas.scaleFactor * rectTransform.localScale.y;
-
-							if (KickStarter.settingsManager.forceAspectRatio)
+							if (KickStarter.settingsManager.AspectRatioEnforcement != AspectRatioEnforcement.NoneEnforced)
 							{
 								Vector2 windowViewportDifference = KickStarter.mainCamera.GetWindowViewportDifference ();
-
 								minLeft += windowViewportDifference.x;
 								maxLeft += windowViewportDifference.x;
 
@@ -1128,40 +1172,47 @@ namespace AC
 								maxTop += windowViewportDifference.y;
 							}
 
-							_position.x = Mathf.Clamp (_position.x, maxLeft, Screen.width - minLeft);
-							_position.y = Mathf.Clamp (_position.y, maxTop, Screen.height - minTop);
-						}
+							_position.x = Mathf.Clamp (_position.x, maxLeft, safeScreenRect.width - minLeft);
+							_position.y = Mathf.Clamp (_position.y, maxTop, safeScreenRect.height - minTop);
 
-						if (RuntimeCanvas.renderMode == RenderMode.ScreenSpaceCamera)
+							_position += safeScreenRect.position;
+						}
+						
+						//if (RuntimeCanvas.renderMode == RenderMode.ScreenSpaceCamera)
+						if (RuntimeCanvas.renderMode == RenderMode.ScreenSpaceCamera || RuntimeCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
 						{
 							float scalerOffset = 1f;
-							if (canvasScaler != null && canvasScaler.enabled && canvasScaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize)
+							
+							if (canvasScaler && canvasScaler.enabled && canvasScaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize)
 							{
 								switch (canvasScaler.screenMatchMode)
-						        {
-						        	case CanvasScaler.ScreenMatchMode.MatchWidthOrHeight:
+								{
+									case CanvasScaler.ScreenMatchMode.MatchWidthOrHeight:
 										float match = canvasScaler.matchWidthOrHeight;
-										scalerOffset = (Screen.width / canvasScaler.referenceResolution.x) * (1 - match) + (Screen.height / canvasScaler.referenceResolution.y) * match;
-						        		break;
+										scalerOffset = ( ACScreen.width / canvasScaler.referenceResolution.x) * (1 - match) + ( ACScreen.height / canvasScaler.referenceResolution.y) * match;
+										break;
 
-						        	case CanvasScaler.ScreenMatchMode.Expand:
-										scalerOffset = Mathf.Min (Screen.width / canvasScaler.referenceResolution.x, Screen.height / canvasScaler.referenceResolution.y);
-						        		break;
+									case CanvasScaler.ScreenMatchMode.Expand:
+										scalerOffset = Mathf.Min ( ACScreen.width / canvasScaler.referenceResolution.x, ACScreen.height / canvasScaler.referenceResolution.y);
+										break;
 
-						        	case CanvasScaler.ScreenMatchMode.Shrink:
-										scalerOffset = Mathf.Max (Screen.width / canvasScaler.referenceResolution.x, Screen.height / canvasScaler.referenceResolution.y);
-						        		break;
-						        }
-						    }
-							Vector3 localTargetPositionUI = new Vector3 ((_position.x - (Screen.width / 2f)) / scalerOffset, (_position.y - (Screen.height / 2f)) / scalerOffset, rectTransform.transform.localPosition.z);
+									case CanvasScaler.ScreenMatchMode.Shrink:
+										scalerOffset = Mathf.Max ( ACScreen.width / canvasScaler.referenceResolution.x, ACScreen.height / canvasScaler.referenceResolution.y);
+										break;
+								}
+							}
+
+							Vector2 diff = new Vector2 ( ACScreen.width, ACScreen.height) - safeScreenRect.position - safeScreenRect.position - safeScreenRect.size;
+							_position += diff / 2f;
+
+							Vector3 localTargetPositionUI = new Vector3 ((_position.x - ( ACScreen.width / 2f)) / scalerOffset, (_position.y - ( ACScreen.height / 2f)) / scalerOffset, rectTransform.transform.localPosition.z);
 
 							if (canDoSmoothing && !IsFading ())
 							{
-								localTargetPositionUI = Vector3.Lerp (rectTransform.transform.position, localTargetPositionUI, Time.deltaTime * 12f);
+								localTargetPositionUI = Vector3.Lerp (rectTransform.localPosition, localTargetPositionUI, Time.deltaTime * 12f);
 							}
 
 							rectTransform.localPosition = localTargetPositionUI;
-
 							UpdateDefaultRectTransformLocalPosition ();
 							return;
 						}
@@ -1183,55 +1234,40 @@ namespace AC
 			Vector2 targetPosition = Vector2.zero;
 			if (useAspectRatio)
 			{
-				Vector2 screenSize = AdvGame.GetMainGameViewSize (true);
-				Vector2 screenOffset = AdvGame.GetMainGameViewOffset ();
+				Vector2 screenSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width,  ACScreen.height);
+
+				Vector2 screenOffset = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetMainGameViewOffset () : Vector2.zero;
+
 				Vector2 centre = new Vector2 ((_position.x * screenSize.x) + screenOffset.x, (_position.y * screenSize.y) + screenOffset.y);
 				targetPosition = new Vector2 (centre.x - (rect.width / 2), centre.y - (rect.height / 2));
-
-				rect.x = centre.x - (rect.width / 2);
-				rect.y = centre.y - (rect.height / 2);
 			}
 			else
 			{
-				Vector2 screenSize = AdvGame.GetMainGameViewSize (false);
+				Vector2 screenSize = ACScreen.safeArea.size;
+
 				Vector2 centre = new Vector2 (_position.x * screenSize.x, _position.y * screenSize.y);
 				targetPosition = new Vector2 (centre.x - (rect.width / 2), centre.y - (rect.height / 2));
 
-				rect.x = centre.x - (rect.width / 2);
-				rect.y = centre.y - (rect.height / 2);
+				targetPosition += new Vector2 (ACScreen.safeArea.x, ACScreen.height - ACScreen.safeArea.height - ACScreen.safeArea.y);
 			}
 
-			rect.x = targetPosition.x;
-			rect.y = targetPosition.y;
-
+			rect.position = targetPosition;
 			FitMenuInsideScreen ();
 
 			UpdateDefaultRectTransformLocalPosition ();
 		}
 
-
+			   
 		private bool CanDoSmoothing (bool forGUI = false)
 		{
-			if ((!CanPause () || !pauseWhenEnabled) &&
+			if (!IsBlocking () && 
 					(forGUI ||
 			   		(positionSmoothing && Application.isPlaying)))
 			{
-				/*if (menuSource == MenuSource.AdventureCreator)
-				{
-					if (positionType == AC_PositionType.AbovePlayer ||
-						positionType == AC_PositionType.AboveSpeakingCharacter ||
-						positionType == AC_PositionType.FollowCursor ||
-						positionType == AC_PositionType.OnHotspot)
-					{
-						return true;
-					}
-				}
-				else*/
 				if (menuSource == MenuSource.UnityUiPrefab)
 				{
 					if (uiPositionType == UIPositionType.AbovePlayer ||
 						uiPositionType == UIPositionType.AboveSpeakingCharacter ||
-						//uiPositionType == UIPositionType.OnHotspot ||
 						uiPositionType == UIPositionType.FollowCursor)
 					{
 						return true;
@@ -1257,8 +1293,8 @@ namespace AC
 					return;
 				}
 
-				Vector2 screenSize = AdvGame.GetMainGameViewSize (true);
-				Vector2 screenOffset = AdvGame.GetMainGameViewOffset();
+				Vector2 screenSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width,  ACScreen.height);
+				Vector2 screenOffset = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetMainGameViewOffset() : Vector2.zero;
 
 				if (rect.x < screenOffset.x)
 				{
@@ -1294,8 +1330,8 @@ namespace AC
 		 */
 		public void Align (TextAnchor _anchor)
 		{
-			Vector2 screenSize = AdvGame.GetMainGameViewSize(true);
-			Vector2 screenOffset = AdvGame.GetMainGameViewOffset();
+			Vector2 screenSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width,  ACScreen.height);
+			Vector2 screenOffset = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetMainGameViewOffset() : Vector2.zero;
 
 			// X
 			if (_anchor == TextAnchor.LowerLeft || _anchor == TextAnchor.MiddleLeft || _anchor == TextAnchor.UpperLeft)
@@ -1329,8 +1365,7 @@ namespace AC
 		
 		private void SetManualSize (Vector2 _size)
 		{
-			Vector2 screenSize = AdvGame.GetMainGameViewSize(true);
-			
+			Vector2 screenSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width, ACScreen.height);
 			rect.width = _size.x * screenSize.x;
 			rect.height = _size.y * screenSize.y;
 		}
@@ -1347,9 +1382,9 @@ namespace AC
 			{
 				return GetRect ().Contains (_point);
 			}
-			else if (rectTransform != null && RuntimeCanvas != null)
+			else if (rectTransform && RuntimeCanvas)
 			{
-				if (ignoreMouseClicks && canvasGroup != null && !canvasGroup.interactable)
+				if (ignoreMouseClicks && canvasGroup && !canvasGroup.interactable)
 				{
 					return false;
 				}
@@ -1364,11 +1399,11 @@ namespace AC
 
 				if (RuntimeCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
 				{
-					answer = RectTransformUtility.RectangleContainsScreenPoint (rectTransform, new Vector2 (_point.x, Screen.height - _point.y), null);
+					answer = RectTransformUtility.RectangleContainsScreenPoint (rectTransform, new Vector2 (_point.x,  ACScreen.height - _point.y), null);
 				}
 				else
 				{
-					answer = RectTransformUtility.RectangleContainsScreenPoint (rectTransform, new Vector2 (_point.x, Screen.height - _point.y), RuntimeCanvas.worldCamera);
+					answer = RectTransformUtility.RectangleContainsScreenPoint (rectTransform, new Vector2 (_point.x,  ACScreen.height - _point.y), RuntimeCanvas.worldCamera);
 				}
 
 				if (turnOffAgain)
@@ -1414,29 +1449,56 @@ namespace AC
 			{
 				Rect rectRelative = _element.GetSlotRectRelative (slot);
 				Rect rectAbsolute = GetRectAbsolute (rectRelative);
-				return (rectAbsolute.Contains (_point));
+				return rectAbsolute.Contains (_point);
 			}
-			else if (RuntimeCanvas != null)
+			else if (RuntimeCanvas)
 			{
-				if (ignoreMouseClicks && canvasGroup != null && !canvasGroup.interactable)
+				if (ignoreMouseClicks && canvasGroup && !canvasGroup.interactable)
 				{
 					return false;
 				}
 
 				RectTransform slotRectTransform = _element.GetRectTransform (slot);
-				if (slotRectTransform != null)
+				if (slotRectTransform)
 				{
 					if (RuntimeCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
 					{
-						return RectTransformUtility.RectangleContainsScreenPoint (slotRectTransform, new Vector2 (_point.x, Screen.height - _point.y), null);
+						return RectTransformUtility.RectangleContainsScreenPoint (slotRectTransform, new Vector2 (_point.x,  ACScreen.height - _point.y), null);
 					}
 					else
 					{
-						return RectTransformUtility.RectangleContainsScreenPoint (slotRectTransform, new Vector2 (_point.x, Screen.height - _point.y), RuntimeCanvas.worldCamera);
+						return RectTransformUtility.RectangleContainsScreenPoint (slotRectTransform, new Vector2 (_point.x,  ACScreen.height - _point.y), RuntimeCanvas.worldCamera);
 					}
 				}
 			}
 			return false;
+		}
+
+
+		/**
+		 * <summary>Gets a Rect describing the boundary (in screen-space) of an element in the Menu</summary>
+		 * <param name = "_element">The Element to get the boundary of</param>
+		 * <param name = "slot">The Element's slot, if it supports multiple slots</param>
+		 * <returns>A Rect describing the Element's boundary in screen-space</returns>
+		 */
+		public Rect GetElementRect (MenuElement _element, int slot)
+		{
+			if (menuSource == MenuSource.AdventureCreator)
+			{
+				Rect rectRelative = _element.GetSlotRectRelative (slot);
+				Rect rectAbsolute = GetRectAbsolute (rectRelative);
+
+				Vector2 invertedCentre = new Vector2 (rectAbsolute.center.x, Screen.height - rectAbsolute.center.y);
+				Rect invertedRect = new Rect (invertedCentre, rectAbsolute.size);
+				return invertedRect;
+			}
+			else if (RuntimeCanvas)
+			{
+				RectTransform slotRectTransform = _element.GetRectTransform (slot);
+				Vector2 size = Vector2.Scale (slotRectTransform.rect.size, slotRectTransform.lossyScale);
+				return new Rect ((Vector2) slotRectTransform.position - (size * 0.5f), size);
+			}
+			return new Rect ();
 		}
 
 
@@ -1576,8 +1638,8 @@ namespace AC
 
 			if (menuSource == MenuSource.AdventureCreator)
 			{
-				Vector2 screenSize = AdvGame.GetMainGameViewSize(true);
-			   
+				Vector2 screenSize = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size : new Vector2 ( ACScreen.width, ACScreen.height);
+
 				rect.width = (spacing / 100f * screenSize.x) + biggestElementSize.x;
 				rect.height = (spacing / 100f * screenSize.x) + biggestElementSize.y;
 				manualSize = new Vector2(rect.width * 100f / screenSize.x, rect.height * 100f / screenSize.y);
@@ -1615,21 +1677,25 @@ namespace AC
 				}
 				else if (orientation == MenuOrientation.Horizontal)
 				{
+					float xFactor = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size.x : ACScreen.width;
+
 					if (element.positionType == AC_PositionType2.Aligned)
 					{
-						element.SetPosition (new Vector2 ((spacing / 100 * AdvGame.GetMainGameViewSize (true).x) + totalLength, (spacing / 100 * AdvGame.GetMainGameViewSize (true).x)));
+						element.SetPosition (new Vector2 ((spacing / 100 * xFactor) + totalLength, (spacing / 100 * xFactor)));
 					}
 					
-					totalLength += element.GetSize().x + (spacing / 100 * AdvGame.GetMainGameViewSize (true).x);
+					totalLength += element.GetSize().x + (spacing / 100 * xFactor);
 				}
 				else
 				{
+					float xFactor = (KickStarter.mainCamera) ? KickStarter.mainCamera.GetPlayableScreenArea (false).size.x : ACScreen.width;
+
 					if (element.positionType == AC_PositionType2.Aligned)
 					{
-						element.SetPosition (new Vector2 ((spacing / 100 * AdvGame.GetMainGameViewSize (true).x), (spacing / 100 * AdvGame.GetMainGameViewSize (true).x) + totalLength));
+						element.SetPosition (new Vector2 ((spacing / 100 * xFactor), (spacing / 100 * xFactor) + totalLength));
 					}
 					
-					totalLength += element.GetSize().y + (spacing / 100 * AdvGame.GetMainGameViewSize (true).x);
+					totalLength += element.GetSize().y + (spacing / 100 * xFactor);
 				}
 			}
 		}
@@ -1693,11 +1759,11 @@ namespace AC
 			isFading = false;
 			isEnabled = false;
 			SetAnimState ();
-			ReturnGameState ();
 			DisableUI ();
 			ClearSpeechText ();
 
 			KickStarter.playerMenus.CheckCrossfade (this);
+			KickStarter.playerMenus.UpdatePauseMenusRecord ();
 		}
 		
 
@@ -1817,6 +1883,20 @@ namespace AC
 			{
 				return false;
 			}
+			
+			if (RuntimeCanvas == null)
+			{
+				if (KickStarter.menuManager.useAddressables && !string.IsNullOrEmpty (canvasAssetKey))
+				{ 
+					if (awaitingAddressable > 0)
+					{
+						return false;
+					}
+					awaitingAddressable = doFade ? 2 : 1;
+				}
+
+				LoadUnityUI ();
+			}
 
 			gameStateWhenTurnedOn = KickStarter.stateHandler.gameState;
 			KickStarter.playerMenus.UpdateMenuPosition (this, KickStarter.playerInput.GetInvertedMouse (), true);
@@ -1842,16 +1922,25 @@ namespace AC
 				{
 					if (menuSource == MenuSource.AdventureCreator && positionType == AC_PositionType.AppearAtCursorAndFreeze)
 					{
-						SetCentre (new Vector2 ((KickStarter.playerInput.GetInvertedMouse ().x / Screen.width) + ((manualPosition.x - 50f) / 100f),
-												(KickStarter.playerInput.GetInvertedMouse ().y / Screen.height) + ((manualPosition.y - 50f) / 100f)));
+						Vector2 newMenuPosition = MainCamera.ConvertToMenuSpace (KickStarter.playerInput.GetInvertedMouse ());
+
+						SetCentre (new Vector2 (newMenuPosition.x + ((manualPosition.x - 50f) / 100f),
+												newMenuPosition.y + ((manualPosition.y - 50f) / 100f)));
 					}
 					else if (menuSource != MenuSource.AdventureCreator && uiPositionType == UIPositionType.AppearAtCursorAndFreeze)
 					{
 						EnableUI (); // Necessary because scaling issues occur otherwise
-						SetCentre (new Vector2 (KickStarter.playerInput.GetInvertedMouse ().x, Screen.height + 1f - KickStarter.playerInput.GetInvertedMouse ().y));
+						// Can we attempt to mask the reposition update?
+						if (RuntimeCanvas && uiTransitionType == UITransition.None)
+						{
+							KickStarter.playerMenus.RequestRepositionUpdate (this, new Vector2 (KickStarter.playerInput.GetInvertedMouse ().x, ACScreen.height + 1f - KickStarter.playerInput.GetInvertedMouse ().y));
+						}
+						else
+						{
+							SetCentre (new Vector2 (KickStarter.playerInput.GetInvertedMouse ().x, ACScreen.height + 1f - KickStarter.playerInput.GetInvertedMouse ().y));
+						}
 					}
 				}
-
 
 				MenuSystem.OnMenuEnable (this);
 				foreach (MenuElement element in elements)
@@ -1866,13 +1955,25 @@ namespace AC
 				isEnabled = true;
 				isFading = doFade;
 				
-				if (actionListOnTurnOn != null)
+				if (actionListOnTurnOn)
 				{
 					AdvGame.RunActionListAsset (actionListOnTurnOn);
 				}
-				EnableUI (); // Move here
+
+				EnableUI ();
+				KickStarter.playerMenus.UpdatePauseMenusRecord ();
+
+				KickStarter.playerMenus.UpdateMenuPosition (this, KickStarter.playerInput.GetInvertedMouse (), true);
 				KickStarter.eventManager.Call_OnMenuTurnOn (this, !doFade);
 
+				if (CanCurrentlyKeyboardControl (KickStarter.stateHandler.gameState) && IsClickable ())
+				{
+					if (selected_element == null)
+					{
+						// If manually set with 'Menu: Select element' Action, don't select any element
+						KickStarter.playerMenus.FindFirstSelectedElement ();
+					}
+				}
 
 				if (doFade && fadeSpeed > 0f)
 				{
@@ -1892,6 +1993,9 @@ namespace AC
 				}
 				SetAnimState ();
 			}
+
+			UpdateInteractability ();
+			KickStarter.playerMenus.UpdatePauseMenusRecord ();
 			return true;
 		}
 
@@ -1908,21 +2012,16 @@ namespace AC
 				return false;
 			}
 
-			bool canRunOffAsset = false;
-			if (!IsFadingOut ())
-			{
-				canRunOffAsset = true;
-			}
-			
-			if (appearType == AppearType.OnContainer)
-			{
-				KickStarter.playerInput.activeContainer = null;
-			}
-			else if (appearType == AppearType.OnViewDocument)
-			{
-				KickStarter.runtimeDocuments.CloseDocument ();
-			}
+			awaitingAddressable = 0;
 
+			if (KickStarter.sceneChanger.IsLoading ())
+			{
+				// Force off instantly if turn off while changing scene
+				doFade = false;
+			}
+		
+			bool canRunOffAsset = !IsFadingOut ();
+			
 			if (!HasTransition ())
 			{
 				doFade = false;
@@ -1932,7 +2031,16 @@ namespace AC
 			{
 				KickStarter.eventManager.Call_OnMenuTurnOff (this, !doFade);
 			}
-			
+
+			if (appearType == AppearType.OnContainer)
+			{
+				KickStarter.playerInput.activeContainer = null;
+			}
+			else if (appearType == AppearType.OnViewDocument)
+			{
+				KickStarter.runtimeDocuments.CloseDocument ();
+			}
+
 			if (isEnabled && (!isFading || (isFading && fadeType == FadeType.fadeIn)))// && appearType == AppearType.OnHotspot)))
 			{
 				isFading = doFade;
@@ -1949,21 +2057,30 @@ namespace AC
 					UpdateTransition ();
 					isFading = false;
 					isEnabled = false;
-					ReturnGameState ();
-					DisableUI ();
+
+					if (CanPause ())
+					{
+						DisableUI ();
+					}
+					else
+					{
+						// Necessary for speech menu flickering
+						KickStarter.playerMenus.DiableUIInNextFrame (this);
+					}
 					ClearSpeechText ();
 				}
 			}
 
 			if (canRunOffAsset)
 			{
-				if (actionListOnTurnOff != null)
+				if (actionListOnTurnOff)
 				{
 					AdvGame.RunActionListAsset (actionListOnTurnOff);
 				}
 				KickStarter.playerMenus.OnTurnOffMenu (this);
 			}
-			
+
+			KickStarter.playerMenus.UpdatePauseMenusRecord ();
 			return true;
 		}
 		
@@ -1976,10 +2093,13 @@ namespace AC
 		{
 			if (isEnabled || isFading)
 			{
-				if (!ignoreActionList && actionListOnTurnOff != null && !IsFadingOut ())
+				awaitingAddressable = 0;
+
+				if (!ignoreActionList && actionListOnTurnOff && !IsFadingOut ())
 				{
 					AdvGame.RunActionListAsset (actionListOnTurnOff);
 				}
+				KickStarter.eventManager.Call_OnMenuTurnOff (this, true);
 
 				transitionProgress = 0f;
 				UpdateTransition ();
@@ -1987,7 +2107,8 @@ namespace AC
 				isEnabled = false;
 				DisableUI ();
 				ClearSpeechText ();
-				ReturnGameState ();
+
+				KickStarter.playerMenus.UpdatePauseMenusRecord ();
 			}
 		}
 
@@ -2102,7 +2223,7 @@ namespace AC
 		{
 			if (IsUnityUI ())
 			{
-				if (uiTransitionType == UITransition.CanvasGroupFade && canvasGroup != null && fadeSpeed > 0f)
+				if (uiTransitionType == UITransition.CanvasGroupFade && canvasGroup && fadeSpeed > 0f)
 				{
 					canvasGroup.alpha = 1f - GetFadeProgress ();
 				}
@@ -2135,7 +2256,7 @@ namespace AC
 					panOffset = new Vector2 (amount, 0f);
 				}
 				
-				panOffset = new Vector2 (panOffset.x * AdvGame.GetMainGameViewSize (true).x, panOffset.y * AdvGame.GetMainGameViewSize (true).y);
+				panOffset = new Vector2 (panOffset.x * KickStarter.mainCamera.GetPlayableScreenArea (false).size.x, panOffset.y * KickStarter.mainCamera.GetPlayableScreenArea (false).size.y);
 			}
 			
 			else if (transitionType == MenuTransition.Zoom)
@@ -2183,20 +2304,18 @@ namespace AC
 		}
 
 
-		/**
-		 * Pauses the game if appropriate after a scene-change.
-		 */
+		/** Pauses the game if appropriate after a scene-change. */
 		public void AfterSceneChange ()
 		{
 			if (menuSource == MenuSource.UnityUiInScene)
 			{
 				LoadUnityUI ();
 				Initalise ();
+				EnableOnStart ();
 			}
 			else if (menuSource == MenuSource.UnityUiPrefab)
 			{
-				SetParent ();
-				if (RuntimeCanvas != null && RuntimeCanvas.worldCamera == null)
+				if (RuntimeCanvas && RuntimeCanvas.worldCamera == null)
 				{
 					RuntimeCanvas.worldCamera = KickStarter.CameraMain;
 				}
@@ -2217,17 +2336,6 @@ namespace AC
 				{
 					KickStarter.playerInteraction.DeselectHotspot (true);
 				}
-				KickStarter.mainCamera.FadeIn (0);
-				KickStarter.mainCamera.PauseGame (true);
-			}
-		}
-		
-		
-		private void ReturnGameState ()
-		{
-			if (IsBlocking () && !KickStarter.playerMenus.ArePauseMenusOn (this) && Application.isPlaying)
-			{
-				KickStarter.stateHandler.RestoreLastNonPausedState ();
 			}
 		}
 
@@ -2294,13 +2402,18 @@ namespace AC
 
 		private bool ShowClickInCutscenesOption ()
 		{
-			if (appearType == AppearType.WhenSpeechPlays || appearType == AppearType.DuringConversation || 
-				appearType == AppearType.Manual || appearType == AppearType.WhenSpeechPlays ||
-				appearType == AppearType.DuringCutscene)
+			switch (appearType)
 			{
-				return true;
+				case AppearType.WhenSpeechPlays:
+				case AppearType.DuringConversation:
+				case AppearType.Manual:
+				case AppearType.ExceptWhenPaused:
+				case AppearType.DuringCutscene:
+					return true;
+
+				default:
+					return false;
 			}
-			return false;
 		}
 		
 
@@ -2340,7 +2453,7 @@ namespace AC
 		public void MatchInteractions (Hotspot hotspot, bool includeInventory)
 		{
 			forHotspot = hotspot;
-			forItem = null;
+			forInvInstance = null;
 
 			foreach (MenuElement element in elements)
 			{
@@ -2377,20 +2490,17 @@ namespace AC
 		 * <param name = "buttons">The InvItem to recalculate the Menus's display for</param>
 		 * <param name = "includeInventory">If True, then InventoryBox elements will also be displayed when appropriate</param>
 		 */
-		public void MatchInteractions (InvItem item, bool includeInventory)
+		public void MatchInteractions (InvInstance invInstance, bool includeInventory)
 		{
 			forHotspot = null;
-			forItem = item;
+			forInvInstance = invInstance;
 
 			foreach (MenuElement element in elements)
 			{
-				if (element is MenuInteraction)
+				if (KickStarter.settingsManager.autoHideInteractionIcons && element is MenuInteraction)
 				{
-					if (KickStarter.settingsManager.autoHideInteractionIcons)
-					{
-						MenuInteraction interaction = (MenuInteraction) element;
-						interaction.MatchInteractions (item);
-					}
+					MenuInteraction interaction = (MenuInteraction) element;
+					interaction.MatchInteractions (invInstance);
 				}
 				else if (element is MenuInventoryBox)
 				{
@@ -2414,16 +2524,15 @@ namespace AC
 
 		/**
 		 * <summary>Recalculates a Menu's display for an "Examine" Hotspot Button.</summary>
-		 * <param name = "button">A Button class to recalculate the Menus's display for</param>
 		 */
-		public void MatchLookInteraction (Button button)
+		public void MatchLookInteraction ()
 		{
 			foreach (MenuElement element in elements)
 			{
-				if (element is MenuInteraction)
+				MenuInteraction interaction = element as MenuInteraction;
+				if (interaction)
 				{
-					MenuInteraction interaction = (MenuInteraction) element;
-					interaction.MatchLookInteraction (KickStarter.cursorManager.lookCursor_ID);
+					interaction.MatchInteraction (KickStarter.cursorManager.lookCursor_ID);
 				}
 			}
 		}
@@ -2437,9 +2546,9 @@ namespace AC
 		{
 			foreach (MenuElement element in elements)
 			{
-				if (element is MenuInteraction)
+				MenuInteraction interaction = element as MenuInteraction;
+				if (interaction)
 				{
-					MenuInteraction interaction = (MenuInteraction) element;
 					interaction.MatchUseInteraction (button);
 				}
 			}
@@ -2514,26 +2623,40 @@ namespace AC
 		}
 
 
-		/*
+		/**
 		 * <summary>Checks if the Menu can be controlled with the keyboard or controller at this time.</summary>
 		 * <returns>True if the Menu can be controlled with the keyboard or controller at this time.</returns>
 		 */
-		public bool CanCurrentlyKeyboardControl ()
+		public bool CanCurrentlyKeyboardControl (GameState gameState)
 		{
 			if (ignoreMouseClicks)
 			{
 				return false;
 			}
 
-			if (menuSource != MenuSource.AdventureCreator || KickStarter.settingsManager.inputMethod == InputMethod.KeyboardOrController)
+			if (menuSource != MenuSource.AdventureCreator || KickStarter.settingsManager.inputMethod != InputMethod.TouchScreen)
 			{
-				if ((KickStarter.stateHandler.gameState == GameState.Paused && IsBlocking () && KickStarter.menuManager.keyboardControlWhenPaused) ||
-					(KickStarter.stateHandler.gameState == GameState.DialogOptions && appearType == AppearType.DuringConversation && KickStarter.menuManager.keyboardControlWhenDialogOptions) ||
-					(KickStarter.stateHandler.gameState == GameState.Cutscene && CanClickInCutscenes ()) ||
-					(KickStarter.stateHandler.IsInGameplay () && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay && CanPause () && !pauseWhenEnabled))
+				if (((gameState == GameState.Paused || IsBlocking ()) && KickStarter.menuManager.keyboardControlWhenPaused) ||
+					(gameState == GameState.DialogOptions && appearType == AppearType.DuringConversation && KickStarter.menuManager.keyboardControlWhenDialogOptions) ||
+					(gameState == GameState.Cutscene && CanClickInCutscenes () && KickStarter.menuManager.keyboardControlWhenCutscene) ||
+					(IsInGameplay (gameState) && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay && CanPause () && !pauseWhenEnabled))
 				{
 					return true;
 				}
+			}
+			return false;
+		}
+
+
+		private bool IsInGameplay (GameState gameState)
+		{
+			if (gameState == GameState.Normal)
+			{
+				return true;
+			}
+			if (gameState == GameState.DialogOptions && KickStarter.settingsManager.allowGameplayDuringConversations)
+			{
+				return true;
 			}
 			return false;
 		}
@@ -2550,6 +2673,24 @@ namespace AC
 
 			if (elementToSelect != null)
 			{
+				Select (elementToSelect, slotIndex);
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot find element '" + elementName + "' inside Menu '" + title + "'");
+			}
+		}
+
+
+		/**
+		 * <summary>Selects a given element (and optionally, a slot inside it) for direct-controlled menu navigation.</summary>
+		 * <param name = "elementToSelect">The MenuElement to select</param>
+		 * <param name = "slotIndex">The index number of the slot to select, if the MenuElement has multiple slots</param>
+		 */
+		public void Select (MenuElement elementToSelect, int slotIndex = 0)
+		{
+			if (elementToSelect != null)
+			{
 				if (elementToSelect.IsVisible)
 				{
 					selected_element = elementToSelect;
@@ -2558,7 +2699,7 @@ namespace AC
 					if (IsUnityUI () && IsEnabled ())
 					{
 						GameObject elementObject = selected_element.GetObjectToSelect (selected_slot);
-						if (elementObject != null)
+						if (elementObject)
 						{
 							KickStarter.playerMenus.SelectUIElement (elementObject);
 						}
@@ -2566,12 +2707,8 @@ namespace AC
 				}
 				else
 				{
-					ACDebug.LogWarning ("Cannot select element '" + elementName + "' inside Menu '" + title + "' because it is not visible!");
+					ACDebug.LogWarning ("Cannot select element '" + elementToSelect.title + "' inside Menu '" + title + "' because it is not visible!");
 				}
-			}
-			else
-			{
-				ACDebug.LogWarning ("Cannot find element '" + elementName + "' inside Menu '" + title + "'");
 			}
 		}
 
@@ -2597,7 +2734,7 @@ namespace AC
 				// No element selected, so select first-visible one
 				for (int i=0; i<visibleElements.Count; i++)
 				{
-					if (visibleElements[i].isClickable)
+					if (visibleElements[i].isClickable && visibleElements[i].GetNumSlots () > 0)
 					{
 						selected_element = visibleElements[i];
 						break;
@@ -2684,9 +2821,6 @@ namespace AC
 						float normalDotProduct = Vector2.Dot (relative, normalVec);
 						float thisScaledDP = dotProduct / relative.sqrMagnitude;
 
-						//Debug.Log ("Compare " + currentElement.title + ", " + currentSlotIndex + " with " + element.title + ", " + i +
-						//	", Test: " + scaledDP + ", TempTest: " + thisScaledDP);
-						
 						if (dotProduct > 0f && Mathf.Abs (dotProduct) > Mathf.Abs (normalDotProduct / 2f))
 						{
 							float dist = relative.sqrMagnitude;
@@ -2695,15 +2829,19 @@ namespace AC
 								nextElement = element;
 								nextSlotIndex = i;
 								scaledDP = thisScaledDP;
-								//Debug.LogWarning (nextElement.title + " wins");
 							}
 						}
 					}
 				}
 			}
 
-			selected_slot = nextSlotIndex;
-			selected_element = nextElement;
+			if (selected_slot != nextSlotIndex || selected_element != nextElement)
+			{
+				selected_slot = nextSlotIndex;
+				selected_element = nextElement;
+
+				KickStarter.sceneSettings.PlayDefaultSound (selected_element.GetHoverSound (selected_slot), false);
+			}
 		}
 
 
@@ -2757,6 +2895,26 @@ namespace AC
 			
 			return null;
 		}
+
+
+		/**
+		 * <summary>Gets a MenuElement subclass within the Menu's list of elements, provided it is linked to Unity UI.</summary>
+		 * <param name = "gameObject">The Unity UI GameObject associated with the MenuElement to get</param>
+		 * <returns>The MenuElement subclass</returns>
+		 */
+		public MenuElement GetElementWithGameObject (GameObject gameObject)
+		{
+			if (!IsUnityUI ()) return null;
+
+			foreach (MenuElement menuElement in elements)
+			{
+				if (menuElement.ReferencesObjectOrID (gameObject, 0))
+				{
+					return menuElement;
+				}
+			}
+			return null;
+		}
 		
 
 		/**
@@ -2767,23 +2925,25 @@ namespace AC
 		 */
 		public Vector2 GetSlotCentre (MenuElement _element, int slot)
 		{
-			foreach (MenuElement menuElement in elements)
+			if (elements.Contains (_element))
 			{
-				if (menuElement == _element)
+				if (IsUnityUI ())
 				{
-					if (IsUnityUI ())
+					RectTransform elementRectTransform = _element.GetRectTransform (slot);
+					if (elementRectTransform)
 					{
-						Vector3 _position = menuElement.GetRectTransform (slot).position;
+						Vector3 _position = elementRectTransform.position;
 						if (RuntimeCanvas.renderMode != RenderMode.WorldSpace)
 						{
-							return new Vector2 (_position.x, Screen.height - _position.y);
+							return new Vector2 (_position.x,  ACScreen.height - _position.y);
 						}
 						return KickStarter.CameraMain.WorldToScreenPoint (_position);
 					}
-
-					Rect slotRect = _element.GetSlotRectRelative (slot);
-					return new Vector2 (GetRect ().x + slotRect.x + (slotRect.width / 2f), GetRect ().y + slotRect.y + (slotRect.height / 2f));
+					return Vector2.zero;
 				}
+
+				Rect slotRect = _element.GetSlotRectRelative (slot);
+				return new Vector2 (GetRect ().x + slotRect.x + (slotRect.width / 2f), GetRect ().y + slotRect.y + (slotRect.height / 2f));
 			}
 			
 			return Vector2.zero;
@@ -2799,14 +2959,11 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Assigns the Menu, and all MenuElement classes within it, to a Hotspot.</summary>
-		 * <param name = "_speech">The Speech line to assign to</param>
-		 */
-		public void SetHotspot (Hotspot _hotspot, InvItem _invItem)
+		/** Assigns the Menu, and all MenuElement classes within it, to a Hotspot or inventory item. */
+		public void SetHotspot (Hotspot _hotspot, InvInstance _invInstance)
 		{
 			forHotspot = _hotspot;
-			forItem = _invItem;
+			forInvInstance = _invInstance;
 		}
 
 
@@ -2824,6 +2981,23 @@ namespace AC
 		}
 
 
+		/** 
+		 * <summary>Gets the first visibla element from the Menu's list of elements, in the order defined in the Menu Manager</summary>
+		 * <returns>The first visibla element from the Menu's list of elements</returns>
+		 */
+		public MenuElement GetFirstVisibleElement ()
+		{
+			foreach (MenuElement element in visibleElements)
+			{
+				if (element.IsVisible)
+				{
+					return element;
+				}
+			}
+			return null;
+		}
+
+
 		/**
 		 * <summary>Gets the GameObject of the first-selected MenuElement, for a Unity UI-based Menu.</summary>
 		 * <returns>The GameObject of the first-selected MenuElement</returns>
@@ -2837,7 +3011,7 @@ namespace AC
 					if (element.IsVisible)
 					{
 						GameObject objectToSelect = element.GetObjectToSelect ();
-						if (objectToSelect != null)
+						if (objectToSelect)
 						{
 							return objectToSelect;
 						}
@@ -2857,17 +3031,18 @@ namespace AC
 						return element.GetObjectToSelect ();
 					}
 				}
+				ACDebug.LogWarning ("Could not find element " + firstSelectedElement + " in Menu " + title);
 			}
 			return null;
 		}
 
 
-		/** The inventory item that an interaction Menu was recalculated for. */
-		public InvItem TargetInvItem
+		/** The inventory item instance that an interaction Menu was recalculated for. */
+		public InvInstance TargetInvInstance
 		{
 			get
 			{
-				return forItem;
+				return forInvInstance;
 			}
 		}
 
@@ -2887,7 +3062,7 @@ namespace AC
 		 */
 		public void PreScreenshotBackup ()
 		{
-			if (menuSource != MenuSource.AdventureCreator && RuntimeCanvas != null)
+			if (menuSource != MenuSource.AdventureCreator && RuntimeCanvas)
 			{
 				isDisabledForScreenshot = (hideDuringSaveScreenshots && RuntimeCanvas.gameObject.activeSelf);
 				if (isDisabledForScreenshot)
@@ -2903,7 +3078,7 @@ namespace AC
 		 */
 		public void PostScreenshotBackup ()
 		{
-			if (menuSource != MenuSource.AdventureCreator && RuntimeCanvas != null)
+			if (menuSource != MenuSource.AdventureCreator && RuntimeCanvas)
 			{
 				if (isDisabledForScreenshot)
 				{
@@ -2933,27 +3108,16 @@ namespace AC
 		}
 
 
-		/**
-		 * The Menu's id number as a string.
-		 */
-		public string IDString
+		/** The Menu's id number, which is a unique identifier. */
+		public int ID
 		{
 			get
 			{
-				return idString;
+				return id;
 			}
-		}
-
-
-		/**
-		 * The Menu's id number, which is a unique identifier.
-		 */
-		public int ID
-		{
 			set
 			{
 				id = value;
-				idString = id.ToString ();
 			}
 		}
 
@@ -2962,7 +3126,7 @@ namespace AC
 		{
 			if (IsUnityUI () && !hasMoved && defaultRectTransformLocalPosition == Vector2.zero)
 			{
-				if (rectTransform != null)
+				if (rectTransform)
 				{
 					defaultRectTransformLocalPosition = rectTransform.localPosition;
 
@@ -2975,9 +3139,7 @@ namespace AC
 		}
 
 
-		/**
-		 * True if the Menu has been repositioned
-		 */
+		/** True if the Menu has been repositioned */
 		public bool HasMoved
 		{
 			get
@@ -2987,9 +3149,7 @@ namespace AC
 		}
 
 
-		/**
-		 * The number of elements in the Menu.
-		 */
+		/** The number of elements in the Menu. */
 		public int NumElements
 		{
 			get
@@ -3006,10 +3166,26 @@ namespace AC
 		private void LocateLocalCanvas ()
 		{
 			Canvas localCanvas = null;
-
+			
 			if (menuSource == MenuSource.UnityUiPrefab)
 			{
-				if (canvas != null)
+				if (runtimeCanvas)
+				{
+					return;
+				}
+
+				if (KickStarter.menuManager.useAddressables)
+				{
+					#if AddressableIsPresent
+					if (!string.IsNullOrEmpty (canvasAssetKey))
+					{
+						Addressables.InstantiateAsync (canvasAssetKey).Completed += OnSpawnMenuAddressable;
+					}
+					return;
+					#endif
+				}
+
+				if (canvas)
 				{
 					localCanvas = (Canvas) Instantiate (canvas);
 					localCanvas.gameObject.name = canvas.name;
@@ -3018,10 +3194,9 @@ namespace AC
 			}
 			else if (menuSource == MenuSource.UnityUiInScene)
 			{
-				localCanvas = Serializer.returnComponent <Canvas> (canvasID, KickStarter.sceneSettings.gameObject);
+				localCanvas = ConstantID.GetComponent <Canvas> (canvasID, SceneChanger.CurrentScene, true);
 			}
-
-			if (menuSource == MenuSource.UnityUiInScene && localCanvas == null && runtimeCanvas != null)
+			if (menuSource == MenuSource.UnityUiInScene && localCanvas == null && runtimeCanvas)
 			{
 				// Special case: Loading a game in the same scene, but assigned canvas is disabled
 			}
@@ -3032,6 +3207,32 @@ namespace AC
 		}
 
 
+		#if AddressableIsPresent
+
+		private void OnSpawnMenuAddressable (AsyncOperationHandle<GameObject> obj)
+		{
+			GameObject canvasObject = obj.Result;
+
+			DontDestroyOnLoad (canvasObject);
+			runtimeCanvas = canvasObject.GetComponent<Canvas> ();
+
+			if (runtimeCanvas == null)
+			{
+				Debug.LogWarning ("Menu " + title + " Addressable asset " + runtimeCanvas + " has no Canvas component attached", runtimeCanvas);
+				return;
+			}
+
+			LoadUnityUI ();
+
+			if (awaitingAddressable > 0)
+			{
+				TurnOn (awaitingAddressable == 2);
+				awaitingAddressable = 0;
+			}
+		}
+
+		#endif
+
 		/** The in-scene instance of the linked Canvas at runtime */
 		public Canvas RuntimeCanvas
 		{
@@ -3041,6 +3242,38 @@ namespace AC
 			}
 		}
 
+
+		/** If a Menu links to Unity UI, the linked Canvas prefab */
+		public Canvas PrefabCanvas
+		{
+			get
+			{
+				return canvas;
+			}
+			set
+			{
+				canvas = value;
+			}
+		}
+
+
+		/** Gets/Sets the Menu's lock state.  If a Menu is locked, it will not be shown when its 'Appear type' condition is met. If this is set to True, the Menu will be automatically turned off */
+		public bool isLocked
+		{
+			get
+			{
+				return _isLocked;
+			}
+			set
+			{
+				/*if (value)
+				{
+					TurnOff ();
+				}*/
+				_isLocked = value;
+			}
+		}
+
 	}
-	
+
 }

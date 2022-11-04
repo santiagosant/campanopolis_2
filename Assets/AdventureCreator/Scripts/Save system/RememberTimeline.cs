@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberTimeline.cs"
  * 
@@ -11,24 +11,23 @@
  */
 
 using UnityEngine;
-#if UNITY_2017_1_OR_NEWER
+#if !ACIgnoreTimeline
 using UnityEngine.Timeline;
+#endif
 using UnityEngine.Playables;
+#if AddressableIsPresent
+using System.Collections;
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
 #endif
 
 namespace AC
 {
 
-	/**
-	 * Attach this script to PlayableDirector objects you wish to save.
-	 */
-	#if UNITY_2017_1_OR_NEWER
+	/** Attach this script to PlayableDirector objects you wish to save. */
 	[RequireComponent (typeof (PlayableDirector))]
-	#endif
 	[AddComponentMenu("Adventure Creator/Save system/Remember Timeline")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_timeline.html")]
-	#endif
 	public class RememberTimeline : Remember
 	{
 
@@ -36,30 +35,29 @@ namespace AC
 		public bool saveBindings;
 		/** If True, the Timeline asset assigned in the PlayableDirector's Timeline field will be stored in save game files. */
 		public bool saveTimelineAsset;
+		/** If True, and the Timeline was not playing when it was saved, it will be evaluated at its playback point - causing the effects of it running at that single frame to be restored */
+		public bool evaluateWhenStopped;
+
+		private PlayableDirector playableDirector;
 
 
-		/**
-		 * <summary>Serialises appropriate GameObject values into a string.</summary>
-		 * <returns>The data, serialised as a string</returns>
-		 */
 		public override string SaveData ()
 		{
 			TimelineData timelineData = new TimelineData ();
 			timelineData.objectID = constantID;
 			timelineData.savePrevented = savePrevented;
 
-			#if UNITY_2017_1_OR_NEWER
-			PlayableDirector director = GetComponent <PlayableDirector>();
-			timelineData.isPlaying = (director.state == PlayState.Playing);
-			timelineData.currentTime = director.time;
-			timelineData.trackObjectData = "";
-			timelineData.timelineAssetID = "";
+			timelineData.isPlaying = (PlayableDirector.state == PlayState.Playing);
+			timelineData.currentTime = PlayableDirector.time;
+			timelineData.trackObjectData = string.Empty;
+			timelineData.timelineAssetID = string.Empty;
 
-			if (director.playableAsset != null)
+			if (PlayableDirector.playableAsset)
 			{
-				TimelineAsset timeline = (TimelineAsset) director.playableAsset;
+				#if !ACIgnoreTimeline
+				TimelineAsset timeline = (TimelineAsset) PlayableDirector.playableAsset;
 
-				if (timeline != null)
+				if (timeline)
 				{
 					if (saveTimelineAsset)
 					{
@@ -72,12 +70,12 @@ namespace AC
 						for (int i=0; i<bindingIDs.Length; i++)
 						{
 							TrackAsset trackAsset = timeline.GetOutputTrack (i);
-							GameObject trackObject = director.GetGenericBinding (trackAsset) as GameObject;
+							GameObject trackObject = PlayableDirector.GetGenericBinding (trackAsset) as GameObject;
 							bindingIDs[i] = 0;
-							if (trackObject != null)
+							if (trackObject)
 							{
 								ConstantID cIDComponent = trackObject.GetComponent <ConstantID>();
-								if (cIDComponent != null)
+								if (cIDComponent)
 								{
 									bindingIDs[i] = cIDComponent.constantID;
 								}
@@ -94,46 +92,90 @@ namespace AC
 						}
 					}
 				}
+				#endif
 			}
-
-			#else
-			ACDebug.LogWarning ("The 'Remember Director' component is only compatible with Unity 5.6 onward.", this);
-			#endif
 
 			return Serializer.SaveScriptData <TimelineData> (timelineData);
 		}
 		
 
-		/**
-		 * <summary>Deserialises a string of data, and restores the GameObject to its previous state.</summary>
-		 * <param name = "stringData">The data, serialised as a string</param>
-		 * <param name = "restoringSaveFile">True if the game is currently loading a saved game file, as opposed to just switching scene</param>
-		 */
-		public override void LoadData (string stringData, bool restoringSaveFile = false)
+		public override void LoadData (string stringData)
 		{
 			TimelineData data = Serializer.LoadScriptData <TimelineData> (stringData);
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			#if UNITY_2017_1_OR_NEWER
-			PlayableDirector director = GetComponent <PlayableDirector>();
+			#if AddressableIsPresent
 
-			if (director != null && director.playableAsset != null)
+			if (saveTimelineAsset && KickStarter.settingsManager.saveAssetReferencesWithAddressables && !string.IsNullOrEmpty (data.timelineAssetID))
 			{
-				TimelineAsset timeline = (TimelineAsset) director.playableAsset;
+				StopAllCoroutines ();
+				#if !ACIgnoreTimeline
+				StartCoroutine (LoadDataFromAddressable (data));
+				#endif
+				return;
+			}
 
-				if (timeline != null)
+			#endif
+
+			LoadDataFromResources (data);
+		}
+
+
+		#if AddressableIsPresent && !ACIgnoreTimeline
+
+		private IEnumerator LoadDataFromAddressable (TimelineData data)
+		{
+			AsyncOperationHandle<TimelineAsset> handle = Addressables.LoadAssetAsync<TimelineAsset> (data.timelineAssetID);
+			yield return handle;
+			if (handle.Status == AsyncOperationStatus.Succeeded)
+			{
+				PlayableDirector.playableAsset = handle.Result;
+			}
+			Addressables.Release (handle);
+
+			LoadRemainingData (data);
+		}
+
+		#endif
+
+
+		private void LoadDataFromResources (TimelineData data)
+		{
+			#if !ACIgnoreTimeline
+			if (PlayableDirector.playableAsset)
+			{
+				TimelineAsset timeline = (TimelineAsset) PlayableDirector.playableAsset;
+
+				if (timeline)
 				{
 					if (saveTimelineAsset)
 					{
 						TimelineAsset _timeline = AssetLoader.RetrieveAsset (timeline, data.timelineAssetID);
-						if (_timeline != null)
+						Debug.Log ("Get " + _timeline + " from " + data.timelineAssetID);
+						if (_timeline)
 						{
-							director.playableAsset = _timeline;
+							PlayableDirector.playableAsset = _timeline;
 							timeline = _timeline;
 						}
 					}
+				}
+			}
+			#endif
 
+			LoadRemainingData (data);
+		}
+
+
+		private void LoadRemainingData (TimelineData data)
+		{
+			#if !ACIgnoreTimeline
+			if (PlayableDirector.playableAsset)
+			{
+				TimelineAsset timeline = (TimelineAsset) PlayableDirector.playableAsset;
+
+				if (timeline)
+				{
 					if (saveBindings && !string.IsNullOrEmpty (data.trackObjectData))
 					{
 						string[] bindingIDs = data.trackObjectData.Split (","[0]);
@@ -146,41 +188,55 @@ namespace AC
 								if (bindingID != 0)
 								{
 									var track = timeline.GetOutputTrack (i);
-									if (track != null)
+									if (track)
 									{
-										ConstantID savedObject = Serializer.returnComponent <ConstantID> (bindingID, gameObject);
-										if (savedObject != null)
+										ConstantID savedObject = ConstantID.GetComponent (bindingID, gameObject.scene, true);
+										if (savedObject)
 										{
-											director.SetGenericBinding (track, savedObject.gameObject);
+											PlayableDirector.SetGenericBinding (track, savedObject.gameObject);
 										}
 									}
-				                }
-				              }
+								}
+							}
 						}
 					}
 				}
 			}
+			#endif
 
-			director.time = data.currentTime;
+			PlayableDirector.time = data.currentTime;
 			if (data.isPlaying)
 			{
-				director.Play ();
+				PlayableDirector.Play ();
 			}
 			else
 			{
-				director.Stop ();
+				PlayableDirector.Stop ();
+
+				if (evaluateWhenStopped)
+				{
+					PlayableDirector.Evaluate ();
+				}
 			}
-			#else
-			ACDebug.LogWarning ("The 'Remember Director' component is only compatible with Unity 5.6 onward.", this);
-			#endif
+		}
+
+
+		private PlayableDirector PlayableDirector
+		{
+			get
+			{
+				if (playableDirector == null)
+				{
+					playableDirector = GetComponent <PlayableDirector>();
+				}
+				return playableDirector;
+			}
 		}
 		
 	}
 	
 
-	/**
-	 * A data container used by the RememberTimeline script.
-	 */
+	/** A data container used by the RememberTimeline script. */
 	[System.Serializable]
 	public class TimelineData : RememberData
 	{
@@ -195,9 +251,7 @@ namespace AC
 		public string timelineAssetID;
 
 		
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public TimelineData () { }
 
 	}

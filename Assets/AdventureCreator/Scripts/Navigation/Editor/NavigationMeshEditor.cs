@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -16,9 +18,9 @@ namespace AC
 				KickStarter.navigationManager.ResetEngine ();
 				if (KickStarter.navigationManager.navigationEngine != null)
 				{
-					EditorGUILayout.BeginVertical ("Button");
+					CustomGUILayout.BeginVertical ();
 					_target = KickStarter.navigationManager.navigationEngine.NavigationMeshGUI (_target);
-					EditorGUILayout.EndVertical ();
+					CustomGUILayout.EndVertical ();
 				}
 			}
 
@@ -27,3 +29,5 @@ namespace AC
 	}
 
 }
+
+#endif

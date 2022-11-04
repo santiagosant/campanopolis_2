@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ScriptedActionListExample.cs"
  * 
@@ -149,11 +149,9 @@ namespace AC
 
 
 
-
+		#region ITranslatable
 
 		/**
-		 * ITranslatable implementation
-		 * 
 		 * The following code is only necessary because the script implements ITranslatable.  This is to demonstrate how the Player's speech line can be included in the Speech Manager for translation, audio etc.
 		 * If a scripted ActionList does not require this, all of the below can be left out (provided that the implemenation is also removed in the class declaration)
 		 */
@@ -170,6 +168,12 @@ namespace AC
 		}
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			playerSpeechText = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -213,6 +217,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 		
 	}
 

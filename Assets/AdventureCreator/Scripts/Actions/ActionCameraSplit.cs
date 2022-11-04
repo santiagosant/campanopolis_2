@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCameraSplit.cs"
  * 
@@ -43,25 +43,21 @@ namespace AC
 		public bool turnOff;
 		public CameraSplitOrientation orientation;
 		public bool mainIsTopLeft;
+
 		
-		
-		public ActionCameraSplit ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Camera;
-			title = "Split-screen";
-			description = "Displays two cameras on the screen at once, arranged either horizontally or vertically. Which camera is the 'main' (i.e. which one responds to mouse clicks) can also be set.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Camera; }}
+		public override string Title { get { return "Split-screen"; }}
+		public override string Description { get { return "Displays two cameras on the screen at once, arranged either horizontally or vertically. Which camera is the 'main' (i.e. which one responds to mouse clicks) can also be set."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeCam1 = AssignFile <_Camera> (parameters, parameterID1, constantID1, cam1);
 			runtimeCam2 = AssignFile <_Camera> (parameters, parameterID2, constantID2, cam2);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			MainCamera mainCamera = KickStarter.mainCamera;
 			mainCamera.RemoveSplitScreen ();
@@ -98,7 +94,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			turnOff = EditorGUILayout.Toggle ("Just disable previous?", turnOff);
 			if (!turnOff)
@@ -176,12 +172,10 @@ namespace AC
 					mainIsTopLeft = EditorGUILayout.Toggle ("Main Camera is " + label1.ToLower () + "?", mainIsTopLeft);
 				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -198,6 +192,22 @@ namespace AC
 		{
 			return orientation.ToString ();
 		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID1 < 0)
+			{
+				if (cam1 && cam1.gameObject == _gameObject) return true;
+				if (constantID1 == id) return true;
+			}
+			if (parameterID2 < 0)
+			{
+				if (cam2 && cam2.gameObject == _gameObject) return true;
+				if (constantID2 == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
 		
 		#endif
 
@@ -211,7 +221,7 @@ namespace AC
 		 */
 		public static ActionCameraSplit CreateNew_Overlay (_Camera underlayCamera, _Camera overlayCamera, Rect overlayRect)
 		{
-			ActionCameraSplit newAction = (ActionCameraSplit) CreateInstance <ActionCameraSplit>();
+			ActionCameraSplit newAction = CreateNew<ActionCameraSplit> ();
 			newAction.orientation = CameraSplitOrientation.Overlay;
 			newAction.cam1 = underlayCamera;
 			newAction.cam2 = overlayCamera;
@@ -231,7 +241,7 @@ namespace AC
 		 */
 		public static ActionCameraSplit CreateNew_AboveAndBelow (_Camera topCamera, _Camera bottomCamera, bool topIsActive = true, float topCameraSpace = 0.49f, float bottomCameraSpace = 0.49f)
 		{
-			ActionCameraSplit newAction = (ActionCameraSplit) CreateInstance <ActionCameraSplit>();
+			ActionCameraSplit newAction = CreateNew<ActionCameraSplit> ();
 			newAction.orientation = CameraSplitOrientation.Horizontal;
 			newAction.cam1 = topCamera;
 			newAction.cam2 = bottomCamera;
@@ -253,7 +263,7 @@ namespace AC
 		 */
 		public static ActionCameraSplit CreateNew_SideBySide (_Camera leftCamera, _Camera rightCamera, bool leftIsActive = true, float leftCameraSpace = 0.49f, float rightCameraSpace = 0.49f)
 		{
-			ActionCameraSplit newAction = (ActionCameraSplit) CreateInstance <ActionCameraSplit>();
+			ActionCameraSplit newAction = CreateNew<ActionCameraSplit> ();
 			newAction.orientation = CameraSplitOrientation.Vertical;
 			newAction.cam1 = leftCamera;
 			newAction.cam2 = rightCamera;

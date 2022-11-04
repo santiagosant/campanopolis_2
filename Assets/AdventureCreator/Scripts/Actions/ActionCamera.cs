@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCamera.cs"
  * 
@@ -28,7 +28,8 @@ namespace AC
 		public int parameterID = -1;
 		public _Camera linkedCamera;
 		protected _Camera runtimeLinkedCamera;
-		
+		protected GameCameraAnimated runtimeLinkedCameraAnimated;
+
 		public float transitionTime;
 		public int transitionTimeParameterID = -1;
 
@@ -36,30 +37,24 @@ namespace AC
 		public MoveMethod moveMethod;
 		public bool returnToLast;
         public bool retainPreviousSpeed = false;
+		public bool waitForAnimation = false;
+
+		public override ActionCategory Category { get { return ActionCategory.Camera; }}
+		public override string Title { get { return "Switch"; }}
+		public override string Description { get { return "Moves the MainCamera to the position, rotation and field of view of a specified GameCamera. Can be instantaneous or transition over time."; }}
 
 
-		public ActionCamera ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Camera;
-			title = "Switch";
-			description = "Moves the MainCamera to the position, rotation and field of view of a specified GameCamera. Can be instantaneous or transition over time.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeLinkedCamera = AssignFile <_Camera> (parameters, parameterID, constantID, linkedCamera);
 			transitionTime = AssignFloat (parameters, transitionTimeParameterID, transitionTime);
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!isRunning)
 			{
-				isRunning = true;
-				
 				MainCamera mainCam = KickStarter.mainCamera;
 				
 				if (mainCam)
@@ -75,12 +70,7 @@ namespace AC
 					{
 						if (mainCam.attachedCamera != cam)
 						{
-							if (cam is GameCameraThirdPerson)
-							{
-								GameCameraThirdPerson tpCam = (GameCameraThirdPerson) cam;
-								tpCam.ResetRotation ();
-							}
-							else if (cam is GameCameraAnimated)
+							if (cam is GameCameraAnimated)
 							{
 								GameCameraAnimated animCam = (GameCameraAnimated) cam;
 								animCam.PlayClip ();
@@ -94,16 +84,22 @@ namespace AC
 							else
 							{
 								mainCam.SetGameCamera (cam, transitionTime, moveMethod, timeCurve, retainPreviousSpeed);
-
+								
 								if (willWait)
 								{
+									runtimeLinkedCameraAnimated = runtimeLinkedCamera as GameCameraAnimated;
 									if (transitionTime > 0f)
 									{
-										return (transitionTime);
+										isRunning = true;
+										return defaultPauseTime;
 									}
-									else if (runtimeLinkedCamera is GameCameraAnimated)
+									else
 									{
-										return (defaultPauseTime);
+										if (runtimeLinkedCameraAnimated && waitForAnimation)
+										{
+											isRunning = true;
+											return defaultPauseTime;
+										}
 									}
 								}
 							}
@@ -113,10 +109,9 @@ namespace AC
 			}
 			else
 			{
-				if (runtimeLinkedCamera is GameCameraAnimated && willWait)
+				if (runtimeLinkedCameraAnimated && waitForAnimation)
 				{
-					GameCameraAnimated animatedCamera = (GameCameraAnimated) runtimeLinkedCamera;
-					if (animatedCamera.isPlaying ())
+					if (runtimeLinkedCameraAnimated.IsPlaying ())
 					{
 						return defaultPauseTime;
 					}
@@ -128,8 +123,15 @@ namespace AC
 				}
 				else
 				{
-					isRunning = false;
-					return 0f;
+					if (KickStarter.mainCamera.IsInTransition () && KickStarter.mainCamera.attachedCamera == runtimeLinkedCamera)
+					{
+						return defaultPauseTime;
+					}
+					else
+					{
+						isRunning = false;
+						return 0f;
+					}
 				}
 			}
 			
@@ -137,7 +139,7 @@ namespace AC
 		}
 		
 		
-		override public void Skip ()
+		public override void Skip ()
 		{
 			MainCamera mainCam = KickStarter.mainCamera;
 			if (mainCam)
@@ -151,12 +153,6 @@ namespace AC
 				
 				if (cam)
 				{
-					if (cam is GameCameraThirdPerson)
-					{
-						GameCameraThirdPerson tpCam = (GameCameraThirdPerson) cam;
-						tpCam.ResetRotation ();
-					}
-
 					cam.MoveCameraInstant ();
 					mainCam.SetGameCamera (cam);
 				}
@@ -166,7 +162,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			bool showWaitOption = false;
 			returnToLast = EditorGUILayout.Toggle ("Return to last gameplay?", returnToLast);
@@ -186,15 +182,6 @@ namespace AC
 					constantID = FieldToID <_Camera> (linkedCamera, constantID);
 					linkedCamera = IDToField <_Camera> (linkedCamera, constantID, true);
 				}
-				
-				if (linkedCamera && linkedCamera is GameCameraAnimated)
-				{
-					GameCameraAnimated animatedCamera = (GameCameraAnimated) linkedCamera;
-					if (animatedCamera.animatedCameraType == AnimatedCameraType.PlayWhenActive && transitionTime <= 0f)
-					{
-						showWaitOption = true;
-					}
-				}
 			}
 			
 			if (linkedCamera is GameCamera25D && !returnToLast)
@@ -209,7 +196,7 @@ namespace AC
 					transitionTime = EditorGUILayout.FloatField ("Transition time (s):", transitionTime);
 				}
 				
-				if (transitionTime > 0f)
+				if (transitionTime > 0f || transitionTimeParameterID >= 0)
 				{
 					moveMethod = (MoveMethod) EditorGUILayout.EnumPopup ("Move method:", moveMethod);
 					showWaitOption = true;
@@ -218,20 +205,27 @@ namespace AC
 					{
 						timeCurve = EditorGUILayout.CurveField ("Time curve:", timeCurve);
 					}
-                    retainPreviousSpeed = EditorGUILayout.Toggle ("Smooth transition out?", retainPreviousSpeed);
+					retainPreviousSpeed = EditorGUILayout.Toggle ("Smooth transition out?", retainPreviousSpeed);
 				}
 			}
 			
 			if (showWaitOption)
 			{
 				willWait = EditorGUILayout.Toggle ("Wait until finish?", willWait);
+
+				if (willWait && !returnToLast && linkedCamera && linkedCamera is GameCameraAnimated)
+				{
+					GameCameraAnimated animatedCamera = (GameCameraAnimated) linkedCamera;
+					if (animatedCamera.animatedCameraType == AnimatedCameraType.PlayWhenActive)
+					{
+						waitForAnimation = EditorGUILayout.Toggle ("Wait for animation?", waitForAnimation);
+					}
+				}
 			}
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (saveScriptsToo)
 			{
@@ -241,13 +235,24 @@ namespace AC
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (linkedCamera && !returnToLast)
 			{
 				return linkedCamera.name;
 			}
 			return string.Empty;
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (parameterID < 0)
+			{
+				if (linkedCamera && linkedCamera.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
 		}
 		
 		#endif
@@ -263,7 +268,7 @@ namespace AC
 		 */
 		public static ActionCamera CreateNew (_Camera newCamera, float duration = 0f, bool waitUntilFinish = true, MoveMethod moveMethod = MoveMethod.Smooth)
 		{
-			ActionCamera newAction = (ActionCamera) CreateInstance <ActionCamera>();
+			ActionCamera newAction = CreateNew<ActionCamera> ();
 			newAction.linkedCamera = newCamera;
 			newAction.transitionTime = duration;
 			newAction.moveMethod = moveMethod;

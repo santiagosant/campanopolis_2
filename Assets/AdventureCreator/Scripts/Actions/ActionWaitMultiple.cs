@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionWaitMultiple.cs"
  * 
@@ -18,45 +18,31 @@ namespace AC
 	public class ActionWaitMultiple : Action
 	{
 
-		private int triggersToWait;
+		protected int triggersToWait;
 
 		
-		public ActionWaitMultiple ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Wait for preceding";
-			description = "This Action will only trigger its 'After running' command once all Actions that can run it have been run.";
-		}
-		
-		
-		override public float Run ()
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Wait for preceding"; }}
+		public override string Description { get { return "This Action will only trigger its 'After running' command once all Actions that can run it have been run."; }}
+
+
+		public override float Run ()
 		{
 			triggersToWait --;
 			return 0f;
 		}
 
 
-		public override ActionEnd End (List<Action> actions)
+		public override int GetNextOutputIndex ()
 		{
 			if (triggersToWait > 0)
 			{
-				return GenerateStopActionEnd ();
+				return -1;
 			}
 
 			triggersToWait = 100;
-			return base.End (actions);
+			return 0;
 		}
-
-
-		#if UNITY_EDITOR
-
-		public override void ShowGUI ()
-		{
-			AfterRunningOption ();
-		}
-
-		#endif
 
 
 		public override void Reset (ActionList actionList)
@@ -67,7 +53,7 @@ namespace AC
 
 			if (ownIndex == 0)
 			{
-				ACDebug.LogWarning ("The Action '" + category.ToString () + ": " + title + "' should not be first in an ActionList, as it will prevent others from running!");
+				LogWarning ("This Action should not be first in an ActionList, as it will prevent others from running!");
 				return;
 			}
 
@@ -77,52 +63,13 @@ namespace AC
 
 				if (otherAction != this)
 				{
-					if (otherAction is ActionCheck)
+					foreach (ActionEnd ending in otherAction.endings)
 					{
-						ActionCheck actionCheck = (ActionCheck) otherAction;
-						if ((actionCheck.resultActionFail == ResultAction.Skip && actionCheck.skipActionFail == ownIndex) ||
-							(actionCheck.resultActionFail == ResultAction.Continue && ownIndex == i+1))
+						if ((ending.resultAction == ResultAction.Skip && ending.skipAction == ownIndex) ||
+							(ending.resultAction == ResultAction.Continue && ownIndex == i+1))
 						{
 							triggersToWait ++;
-						}
-						else if ((actionCheck.resultActionTrue == ResultAction.Skip && actionCheck.skipActionTrue == ownIndex) ||
-							(actionCheck.resultActionTrue == ResultAction.Continue && ownIndex == i+1))
-						{
-							triggersToWait ++;
-						}
-					}
-					else if (otherAction is ActionCheckMultiple)
-					{
-						ActionCheckMultiple actionCheckMultiple = (ActionCheckMultiple) otherAction;
-						foreach (ActionEnd ending in actionCheckMultiple.endings)
-						{
-							if ((ending.resultAction == ResultAction.Skip && ending.skipAction == ownIndex) ||
-								(ending.resultAction == ResultAction.Continue && ownIndex == i+1))
-							{
-								triggersToWait ++;
-								break;
-							}
-						}
-					}
-					else if (otherAction is ActionParallel)
-					{
-						ActionParallel actionParallel = (ActionParallel) otherAction;
-						foreach (ActionEnd ending in actionParallel.endings)
-						{
-							if ((ending.resultAction == ResultAction.Skip && ending.skipAction == ownIndex) ||
-								(ending.resultAction == ResultAction.Continue && ownIndex == i+1))
-							{
-								triggersToWait ++;
-								break;
-							}
-						}
-					}
-					else
-					{
-						if ((otherAction.endAction == ResultAction.Skip && otherAction.skipAction == ownIndex) ||
-							(otherAction.endAction == ResultAction.Continue && ownIndex == i+1))
-						{
-							triggersToWait ++;
+							break;
 						}
 					}
 				}
@@ -130,7 +77,7 @@ namespace AC
 
 			base.Reset (actionList);
 		}
-				
+
 	}
 
 }

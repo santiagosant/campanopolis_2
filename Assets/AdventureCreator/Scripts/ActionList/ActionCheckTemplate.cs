@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCheckTemplate.cs"
  * 
@@ -10,6 +10,7 @@
  */
 
 using UnityEngine;
+using System.Collections.Generic;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -21,16 +22,13 @@ namespace AC
 	public class ActionCheckTemplate : ActionCheck
 	{
 		
+		// Declare properties here
+		public override ActionCategory Category { get { return ActionCategory.Custom; }}
+		public override string Title { get { return "Check template"; }}
+		public override string Description { get { return "This is a blank 'Check' Action template."; }}
+		
+		
 		// Declare variables here
-		
-		
-		public ActionCheckTemplate ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Custom;
-			title = "Check template";
-			description = "This is a blank 'Check' Action template.";
-		}
 
 
 		public override bool CheckCondition ()
@@ -43,7 +41,7 @@ namespace AC
 		
 		#if UNITY_EDITOR
 
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
 			// Action-specific Inspector GUI code here.  The "Condition is met" / "Condition is not met" GUI is rendered automatically afterwards.
 		}

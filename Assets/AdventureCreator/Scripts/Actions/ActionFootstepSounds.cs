@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionFootstepSounds.cs"
  * 
@@ -29,29 +29,27 @@ namespace AC
 		protected FootstepSounds runtimeFootstepSounds;
 
 		public bool isPlayer;
+		public int playerID = -1;
 
 		public enum FootstepSoundType { Walk, Run };
 		public FootstepSoundType footstepSoundType = FootstepSoundType.Walk;
 
 		public AudioClip[] newSounds;
 
-		
-		public ActionFootstepSounds ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Sound;
-			title = "Change footsteps";
-			description = "Changes the sounds used by a FootstepSounds component.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
+
+		public override ActionCategory Category { get { return ActionCategory.Sound; }}
+		public override string Title { get { return "Change footsteps"; }}
+		public override string Description { get { return "Changes the sounds used by a FootstepSounds component."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (isPlayer)
 			{
-				if (KickStarter.player != null)
+				Player player = AssignPlayer (playerID, parameters, parameterID);
+				if (player != null)
 				{
-					runtimeFootstepSounds = KickStarter.player.GetComponentInChildren <FootstepSounds>();
+					runtimeFootstepSounds = player.GetComponentInChildren <FootstepSounds>();
 				}
 			}
 			else
@@ -61,7 +59,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (runtimeFootstepSounds == null)
 			{
@@ -85,10 +83,19 @@ namespace AC
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Change Player's?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					parameterID = ChooseParameterGUI ("Player ID:", parameters, parameterID, ParameterType.Integer);
+					if (parameterID < 0)
+						playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				parameterID = Action.ChooseParameterGUI ("FootstepSounds:", parameters, parameterID, ParameterType.GameObject);
 				if (parameterID >= 0)
@@ -107,14 +114,12 @@ namespace AC
 
 			footstepSoundType = (FootstepSoundType) EditorGUILayout.EnumPopup ("Clips to change:", footstepSoundType);
 			newSounds = ShowClipsGUI (newSounds, (footstepSoundType == FootstepSoundType.Walk) ? "New walk sounds:" : "New run sounds:");
-
-			AfterRunningOption ();
 		}
 
 
 		private AudioClip[] ShowClipsGUI (AudioClip[] clips, string headerLabel)
 		{
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField (headerLabel, EditorStyles.boldLabel);
 			List<AudioClip> clipsList = new List<AudioClip>();
 
@@ -153,16 +158,16 @@ namespace AC
 			{
 				EditorGUILayout.HelpBox ("Sounds will be chosen at random.", MessageType.Info);
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 
 			return clipsList.ToArray ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			FootstepSounds obToUpdate = footstepSounds;
-			if (isPlayer)
+			if (isPlayer && (KickStarter.settingsManager == null || KickStarter.settingsManager.playerSwitching == PlayerSwitching.DoNotAllow))
 			{
 				if (!fromAssetFile && GameObject.FindObjectOfType <Player>() != null)
 				{
@@ -199,7 +204,28 @@ namespace AC
 			}
 			return string.Empty;
 		}
-		
+
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer && parameterID < 0)
+			{
+				if (footstepSounds && footstepSounds.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0 && parameterID < 0) return true;
+			return (parameterID < 0 && playerID == _playerID);
+		}
+
 		#endif
 
 
@@ -212,7 +238,7 @@ namespace AC
 		 */
 		public static ActionFootstepSounds CreateNew (FootstepSounds footstepSoundsToModify, FootstepSoundType footstepSoundType, AudioClip[] newSounds)
 		{
-			ActionFootstepSounds newAction = (ActionFootstepSounds) CreateInstance <ActionFootstepSounds>();
+			ActionFootstepSounds newAction = CreateNew<ActionFootstepSounds> ();
 			newAction.footstepSounds = footstepSoundsToModify;
 			newAction.footstepSoundType = footstepSoundType;
 			newAction.newSounds = newSounds;

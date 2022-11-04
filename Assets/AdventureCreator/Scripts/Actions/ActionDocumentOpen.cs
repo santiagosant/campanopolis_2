@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionDocumentOpen.cs"
  * 
@@ -20,49 +20,90 @@ namespace AC
 {
 
 	[System.Serializable]
-	public class ActionDocumentOpen : Action
+	public class ActionDocumentOpen : Action, IDocumentReferencerAction
 	{
 
 		public int documentID;
 		public int parameterID = -1;
 		public bool addToCollection = false;
 
+		protected Document runtimeDocument;
+
 		
-		public ActionDocumentOpen ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Document;
-			title = "Open";
-			description = "Opens a document, causing any Menu of 'Appear type: On View Document' to open.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Document; }}
+		public override string Title { get { return "Open"; }}
+		public override string Description { get { return "Opens a document, causing any Menu of 'Appear type: On View Document' to open."; }}
 
 
 		public override void AssignValues (List<ActionParameter> parameters)
 		{
-			documentID = AssignDocumentID (parameters, parameterID, documentID);
+			int runtimeDocumentID = AssignDocumentID (parameters, parameterID, documentID);
+			runtimeDocument = KickStarter.inventoryManager.GetDocument (runtimeDocumentID);
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
-			Document document = KickStarter.inventoryManager.GetDocument (documentID);
+			if (runtimeDocument == null)
+			{
+				return 0f;
+			}
 
-			if (document != null)
+			if (!isRunning)
 			{
 				if (addToCollection)
 				{
-					KickStarter.runtimeDocuments.AddToCollection (document);
+					KickStarter.runtimeDocuments.AddToCollection (runtimeDocument);
 				}
-				KickStarter.runtimeDocuments.OpenDocument (document);
+				KickStarter.runtimeDocuments.OpenDocument (runtimeDocument);
+
+				if (willWait)
+				{
+					isRunning = true;
+					return defaultPauseTime;
+				}
+			}
+			else
+			{
+				if (KickStarter.runtimeDocuments.ActiveDocument == runtimeDocument)
+				{
+					return defaultPauseTime;
+				}
 			}
 
+			isRunning = false;
 			return 0f;
+		}
+
+
+		public override void Skip ()
+		{
+			if (runtimeDocument == null)
+			{
+				return;
+			}
+
+			if (addToCollection)
+			{
+				KickStarter.runtimeDocuments.AddToCollection (runtimeDocument);
+			}
+			if (willWait)
+			{
+				if (KickStarter.runtimeDocuments.ActiveDocument == runtimeDocument)
+				{
+					KickStarter.runtimeDocuments.CloseDocument ();
+				}
+			}
+			else
+			{
+				KickStarter.runtimeDocuments.OpenDocument (runtimeDocument);
+			}
 		}
 		
 
 		#if UNITY_EDITOR
 
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			parameterID = Action.ChooseParameterGUI ("Document:", parameters, parameterID, ParameterType.Document);
 			if (parameterID < 0)
@@ -70,12 +111,11 @@ namespace AC
 				documentID = InventoryManager.DocumentSelectorList (documentID);
 			}
 			addToCollection = EditorGUILayout.Toggle ("Add to collection?", addToCollection);
-
-			AfterRunningOption ();
+			willWait = EditorGUILayout.Toggle ("Wait until close?", willWait);
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			Document document = KickStarter.inventoryManager.GetDocument (documentID);
 			if (document != null)
@@ -86,10 +126,21 @@ namespace AC
 		}
 
 
-		public override int GetDocumentReferences (List<ActionParameter> parameters, int _docID)
+		public int GetNumDocumentReferences (int _docID, List<ActionParameter> parameters)
 		{
 			if (parameterID < 0 && documentID == _docID)
 			{
+				return 1;
+			}
+			return 0;
+		}
+
+
+		public int UpdateDocumentReferences (int oldDocumentID, int newDocumentID, List<ActionParameter> actionParameters)
+		{
+			if (parameterID < 0 && documentID == oldDocumentID)
+			{
+				documentID = newDocumentID;
 				return 1;
 			}
 			return 0;
@@ -106,7 +157,7 @@ namespace AC
 		 */
 		public static ActionDocumentOpen CreateNew (int documentID, bool addToCollection)
 		{
-			ActionDocumentOpen newAction = (ActionDocumentOpen) CreateInstance <ActionDocumentOpen>();
+			ActionDocumentOpen newAction = CreateNew<ActionDocumentOpen> ();
 			newAction.documentID = documentID;
 			newAction.addToCollection = addToCollection;
 			return newAction;

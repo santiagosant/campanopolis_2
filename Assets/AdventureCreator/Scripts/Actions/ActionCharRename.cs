@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCharRename.cs"
  * 
@@ -10,6 +10,7 @@
  * 
  */
 
+using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -23,41 +24,53 @@ namespace AC
 	public class ActionCharRename : Action, ITranslatable
 	{
 		
+		public bool isPlayer;
+		public int playerID = -1;
+
 		public int _charID = 0;
 		public Char _char;
-		public bool isPlayer;
 		protected Char runtimeChar;
 
 		public string newName;
 		public int lineID = -1;
-		
-		
-		public ActionCharRename ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Character;
-			title = "Rename";
-			lineID = -1;
-			description = "Changes the display name of a Character when subtitles are used.";
-		}
-		
-		
-		override public void AssignValues (List<ActionParameter> parameters)
-		{
-			runtimeChar = AssignFile <Char> (_charID, _char);
 
+
+		public override ActionCategory Category { get { return ActionCategory.Character; }}
+		public override string Title { get { return "Rename"; }}
+		public override string Description { get { return "Changes the display name of a Character when subtitles are used."; }}
+
+
+		public override void AssignValues (List<ActionParameter> parameters)
+		{
 			if (isPlayer)
 			{
-				runtimeChar = KickStarter.player;
+				runtimeChar = AssignPlayer (playerID, parameters, -1);
+			}
+			else
+			{
+				runtimeChar = AssignFile <Char> (_charID, _char);
 			}
 		}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
-			if (runtimeChar && !string.IsNullOrEmpty (newName))
+			if (!string.IsNullOrEmpty (newName))
 			{
-				runtimeChar.SetName (newName, lineID);
+				if (runtimeChar != null)
+				{
+					runtimeChar.SetName (newName, lineID);
+				}
+				else if (playerID >= 0 && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow && KickStarter.saveSystem.CurrentPlayerID != playerID)
+				{
+					// Special case: Player is not in the scene, so manually update their PlayerData
+					PlayerData playerData = KickStarter.saveSystem.GetPlayerData (playerID);
+					if (playerData != null)
+					{
+						playerData.playerSpeechLabel = newName;
+						playerData.playerDisplayLineID = lineID;
+					}
+				}
 			}
 			
 			return 0f;
@@ -66,10 +79,17 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			isPlayer = EditorGUILayout.Toggle ("Is Player?", isPlayer);
-			if (!isPlayer)
+			if (isPlayer)
+			{
+				if (KickStarter.settingsManager != null && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					playerID = ChoosePlayerGUI (playerID, true);
+				}
+			}
+			else
 			{
 				_char = (Char) EditorGUILayout.ObjectField ("Character:", _char, typeof (Char), true);
 				
@@ -78,18 +98,16 @@ namespace AC
 			}
 			
 			newName = EditorGUILayout.TextField ("New name:", newName);
-			
-			AfterRunningOption ();
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (!isPlayer)
 			{
 				if (saveScriptsToo)
 				{
-					if (_char != null && _char.GetComponent <NPC>())
+					if (_char != null && !_char.IsPlayer)
 					{
 						AddSaveScript <RememberNPC> (_char);
 					}
@@ -100,7 +118,7 @@ namespace AC
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (_char != null && !string.IsNullOrEmpty (newName))
 			{
@@ -109,15 +127,37 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!isPlayer)
+			{
+				if (_char && _char.gameObject == _gameObject) return true;
+				if (_charID == id) return true;
+			}
+			if (isPlayer && _gameObject && _gameObject.GetComponent <Player>()) return true;
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesPlayer (int _playerID = -1)
+		{
+			if (!isPlayer) return false;
+			if (_playerID < 0) return true;
+			if (playerID < 0) return true;
+			return (playerID == _playerID);
+		}
+
 		#endif
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
 			return newName;
 		}
+
 
 		public int GetTranslationID (int index)
 		{
@@ -126,6 +166,12 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			newName = updatedText;
+		}
+
 
 		public int GetNumTranslatables ()
 		{
@@ -170,6 +216,8 @@ namespace AC
 
 		#endif
 
+		#endregion
+
 
 		/**
 		 * <summary>Creates a new instance of the 'Character: Rename' Action with key variables already set.</summary>
@@ -180,7 +228,7 @@ namespace AC
 		 */
 		public static ActionCharRename CreateNew (Char characterToRename, string newName, int translationID = -1)
 		{
-			ActionCharRename newAction = (ActionCharRename) CreateInstance <ActionCharRename>();
+			ActionCharRename newAction = CreateNew<ActionCharRename> ();
 			newAction._char = characterToRename;
 			newAction.newName = newName;
 			newAction.lineID = translationID;

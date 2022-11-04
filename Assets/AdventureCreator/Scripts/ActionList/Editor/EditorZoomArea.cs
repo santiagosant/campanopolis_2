@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"EditorZoomArea.cs"
  * 
@@ -42,13 +42,13 @@ namespace AC
 		}
 
 
-		public static Rect ScaleSizeBy(this Rect rect, float scale)
+		public static Rect ScaleSizeBy (this Rect rect, float scale)
 		{
 			return rect.ScaleSizeBy(scale, rect.center);
 		}
 
 
-		public static Rect ScaleSizeBy(this Rect rect, float scale, Vector2 pivotPoint)
+		public static Rect ScaleSizeBy (this Rect rect, float scale, Vector2 pivotPoint)
 		{
 			Rect result = rect;
 			result.x -= pivotPoint.x;
@@ -63,13 +63,13 @@ namespace AC
 		}
 
 
-		public static Rect ScaleSizeBy(this Rect rect, Vector2 scale)
+		public static Rect ScaleSizeBy (this Rect rect, Vector2 scale)
 		{
 			return rect.ScaleSizeBy(scale, rect.center);
 		}
 
 
-		public static Rect ScaleSizeBy(this Rect rect, Vector2 scale, Vector2 pivotPoint)
+		public static Rect ScaleSizeBy (this Rect rect, Vector2 scale, Vector2 pivotPoint)
 		{
 			Rect result = rect;
 			result.x -= pivotPoint.x;
@@ -93,28 +93,33 @@ namespace AC
 		private static Matrix4x4 _prevGuiMatrix;
 
 
-		public static Rect Begin(float zoomScale, Rect screenCoordsArea)
+		public static void Begin (float zoomScale, Rect screenCoordsArea)
 		{
-			GUI.EndGroup();
-			
-			Rect clippedArea = screenCoordsArea.ScaleSizeBy(1.0f / zoomScale, screenCoordsArea.TopLeft());
+			GUI.EndGroup ();
+
+			Rect clippedArea = screenCoordsArea.ScaleSizeBy (1.0f / zoomScale, screenCoordsArea.TopLeft ());
 			clippedArea.y += kEditorWindowTabHeight;
-			GUI.BeginGroup(clippedArea);
+			GUI.BeginGroup (clippedArea);
 			
 			_prevGuiMatrix = GUI.matrix;
-			Matrix4x4 translation = Matrix4x4.TRS(clippedArea.TopLeft(), Quaternion.identity, Vector3.one);
-			Matrix4x4 scale = Matrix4x4.Scale(new Vector3(zoomScale, zoomScale, 1.0f));
+			Matrix4x4 translation = Matrix4x4.TRS (clippedArea.TopLeft (), Quaternion.identity, Vector3.one);
+			Matrix4x4 scale = Matrix4x4.Scale (new Vector3 (zoomScale, zoomScale, 1.0f));
 			GUI.matrix = translation * scale * translation.inverse * GUI.matrix;
-			
-			return clippedArea;
+
+			//GUI.BeginGroup (new Rect (0, 0, CanvasWidth / zoom, CanvasHeight / zoom - 44));
+
+			//return clippedArea;
 		}
 
 		
-		public static void End()
+		public static void End (Vector2 originalWindowSize)
 		{
+			//GUI.EndGroup ();
+
 			GUI.matrix = _prevGuiMatrix;
-			GUI.EndGroup();
-			GUI.BeginGroup(new Rect(0.0f, kEditorWindowTabHeight, Screen.width, Screen.height));
+			GUI.EndGroup ();
+
+			GUI.BeginGroup(new Rect(0.0f, kEditorWindowTabHeight, ACScreen.width, ACScreen.height));
 		}
 
 	}

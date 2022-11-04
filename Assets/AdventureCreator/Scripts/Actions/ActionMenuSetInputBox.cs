@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionMenuSetInputBox.cs"
  * 
@@ -19,7 +19,7 @@ namespace AC
 {
 	
 	[System.Serializable]
-	public class ActionMenuSetInputBox : Action
+	public class ActionMenuSetInputBox : Action, IMenuReferencer
 	{
 		
 		public string menuName;
@@ -37,16 +37,12 @@ namespace AC
 		public int varParameterID = -1;
 
 		
-		public ActionMenuSetInputBox ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Menu;
-			title = "Set Input box text";
-			description = "Replaces the text within an Input box element.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Menu; }}
+		public override string Title { get { return "Set Input box text"; }}
+		public override string Description { get { return "Replaces the text within an Input box element."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			menuName = AssignString (parameters, menuNameParameterID, menuName);
 			elementName = AssignString (parameters, elementNameParameterID, elementName);
@@ -55,7 +51,7 @@ namespace AC
 		}
 
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (!string.IsNullOrEmpty (menuName) && !string.IsNullOrEmpty (elementName))
 			{
@@ -84,15 +80,15 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
-			menuNameParameterID = Action.ChooseParameterGUI ("Menu containing Input:", parameters, menuNameParameterID, ParameterType.String);
+			menuNameParameterID = Action.ChooseParameterGUI ("Menu containing Input:", parameters, menuNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (menuNameParameterID < 0)
 			{
 				menuName = EditorGUILayout.TextField ("Menu containing Input:", menuName);
 			}
 			
-			elementNameParameterID = Action.ChooseParameterGUI ("Input element name:", parameters, elementNameParameterID, ParameterType.String);
+			elementNameParameterID = Action.ChooseParameterGUI ("Input element name:", parameters, elementNameParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 			if (elementNameParameterID < 0)
 			{
 				elementName = EditorGUILayout.TextField ("Input element name:", elementName);
@@ -101,7 +97,7 @@ namespace AC
 			setMenuInputBoxSource = (SetMenuInputBoxSource) EditorGUILayout.EnumPopup ("New text is:", setMenuInputBoxSource);
 			if (setMenuInputBoxSource == SetMenuInputBoxSource.EnteredHere)
 			{
-				newLabelParameterID = Action.ChooseParameterGUI ("New text:", parameters, newLabelParameterID, ParameterType.String);
+				newLabelParameterID = Action.ChooseParameterGUI ("New text:", parameters, newLabelParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (newLabelParameterID < 0)
 				{
 					newLabel = EditorGUILayout.TextField ("New text:", newLabel);
@@ -109,18 +105,16 @@ namespace AC
 			}
 			else if (setMenuInputBoxSource == SetMenuInputBoxSource.FromGlobalVariable)
 			{
-				varParameterID = Action.ChooseParameterGUI ("String variable:", parameters, varParameterID, ParameterType.String);
+				varParameterID = Action.ChooseParameterGUI ("String variable:", parameters, varParameterID, new ParameterType[2] { ParameterType.String, ParameterType.PopUp });
 				if (varParameterID == -1)
 				{
-					varID = AdvGame.GlobalVariableGUI ("String variable:", varID, VariableType.String);
+					varID = AdvGame.GlobalVariableGUI ("String variable:", varID, new VariableType[2] { VariableType.String, VariableType.PopUp });
 				}
 			}
-
-			AfterRunningOption ();
 		}
 		
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (!string.IsNullOrEmpty (elementName))
 			{
@@ -170,18 +164,75 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation location, int _varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
-			string tokenText = AdvGame.GetVariableTokenText (location, varID);
-			if (!string.IsNullOrEmpty (tokenText) && newLabel.Contains (tokenText))
+			if (setMenuInputBoxSource == SetMenuInputBoxSource.EnteredHere)
 			{
-				thisCount ++;
+				string tokenText = AdvGame.GetVariableTokenText (location, _varID, _variablesConstantID);
+				if (!string.IsNullOrEmpty (tokenText) && newLabel.ToLower ().Contains (tokenText))
+				{
+					thisCount ++;
+				}
+			}
+			else if (setMenuInputBoxSource == SetMenuInputBoxSource.FromGlobalVariable)
+			{
+				if (location == VariableLocation.Global && varID == _varID && varParameterID < 0)
+				{
+					thisCount ++;
+				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
+		}
+
+
+		public override int UpdateVariableReferences (VariableLocation location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+
+			if (setMenuInputBoxSource == SetMenuInputBoxSource.EnteredHere)
+			{
+				string oldTokenText = AdvGame.GetVariableTokenText (location, oldVarID, _variablesConstantID);
+				if (!string.IsNullOrEmpty (oldTokenText) && newLabel.ToLower ().Contains (oldTokenText))
+				{
+					string newTokenText = AdvGame.GetVariableTokenText (location, newVarID, _variablesConstantID);
+					newLabel = newLabel.Replace (oldTokenText, newTokenText);
+					thisCount++;
+				}
+			}
+			else if (setMenuInputBoxSource == SetMenuInputBoxSource.FromGlobalVariable)
+			{
+				if (location == VariableLocation.Global && varID == oldVarID && varParameterID < 0)
+				{
+					varID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public int GetNumMenuReferences (string _menuName, string _elementName = "")
+		{
+			if (menuNameParameterID < 0 && menuName == _menuName)
+			{
+				if (string.IsNullOrEmpty (elementName))
+				{
+					return 1;
+				}
+
+				if (elementNameParameterID < 0 && _elementName == elementName)
+				{
+					return 1;
+				}
+			}
+
+			return 0;
 		}
 
 		#endif
@@ -196,7 +247,7 @@ namespace AC
 		 */
 		public static ActionMenuSetInputBox CreateNew_SetDirectly (string menuName, string inputBoxElementName, string newText)
 		{
-			ActionMenuSetInputBox newAction = (ActionMenuSetInputBox) CreateInstance <ActionMenuSetInputBox>();
+			ActionMenuSetInputBox newAction = CreateNew<ActionMenuSetInputBox> ();
 			newAction.menuName = menuName;
 			newAction.elementName = inputBoxElementName;
 			newAction.newLabel = newText;
@@ -213,7 +264,7 @@ namespace AC
 		 */
 		public static ActionMenuSetInputBox CreateNew_SetFromVariable (string menuName, string inputBoxElementName, int globalStringVariableID)
 		{
-			ActionMenuSetInputBox newAction = (ActionMenuSetInputBox) CreateInstance <ActionMenuSetInputBox>();
+			ActionMenuSetInputBox newAction = CreateNew<ActionMenuSetInputBox> ();
 			newAction.menuName = menuName;
 			newAction.elementName = inputBoxElementName;
 			newAction.varID = globalStringVariableID;

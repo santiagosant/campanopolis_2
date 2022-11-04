@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"FollowTintMap.cs"
  * 
@@ -22,11 +22,11 @@ namespace AC
 	 */
 	[AddComponentMenu("Adventure Creator/Characters/Follow TintMap")]
 	[RequireComponent (typeof (SpriteRenderer))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_follow_tint_map.html")]
-	#endif
 	public class FollowTintMap : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** If True, then the tintMap defined in SceneSettings will be used as this sprite's colour tinter. */
 		public bool useDefaultTintMap = true;
@@ -37,17 +37,21 @@ namespace AC
 		/** If True, then SpriteRenderer components found elsewhere in the object's hierarchy will also be affected */
 		public bool affectChildren = false;
 
-		private TintMap actualTintMap;
-		private SpriteRenderer _spriteRenderer;
-		private SpriteRenderer[] _spriteRenderers;
+		protected TintMap actualTintMap;
+		protected SpriteRenderer _spriteRenderer;
+		protected SpriteRenderer[] _spriteRenderers;
 
-		private float targetIntensity;
-		private float initialIntensity;
-		private float fadeStartTime;
-		private float fadeTime;
+		protected float targetIntensity;
+		protected float initialIntensity;
+		protected float fadeStartTime;
+		protected float fadeTime;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			if (KickStarter.settingsManager && KickStarter.settingsManager.IsInLoadingScene ())
 			{
@@ -63,14 +67,50 @@ namespace AC
 		}
 
 
-		/**
-		 * Called after a scene change.
-		 */
-		public void AfterLoad ()
+		protected void OnEnable ()
 		{
-			ResetTintMap ();
+			EventManager.OnInitialiseScene += ResetTintMap;
 		}
 
+
+		protected void OnDisable ()
+		{
+			EventManager.OnInitialiseScene -= ResetTintMap;
+		}
+
+
+		protected void LateUpdate ()
+		{
+			if (actualTintMap)
+			{
+				if (fadeTime > 0f)
+				{
+					intensity = Mathf.Lerp (initialIntensity, targetIntensity, AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null));
+					if (Time.time > (fadeStartTime + fadeTime))
+					{
+						intensity = targetIntensity;
+						fadeTime = fadeStartTime = 0f;
+					}
+				}
+
+				if (affectChildren)
+				{
+					for (int i=0; i<_spriteRenderers.Length; i++)
+					{
+						_spriteRenderers[i].color = actualTintMap.GetColorData (transform.position, intensity, _spriteRenderers[i].color.a);
+					}
+				}
+				else
+				{
+					_spriteRenderer.color = actualTintMap.GetColorData (transform.position, intensity, _spriteRenderer.color.a);
+				}
+			}
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Assigns the internal TintMap to follow based on the chosen public variables.
@@ -129,35 +169,6 @@ namespace AC
 		}
 
 
-		private void LateUpdate ()
-		{
-			if (actualTintMap)
-			{
-				if (fadeTime > 0f)
-				{
-					intensity = Mathf.Lerp (initialIntensity, targetIntensity, AdvGame.Interpolate (fadeStartTime, fadeTime, MoveMethod.Linear, null));
-					if (Time.time > (fadeStartTime + fadeTime))
-					{
-						intensity = targetIntensity;
-						fadeTime = fadeStartTime = 0f;
-					}
-				}
-
-				if (affectChildren)
-				{
-					for (int i=0; i<_spriteRenderers.Length; i++)
-					{
-						_spriteRenderers[i].color = actualTintMap.GetColorData (transform.position, intensity, _spriteRenderers[i].color.a);
-					}
-				}
-				else
-				{
-					_spriteRenderer.color = actualTintMap.GetColorData (transform.position, intensity, _spriteRenderer.color.a);
-				}
-			}
-		}
-
-
 		/**
 		 * <summary>Updates a VisibilityData class with its own variables that need saving.</summary>
 		 * <param name = "visibilityData">The original VisibilityData class</param>
@@ -169,7 +180,7 @@ namespace AC
 			visibilityData.tintIntensity = targetIntensity;
 
 			visibilityData.tintMapID = 0;
-			if (!useDefaultTintMap && tintMap != null && tintMap.gameObject != null)
+			if (!useDefaultTintMap && tintMap && tintMap.gameObject)
 			{
 				visibilityData.tintMapID = Serializer.GetConstantID (tintMap.gameObject);
 			}
@@ -189,11 +200,13 @@ namespace AC
 
 			if (!useDefaultTintMap && data.tintMapID != 0)
 			{
-				tintMap = Serializer.returnComponent <TintMap> (data.tintMapID);
+				tintMap = ConstantID.GetComponent <TintMap> (data.tintMapID);
 			}
 
 			ResetTintMap ();
 		}
+
+		#endregion
 
 	}
 

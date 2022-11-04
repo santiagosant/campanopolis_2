@@ -1,4 +1,6 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+
+using UnityEditor;
 
 namespace AC
 {
@@ -18,7 +20,7 @@ namespace AC
 			_target.surviveSceneChange = CustomGUILayout.Toggle ("Play across scenes?", _target.surviveSceneChange, "", "If True, then the GameObject this is attached to will not be destroyed when changing scene");
 			if (_target.surviveSceneChange)
 			{
-				if (_target.transform.root != null && _target.transform.root != _target.gameObject.transform)
+				if (_target.transform.root && _target.transform.root != _target.gameObject.transform)
 				{
 					EditorGUILayout.HelpBox ("For Sound to survive scene-changes, please move this object out of its hierarchy, so that it has no parent GameObject.", MessageType.Warning);
 				}
@@ -34,3 +36,5 @@ namespace AC
 	}
 
 }
+
+#endif

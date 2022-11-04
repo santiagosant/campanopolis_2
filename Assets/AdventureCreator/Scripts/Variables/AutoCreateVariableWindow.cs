@@ -19,7 +19,7 @@ namespace AC
 		public static void Init (string _variableName, VariableLocation _location, VariableType _variableType, Action _actionFor)
 		{
 			AutoCreateVariableWindow window = (AutoCreateVariableWindow) EditorWindow.GetWindow (typeof (AutoCreateVariableWindow));
-			UnityVersionHandler.SetWindowTitle (window, "Auto-create Variable");
+			window.titleContent.text = "Auto-create Variable";
 			window.position = new Rect (300, 200, 320, 100);
 
 			window.location = _location;
@@ -79,7 +79,6 @@ namespace AC
 			newVariable.type = variableType;
 
 			_vars.Add (newVariable);
-			//AdvGame.GetReferences ().variablesManager.ShowVariable (newVariable.id, location);
 			ACDebug.Log ("Created new " + location.ToString () + " variable '" + variableName + "'");
 
 			if (actionFor != null)

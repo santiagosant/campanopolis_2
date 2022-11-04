@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionListStarter.cs"
  * 
@@ -20,39 +20,42 @@ namespace AC
 {
 
 	/** A component used to run ActionLists when a scene begins or loads, optionally setting their parameters as well. */
-	[AddComponentMenu("Adventure Creator/Logic/ActionList starter")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
-	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_action_list_starter.html")]
-	#endif
-	public class ActionListStarter : SetParametersBase
+	[AddComponentMenu ("Adventure Creator/Logic/ActionList starter")]
+	[HelpURL ("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_action_list_starter.html")]
+	public class ActionListStarter : SetParametersBase, iActionListAssetReferencer
 	{
 
 		#region Variables
 
-		[SerializeField] ActionListSource actionListSource = ActionListSource.InScene;
-		[SerializeField] private ActionList actionList = null;
-		[SerializeField] private ActionListAsset actionListAsset = null;
-		[SerializeField] private bool runOnStart = false;
-		[SerializeField] private bool runOnLoad = false;
-		[SerializeField] private bool setParameters = false;
-		[SerializeField] private bool runMultipleTimes = false;
-		[SerializeField] private bool runInstantly = false;
+		[SerializeField] protected ActionListSource actionListSource = ActionListSource.InScene;
+		[SerializeField] protected ActionList actionList = null;
+		[SerializeField] protected ActionListAsset actionListAsset = null;
+		[SerializeField] protected bool runOnStart = false;
+		[SerializeField] protected bool runOnLoad = false;
+		protected enum SceneLoadCondition { All, DueToLoadingSave, DueToSwitchingPlayer };
+		[SerializeField] protected SceneLoadCondition sceneLoadCondition = SceneLoadCondition.All;
+		[SerializeField] protected bool setParameters = false;
+		[SerializeField] protected bool runMultipleTimes = false;
+		[SerializeField] protected bool runInstantly = false;
 
 		#endregion
 
 
 		#region UnityStandards
 
-		private void OnEnable ()
+		protected void OnEnable ()
 		{
 			EventManager.OnStartScene += OnStartScene;
 			EventManager.OnAfterChangeScene += OnAfterChangeScene;
+			EventManager.OnAddSubScene += OnAddSubScene;
 		}
 
 
-		private void OnDisable ()
+		protected void OnDisable ()
 		{
 			EventManager.OnStartScene -= OnStartScene;
+			EventManager.OnAfterChangeScene -= OnAfterChangeScene;
+			EventManager.OnAddSubScene -= OnAddSubScene;
 		}
 
 		#endregion
@@ -90,17 +93,26 @@ namespace AC
 		{
 			runOnStart = EditorGUILayout.Toggle ("Run on scene start?", runOnStart);
 			runOnLoad = EditorGUILayout.Toggle ("Run on scene load?", runOnLoad);
-			EditorGUILayout.HelpBox ("The linked ActionList can also be run by invoking this script's RunActionList() method.", MessageType.Info);
 
+			if (runOnLoad && KickStarter.settingsManager && KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+			{
+				sceneLoadCondition = (SceneLoadCondition) EditorGUILayout.EnumPopup ("Scene load condition:", sceneLoadCondition);
+			}
+			
 			EditorGUILayout.Space ();
 
-			actionListSource = (ActionListSource) EditorGUILayout.EnumPopup ("ActionList source:", actionListSource);
+			actionListSource = (ActionListSource)EditorGUILayout.EnumPopup ("ActionList source:", actionListSource);
 			switch (actionListSource)
 			{
 				case ActionListSource.InScene:
-					actionList = (ActionList) EditorGUILayout.ObjectField ("ActionList to run:", actionList, typeof (ActionList), true);
+					actionList = (ActionList)EditorGUILayout.ObjectField ("ActionList to run:", actionList, typeof (ActionList), true);
 
-					if (actionList != null && actionList.IsSkippable ())
+					if (actionList == null && GetComponent <ActionList>())
+					{
+						actionList = GetComponent <ActionList>();
+					}
+
+					if (actionList && actionList.IsSkippable ())
 					{
 						runInstantly = EditorGUILayout.Toggle ("Run instantly?", runInstantly);
 					}
@@ -109,9 +121,9 @@ namespace AC
 					break;
 
 				case ActionListSource.AssetFile:
-					actionListAsset = (ActionListAsset) EditorGUILayout.ObjectField ("Asset to run:", actionListAsset, typeof (ActionListAsset), false);
+					actionListAsset = (ActionListAsset)EditorGUILayout.ObjectField ("Asset to run:", actionListAsset, typeof (ActionListAsset), false);
 
-					if (actionListAsset != null && actionListAsset.IsSkippable ())
+					if (actionListAsset && actionListAsset.IsSkippable ())
 					{
 						runInstantly = EditorGUILayout.Toggle ("Run instantly?", runInstantly);
 					}
@@ -119,6 +131,9 @@ namespace AC
 					ShowParametersGUI (actionListAsset);
 					break;
 			}
+
+			EditorGUILayout.Space ();
+			EditorGUILayout.HelpBox ("The linked ActionList can also be run by invoking this script's RunActionList() method.", MessageType.Info);
 		}
 
 
@@ -126,16 +141,16 @@ namespace AC
 		{
 			if (_actionList != null)
 			{
-				if (_actionList.source == ActionListSource.AssetFile && _actionList.assetFile != null && _actionList.assetFile.useParameters && _actionList.assetFile.parameters != null && _actionList.assetFile.parameters.Count > 0)
+				if (_actionList.source == ActionListSource.AssetFile && _actionList.assetFile && _actionList.assetFile.NumParameters > 0)
 				{
 					setParameters = EditorGUILayout.Toggle ("Set parameters?", setParameters);
 
 					if (setParameters)
 					{
-						ShowParametersGUI (_actionList.assetFile.parameters, _actionList.syncParamValues);
+						ShowParametersGUI (_actionList.assetFile.DefaultParameters, _actionList.syncParamValues);
 					}
 				}
-				else if (_actionList.source == ActionListSource.InScene && _actionList.useParameters && _actionList.parameters != null && _actionList.parameters.Count > 0)
+				else if (_actionList.source == ActionListSource.InScene && _actionList.NumParameters > 0)
 				{
 					setParameters = EditorGUILayout.Toggle ("Set parameters:", setParameters);
 
@@ -152,7 +167,7 @@ namespace AC
 		{
 			if (_actionListAsset != null)
 			{
-				if (_actionListAsset.useParameters && _actionListAsset.parameters != null && _actionListAsset.parameters.Count > 0)
+				if (_actionListAsset.NumParameters > 0)
 				{
 					setParameters = EditorGUILayout.Toggle ("Set parameters?", setParameters);
 
@@ -163,7 +178,7 @@ namespace AC
 
 					if (setParameters)
 					{
-						ShowParametersGUI (_actionListAsset.parameters, true, (_actionListAsset.canRunMultipleInstances && runMultipleTimes));
+						ShowParametersGUI (_actionListAsset.DefaultParameters, true, (_actionListAsset.canRunMultipleInstances && runMultipleTimes));
 					}
 				}
 			}
@@ -172,9 +187,9 @@ namespace AC
 		#endif
 
 
-		#region PrivateFunctions
+		#region ProtectedFunctions
 
-		private void OnStartScene ()
+		protected void OnStartScene ()
 		{
 			if (runOnStart)
 			{
@@ -182,17 +197,50 @@ namespace AC
 			}
 		}
 
-		
-		private void OnAfterChangeScene (LoadingGame loadingGame)
+
+		protected void OnAfterChangeScene (LoadingGame loadingGame)
 		{
 			if (runOnLoad && loadingGame != LoadingGame.No)
 			{
+				if (KickStarter.settingsManager.playerSwitching == PlayerSwitching.Allow)
+				{
+					switch (sceneLoadCondition)
+					{
+						case SceneLoadCondition.DueToLoadingSave:
+							if (loadingGame == LoadingGame.JustSwitchingPlayer) return;
+							break;
+
+						case SceneLoadCondition.DueToSwitchingPlayer:
+							if (loadingGame != LoadingGame.JustSwitchingPlayer) return;
+							break;
+
+						default:
+							break;
+					}
+				}
+
 				RunActionLists ();
 			}
 		}
 
 
-		private void RunActionLists ()
+		protected void OnAddSubScene (SubScene subScene)
+		{
+			if (subScene.gameObject.scene == gameObject.scene)
+			{
+				if (KickStarter.saveSystem.loadingGame == LoadingGame.No)
+				{
+					OnStartScene ();
+				}
+				else
+				{
+					OnAfterChangeScene (KickStarter.saveSystem.loadingGame);
+				}
+			}
+		}
+
+
+		protected void RunActionLists ()
 		{
 			switch (actionListSource)
 			{
@@ -216,13 +264,13 @@ namespace AC
 					break;
 
 				case ActionListSource.AssetFile:
-					if (actionListAsset != null)
+					if (actionListAsset)
 					{
 						if (setParameters && runMultipleTimes)
 						{
 							if (actionListAsset.canRunMultipleInstances)
 							{
-								for (int i=0; i<successiveGUIData.Length+1; i++)
+								for (int i = 0; i < successiveGUIData.Length + 1; i++)
 								{
 									AssignParameterValues (actionListAsset, i);
 
@@ -262,7 +310,18 @@ namespace AC
 		}
 
 		#endregion
-	
+
+
+		#if UNITY_EDITOR
+
+		public bool ReferencesAsset (ActionListAsset _actionListAsset)
+		{
+			if (actionListSource == ActionListSource.InScene && actionListAsset == _actionListAsset) return true;
+			return false;
+		}
+
+		#endif
+
 	}
 
 }

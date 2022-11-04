@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"Button.cs"
  * 
@@ -15,12 +15,12 @@ using UnityEngine;
 namespace AC
 {
 
-	/**
-	 * A data container for Hotspot interactions.
-	 */
+	/**  A data container for Hotspot interactions. */
 	[System.Serializable]
 	public class Button
 	{
+
+		#region Variables
 
 		/** The Interaction ActionList to run, if the Hotspot's interactionSource = InteractionSource.InScene */
 		public Interaction interaction = null;
@@ -44,6 +44,9 @@ namespace AC
 		/** What the Player prefab does after clicking the Hotspot, but before the Interaction itself is run (DoNothing, TurnToFace, WalkTo, WalkToMarker) */
 		public PlayerAction playerAction = PlayerAction.DoNothing;
 
+		/** If True, and playerAction = PlayerAction.WalkToMarker, and the Hotspot's doubleClickingHotspot = DoubleClickingHotspot.TriggersInteractionInstantly, then the Player will snap to the Hotspot's Walk-to Marker when the Interaction is run through double-clicking */
+		public bool doubleClickDoesNotSnapPlayerToMarker = false;
+
 		/** If True, and playerAction = PlayerAction.WalkTo, then the Interaction will be run once the Player is within a certain distance of the Hotspot */
 		public bool setProximity = false;
 		/** The proximity the Player must be within, if setProximity = True */
@@ -58,13 +61,40 @@ namespace AC
 		/** If >=0, The ID number of the InventoryItem ActionParameter in assetFile / interaction to set to the InvItem that was active when the Button was triggered */
 		public int invParameterID = -1;
 
+		#endregion
 
-		/**
-		 * The default Constructor.
-		 */
+
+		#region Constructors
+
+		/** The default Constructor. */
 		public Button ()
 		{ }
 
+
+		/** A Constructor that copies its values from another Button */
+		public Button (Button button)
+		{
+			interaction = button.interaction;
+			assetFile = button.assetFile;
+			customScriptObject = button.customScriptObject;
+			customScriptFunction = button.customScriptFunction;
+			isDisabled = button.isDisabled;
+			invID = button.invID;
+			iconID = button.iconID;
+			selectItemMode = button.selectItemMode;
+			playerAction = button.playerAction;
+			setProximity = button.setProximity;
+			proximity = button.proximity;
+			faceAfter = button.faceAfter;
+			isBlocking = button.isBlocking;
+			parameterID = button.parameterID;
+			invParameterID = button.invParameterID;
+		}
+
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>Checks if any of the Button's values have been modified from their defaults.</summary>
@@ -112,36 +142,48 @@ namespace AC
 		}
 
 
-		public string GetFullLabel (Hotspot _hotspot, int _language)
+		public string GetFullLabel (Hotspot _hotspot, InvInstance invInstance, int _language)
 		{
 			if (_hotspot == null) return string.Empty;
 
 			if (_hotspot.lookButton == this)
 			{
 				string prefix = KickStarter.cursorManager.GetLabelFromID (KickStarter.cursorManager.lookCursor_ID, _language);
-				return AdvGame.CombineLanguageString (prefix,
-													  _hotspot.GetName (_language),
-													  _language);
+				string hotspotName = _hotspot.GetName (_language);
+				if (_hotspot.canBeLowerCase && !string.IsNullOrEmpty (prefix))
+				{
+					hotspotName = hotspotName.ToLower();
+				}
+
+				return AdvGame.CombineLanguageString (prefix, hotspotName, _language);
 			}
-			else if (_hotspot.useButtons.Contains (this))
+			else if (_hotspot.useButtons.Contains (this) || _hotspot.unhandledUseButton == this)
 			{
 				string prefix = KickStarter.cursorManager.GetLabelFromID (iconID, _language);
-				return AdvGame.CombineLanguageString (prefix,
-													  _hotspot.GetName (_language),
-													  _language);
+				string hotspotName = _hotspot.GetName (_language);
+				if (_hotspot.canBeLowerCase && !string.IsNullOrEmpty (prefix))
+				{
+					hotspotName = hotspotName.ToLower ();
+				}
+				return AdvGame.CombineLanguageString (prefix, hotspotName, _language);
 			}
-			else if (_hotspot.invButtons.Contains (this))
+			else if (_hotspot.invButtons.Contains (this) && InvInstance.IsValid (invInstance))
 			{
-				InvItem item = KickStarter.runtimeInventory.GetItem (invID);
-				string prefix = KickStarter.runtimeInventory.GetHotspotPrefixLabel (item, item.GetLabel (_language), _language);
-				return AdvGame.CombineLanguageString (prefix,
-													  _hotspot.GetName (_language),
-													  _language);
+				string prefix = invInstance.GetHotspotPrefixLabel (_language);
+				string hotspotName = _hotspot.GetName (_language);
+				if (_hotspot.canBeLowerCase && !string.IsNullOrEmpty (prefix))
+				{
+					hotspotName = hotspotName.ToLower ();
+				}
+
+				return AdvGame.CombineLanguageString (prefix, hotspotName, _language);
 			}
 
 			return string.Empty;
 		}
-		
+
+		#endregion
+
 	}
 
 }

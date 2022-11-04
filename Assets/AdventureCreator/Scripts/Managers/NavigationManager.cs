@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavigationManager.cs"
  * 
@@ -19,25 +19,56 @@ namespace AC
 	 * This component instantiates the scene's chosen NavigationEngine ScriptableObject when the game begins.
 	 * It should be placed on the GameEngine prefab.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_navigation_manager.html")]
-	#endif
 	public class NavigationManager : MonoBehaviour
 	{
 
+		#region Variables
+
 		/** The NavigationEngine ScriptableObject that performs the scene's pathfinding algorithms. */
 		[HideInInspector] public NavigationEngine navigationEngine = null;
-		
 
-		/**
-		 * Initialises the Navigation Engine.  This is public so we have control over when it is called in relation to other Awake functions.
-		 */
-		public void OnAwake ()
+		#endregion
+
+
+		#region UnityStandards
+
+		public void OnAwake (NavigationMesh defaultNavMesh)
 		{
 			navigationEngine = null;
 			ResetEngine ();
+
+			// Turn off all NavMesh objects
+			NavigationMesh[] navMeshes = FindObjectsOfType (typeof (NavigationMesh)) as NavigationMesh[];
+			foreach (NavigationMesh _navMesh in navMeshes)
+			{
+				if (defaultNavMesh != _navMesh)
+				{
+					_navMesh.TurnOff ();
+				}
+			}
+
+			if (navigationEngine == null || navigationEngine.RequiresNavMeshGameObject)
+			{
+				if (defaultNavMesh)
+				{
+					defaultNavMesh.TurnOn ();
+				}
+				else if (navigationEngine != null)
+				{
+					AC.Char[] allChars = FindObjectsOfType (typeof (AC.Char)) as AC.Char[];
+					if (allChars.Length > 0)
+					{
+						ACDebug.LogWarning ("No NavMesh set. Characters will not be able to PathFind until one is defined - please choose one using the Scene Manager.");
+					}
+				}
+			}
 		}
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * Sets up the scene's chosen NavigationEngine ScriptableObject if it is not already present.
@@ -81,6 +112,8 @@ namespace AC
 			}
 			return false;
 		}
+
+		#endregion
 
 	}
 

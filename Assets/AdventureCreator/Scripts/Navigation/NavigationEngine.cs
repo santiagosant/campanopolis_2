@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"NavigationEngine.cs"
  * 
@@ -124,15 +124,6 @@ namespace AC
 
 
 		/**
-		 * <summary>Sets the visibility state of any relevant prefabs.
-		 * This is called when the "NavMesh" visibility buttons in SceneManager are clicked on.</summary>
-		 * <param name = "visibility">True if the prefabs should be made visible. Otherwise, they should be made invisible.</param>
-		 */
-		public virtual void SetVisibility (bool visibility)
-		{ }
-
-
-		/**
 		 * Integrates all PolygonCollider2D objects in the polygonColliderHoles List into the base PolygonCollider2D shape.
 		 * This is called automatically by AddHole() and RemoveHole() once the List has been amended
 		 */
@@ -144,9 +135,16 @@ namespace AC
 		 * Provides a space for any custom Editor GUI code that should be displayed in SceneManager.
 		 */
 		public virtual void SceneSettingsGUI ()
-		{ 
-			#if UNITY_EDITOR
-			#endif
+		{}
+
+
+		/** Returns True if the engine relies on a specific GameObject for pathfinding */
+		public virtual bool RequiresNavMeshGameObject
+		{
+			get
+			{
+				return false;
+			}
 		}
 
 
@@ -158,9 +156,7 @@ namespace AC
 		public virtual NavigationMesh NavigationMeshGUI (NavigationMesh _target)
 		{
 			_target.disableRenderer = CustomGUILayout.ToggleLeft ("Disable mesh renderer?", _target.disableRenderer, "", "If True, the MeshRenderer will be disabled when the game begins");
-			#if UNITY_5 || UNITY_2017_1_OR_NEWER
 			_target.ignoreCollisions = CustomGUILayout.ToggleLeft ("Ignore collisions?", _target.ignoreCollisions, "", "If True, then Physics collisions with this GameObject's Collider will be disabled");
-			#endif
 			return _target;
 		}
 

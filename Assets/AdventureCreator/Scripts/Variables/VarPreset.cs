@@ -1,5 +1,5 @@
 /*	Adventure Creator
-*	by Chris Burton, 2013-2019
+*	by Chris Burton, 2013-2022
 *	
 *	"VarPreset.cs"
 * 
@@ -13,12 +13,12 @@ using System.Collections.Generic;
 namespace AC
 {
 
-	/**
-	 * A data container of preset variable values.
-	 */
+	/** A data container of preset variable values. */
 	[System.Serializable]
 	public class VarPreset
 	{
+
+		#region Variables
 
 		/** Its display name */
 		public string label;
@@ -27,6 +27,10 @@ namespace AC
 		/** A List of PresetValues that match either all global or local variables (see GVar) by ID number */
 		public List<PresetValue> presetValues = new List<PresetValue>();
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		/**
 		 * <summary>The default Constructor.</summary>
@@ -162,7 +166,9 @@ namespace AC
 
 			return null;
 		}
-		
+
+		#endregion
+
 	}
 
 
@@ -183,6 +189,10 @@ namespace AC
 		public string textVal;
 		/** Its value, if a Vector3 */
 		public Vector3 vector3Val;
+		/** Its value, if a GameObject */
+		public GameObject gameObjectVal;
+		/** Its value if a Unity Object */
+		public Object objectVal;
 
 
 		/**
@@ -192,10 +202,12 @@ namespace AC
 		public PresetValue (GVar _gVar)
 		{
 			id = _gVar.id;
-			val = _gVar.val;
-			floatVal = _gVar.floatVal;
-			textVal = _gVar.textVal;
-			vector3Val = _gVar.vector3Val;
+			val = _gVar.IntegerValue;
+			floatVal = _gVar.FloatValue;
+			textVal = _gVar.TextValue;
+			vector3Val = _gVar.Vector3Value;
+			gameObjectVal = _gVar.GameObjectValue;
+			objectVal = _gVar.UnityObjectValue;
 		}
 
 	}

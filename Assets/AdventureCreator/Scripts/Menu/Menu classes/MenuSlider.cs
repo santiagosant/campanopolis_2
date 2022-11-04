@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuSlider.cs"
  * 
@@ -19,9 +19,7 @@ using UnityEditor;
 namespace AC
 {
 
-	/**
-	 * A MenuElement that provides a slider, whose value can represent either a Float global variable or the volume of an Options sound type.
-	 */
+	/** A MenuElement that provides a slider, whose value can represent either a Float global variable or the volume of an Options sound type. */
 	public class MenuSlider : MenuElement, ITranslatable
 	{
 
@@ -45,6 +43,8 @@ namespace AC
 		public Texture2D sliderTexture;
 		/** The display type of the slider (FillBar, MoveableBlock) (OnGUI Menus Only) */
 		public SliderDisplayType sliderDisplayType = SliderDisplayType.FillBar;
+		/** Which way the slider is orientated (Horizontal, Vertical) (OnGUI Menus Only) */
+		public SliderOrientation sliderOrientation = SliderOrientation.Horizontal;
 		/** What the slider's value represents (Speech, Music, SFX, CustomScript, FloatVariable) */
 		public AC_SliderType sliderType;
 		/** The dimensions of the block, if sliderDisplayType = SliderDisplayType.MoveableBlock */
@@ -60,16 +60,20 @@ namespace AC
 		/** The method by which this element is hidden from view when made invisible (DisableObject, DisableInteractability) */
 		public UISelectableHideStyle uiSelectableHideStyle = UISelectableHideStyle.DisableObject;
 
+		#if TextMeshProIsPresent
+		private TMPro.TextMeshProUGUI uiText;
+		#else
+		private Text uiText;
+		#endif
+
 		private float visualAmount;
 		private string fullText;
 
 
-		/**
-		 * Initialises the MenuElement when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiSlider = null;
+			uiText = null;
 
 			label = "Slider";
 			isVisible = true;
@@ -81,6 +85,7 @@ namespace AC
 			anchor = TextAnchor.MiddleLeft;
 			sliderType = AC_SliderType.CustomScript;
 			sliderDisplayType = SliderDisplayType.FillBar;
+			sliderOrientation = SliderOrientation.Horizontal;
 			blockSize = new Vector2 (0.05f, 1f);
 			useFullWidth = false;
 			varID = 0;
@@ -114,6 +119,7 @@ namespace AC
 				uiSlider = _element.uiSlider;
 			}
 
+			uiText = null;
 			label = _element.label;
 			isClickable = _element.isClickable;
 			textEffects = _element.textEffects;
@@ -125,6 +131,7 @@ namespace AC
 			sliderTexture = _element.sliderTexture;
 			sliderType = _element.sliderType;
 			sliderDisplayType = _element.sliderDisplayType;
+			sliderOrientation = _element.sliderOrientation;
 			blockSize = _element.blockSize;
 			useFullWidth = _element.useFullWidth;
 			varID = _element.varID;
@@ -136,21 +143,28 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObject.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			uiSlider = LinkUIElement <Slider> (canvas);
 			if (uiSlider)
 			{
+				#if TextMeshProIsPresent
+				uiText = uiSlider.GetComponentInChildren <TMPro.TextMeshProUGUI>();
+				#else
+				uiText = uiSlider.GetComponentInChildren <Text>();
+				#endif
+
 				uiSlider.interactable = isClickable;
 				if (isClickable)
 				{
-					uiSlider.onValueChanged.AddListener ((amount) => {
-						ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
-					});
+					if (addEventListeners)
+					{
+						uiSlider.onValueChanged.AddListener ((amount) => {
+							ProcessClickUI (_menu, 0, KickStarter.playerInput.GetMouseState ());
+						});
+					}
+
+					CreateHoverSoundHandler (uiSlider, _menu, 0);
 				}
 			}
 		}
@@ -166,11 +180,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of the element.</summary>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <returns>The boundary Rect of the element</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiSlider)
@@ -197,14 +206,10 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuSlider)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			sliderType = (AC_SliderType) CustomGUILayout.EnumPopup ("Slider affects:", sliderType, apiPrefix + ".sliderType", "What the slider's value represents");
-
-			if (source == MenuSource.AdventureCreator)
-			{
-				label = CustomGUILayout.TextField ("Label text:", label, apiPrefix + ".label", "The text that's displayed on-screen");
-			}
+			label = CustomGUILayout.TextField ("Label text:", label, apiPrefix + ".label", "The text that's displayed on-screen");
 
 			if (sliderType == AC_SliderType.CustomScript)
 			{
@@ -239,7 +244,11 @@ namespace AC
 
 			if (source == MenuSource.AdventureCreator)
 			{
-				useFullWidth = CustomGUILayout.Toggle ("Use full width?", useFullWidth, apiPrefix + ".useFullWidth", "If True, then the slider will be drawn across the whole width of the element. Otherwise, it will be drawn across only half.");
+				sliderOrientation = (SliderOrientation) CustomGUILayout.EnumPopup ("Orientation:", sliderOrientation, apiPrefix + ".sliderOrientation", "Which way the slider is orientated");
+				if (sliderOrientation == SliderOrientation.Horizontal)
+				{
+					useFullWidth = CustomGUILayout.Toggle ("Use full width?", useFullWidth, apiPrefix + ".useFullWidth", "If True, then the slider will be drawn across the whole width of the element. Otherwise, it will be drawn across only half.");
+				}
 				sliderDisplayType = (SliderDisplayType) CustomGUILayout.EnumPopup ("Display type:", sliderDisplayType, apiPrefix + ".sliderDisplayType", "The display type of the slider");
 				
 				if (sliderDisplayType == SliderDisplayType.MoveableBlock)
@@ -251,14 +260,22 @@ namespace AC
 			{
 				uiSlider = LinkedUiGUI <Slider> (uiSlider, "Linked Slider:", source, "The Unity UI Slider this is linked to");
 				uiSelectableHideStyle = (UISelectableHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiSelectableHideStyle, apiPrefix + ".uiSelectableHideStyle", "The method by which this element is hidden from view when made invisible");
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 			}
 			
 
 			isClickable = CustomGUILayout.Toggle ("User can change value?", isClickable, apiPrefix + ".isClickable", "If True, the slider is interactive and can be modified by the user");
+			if (isClickable)
+			{
+				ChangeCursorGUI (menu);
+			}
+			else
+			{
+				changeCursor = false;
+			}
 
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -307,8 +324,8 @@ namespace AC
 		{
 			int numFound = 0;
 
-			string tokenText = "[var:" + _varID.ToString () + "]";
-			if (label.Contains (tokenText))
+			string tokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, _varID);
+			if (label.ToLower ().Contains (tokenText))
 			{
 				numFound ++;
 			}
@@ -318,33 +335,88 @@ namespace AC
 				numFound ++;
 			}
 
-			return numFound + base.GetVariableReferences (_varID);
+			return numFound;
 		}
-		
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			if (label.ToLower ().Contains (oldTokenText))
+			{
+				numFound++;
+				string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, newVarID);
+				label = label.Replace (oldTokenText, newTokenText);
+			}
+
+			if (sliderType == AC_SliderType.FloatVariable && varID == oldVarID)
+			{
+				numFound++;
+				varID = newVarID;
+			}
+
+			return numFound;
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (actionListOnChange == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (uiSlider && uiSlider.gameObject == gameObject) return true;
+			if (linkedUiID == id && id != 0) return true;
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			if (uiSlider && uiSlider.gameObject == gameObject)
+			{
+				return 0;
+			}
+			if (uiText && uiText.gameObject == gameObject)
+			{
+				return 0;
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
+
+		protected override string GetLabelToTranslate ()
+		{
+			return label;
+		}
 
 
 		public override void PreDisplay (int _slot, int languageNumber, bool isActive)
 		{
 			CalculateValue ();
 
-			fullText = AdvGame.ConvertTokens (TranslateLabel (label, languageNumber));
+			fullText = AdvGame.ConvertTokens (TranslateLabel (languageNumber));
 
 			if (uiSlider)
 			{
+				if (uiText)
+				{
+					uiText.text = fullText;
+				}
 				uiSlider.value = visualAmount;
 				UpdateUISelectable (uiSlider, uiSelectableHideStyle);
 			}
 		}
 
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive">If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -352,7 +424,19 @@ namespace AC
 			
 			if (sliderTexture)
 			{
-				DrawSlider (zoom);
+				switch (sliderOrientation)
+				{
+					case SliderOrientation.Horizontal:
+						DrawHorizontalSlider (zoom);
+						break;
+
+					case SliderOrientation.Vertical:
+						DrawVerticalSlider (zoom);
+						break;
+
+					default:
+						break;
+				}
 			}
 			
 			_style.alignment = anchor;
@@ -374,64 +458,91 @@ namespace AC
 		}
 		
 		
-		private void DrawSlider (float zoom)
+		private void DrawHorizontalSlider (float zoom)
 		{
 			Rect sliderRect = relativeRect;
 
-			if (sliderDisplayType == SliderDisplayType.FillBar)
+			switch (sliderDisplayType)
 			{
-				if (useFullWidth)
-				{
-					sliderRect.x = relativeRect.x;
-					sliderRect.width = slotSize.x * visualAmount;
-				}
-				else
-				{
-					sliderRect.x = relativeRect.x + (relativeRect.width / 2);
-					sliderRect.width = slotSize.x * visualAmount * 0.5f;
-				}
-				
-				if (sizeType != AC_SizeType.AbsolutePixels)
-				{
-					sliderRect.width *= AdvGame.GetMainGameViewSize (true).x / 100f;
-				}
+				case SliderDisplayType.FillBar:
+					if (useFullWidth)
+					{
+						sliderRect.x = relativeRect.x;
+						sliderRect.width = slotSize.x * visualAmount;
+					}
+					else
+					{
+						sliderRect.x = relativeRect.x + (relativeRect.width / 2);
+						sliderRect.width = slotSize.x * visualAmount * 0.5f;
+					}
+					
+					if (sizeType != AC_SizeType.AbsolutePixels)
+					{
+						sliderRect.width *= KickStarter.mainCamera.GetPlayableScreenArea (false).size.x / 100f;
+					}
+					break;
+
+				case SliderDisplayType.MoveableBlock:
+					sliderRect.width *= blockSize.x;
+					sliderRect.height *= blockSize.y;
+					sliderRect.y += (relativeRect.height - sliderRect.height) / 2f;
+					
+					if (useFullWidth)
+					{
+						sliderRect.x += (relativeRect.width - sliderRect.width) * visualAmount;
+					}
+					else
+					{
+						sliderRect.x += (relativeRect.width - sliderRect.width) / 2f;
+						sliderRect.x += (relativeRect.width - sliderRect.width) * visualAmount / 2f;
+					}
+					break;
 			}
-			else if (sliderDisplayType == SliderDisplayType.MoveableBlock)
+
+			GUI.DrawTexture (ZoomRect (sliderRect, zoom), sliderTexture, ScaleMode.StretchToFill, true, 0f);
+		}
+
+
+		private void DrawVerticalSlider (float zoom)
+		{
+			Rect sliderRect = relativeRect;
+
+			switch (sliderDisplayType)
 			{
-				sliderRect.width *= blockSize.x;
-				sliderRect.height *= blockSize.y;
-				sliderRect.y += (relativeRect.height - sliderRect.height) / 2f;
-				
-				if (useFullWidth)
-				{
-					sliderRect.x += (relativeRect.width - sliderRect.width) * visualAmount;
-				}
-				else
-				{
+				case SliderDisplayType.FillBar:
+					sliderRect.y = relativeRect.y;
+					sliderRect.height = slotSize.y * visualAmount;
+
+					if (sizeType != AC_SizeType.AbsolutePixels)
+					{
+						sliderRect.height *= KickStarter.mainCamera.GetPlayableScreenArea (false).size.y / 100f;
+					}
+
+					sliderRect.y = relativeRect.y + relativeRect.height - sliderRect.height;
+					break;
+
+				case SliderDisplayType.MoveableBlock:
+					sliderRect.width *= blockSize.y;
+					sliderRect.height *= blockSize.x;
 					sliderRect.x += (relativeRect.width - sliderRect.width) / 2f;
-					sliderRect.x += (relativeRect.width - sliderRect.width) * visualAmount / 2f;
-				}
+					
+					sliderRect.y += (relativeRect.height - sliderRect.height) * (1f - visualAmount);
+					break;
 			}
 
 			GUI.DrawTexture (ZoomRect (sliderRect, zoom), sliderTexture, ScaleMode.StretchToFill, true, 0f);
 		}
 		
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">Ignored by this subclass</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element</returns>
-		 */
 		public override string GetLabel (int slot, int languageNumber)
 		{
-			return AdvGame.ConvertTokens (TranslateLabel (label, languageNumber));
+			return AdvGame.ConvertTokens (TranslateLabel (languageNumber));
 		}
 
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiSlider != null)
+			if (uiSlider)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiSlider.gameObject);
 			}
@@ -439,32 +550,32 @@ namespace AC
 		}
 		
 		
-		private void Change ()
+		private void Change (float mousePos)
 		{
-			/*visualAmount += 0.02f; 
-			
-			if (visualAmount > 1f)
+			switch (sliderOrientation)
 			{
-				visualAmount = 0f;
+				case SliderOrientation.Horizontal:
+					if (useFullWidth)
+					{
+						mousePos = mousePos - relativeRect.x;
+						visualAmount = mousePos / relativeRect.width;
+					}
+					else
+					{
+						mousePos = mousePos - relativeRect.x - (relativeRect.width / 2f);
+						visualAmount = mousePos / (relativeRect.width / 2f);
+					}
+					break;
+
+				case SliderOrientation.Vertical:
+					mousePos = relativeRect.y + relativeRect.height - mousePos;
+					visualAmount = mousePos / relativeRect.height;
+					break;
+
+				default:
+					break;
 			}
-			
-			UpdateValue ();*/
-		}
-		
-		
-		private void Change (float mouseX)
-		{
-			if (useFullWidth)
-			{
-				mouseX = mouseX - relativeRect.x;
-				visualAmount = mouseX / relativeRect.width;
-			}
-			else
-			{
-				mouseX = mouseX - relativeRect.x - (relativeRect.width / 2f);
-				visualAmount = mouseX / (relativeRect.width / 2f);
-			}
-			
+
 			UpdateValue ();
 		}
 		
@@ -559,8 +670,8 @@ namespace AC
 						}
 						else
 						{
-							amount = Mathf.Clamp (_variable.floatVal, minValue, maxValue);
-							_variable.SetFloatValue (amount);
+							amount = Mathf.Clamp (_variable.FloatValue, minValue, maxValue);
+							_variable.FloatValue = amount;
 						}
 					}
 					else
@@ -570,7 +681,7 @@ namespace AC
 				}
 			}
 
-			if (uiSlider != null)
+			if (uiSlider)
 			{
 				visualAmount = amount;
 			}
@@ -581,36 +692,41 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">Ignored by this subclass</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (!_menu.IsClickable ())
 			{
-				return;
+				return false;
 			}
 
-			if (uiSlider != null)
+			if (uiSlider)
 			{
 				visualAmount = uiSlider.value;
 				UpdateValue ();
 			}
 			else
 			{
-				if (KickStarter.playerInput.canKeyboardControlMenusDuringGameplay &&
-					(KickStarter.stateHandler.gameState == GameState.DialogOptions ||
-					 KickStarter.stateHandler.gameState == GameState.Paused ||
-					 (KickStarter.stateHandler.IsInGameplay () && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay)))
+				if ((KickStarter.stateHandler.gameState == GameState.DialogOptions && KickStarter.menuManager.keyboardControlWhenDialogOptions) ||
+					(KickStarter.stateHandler.gameState == GameState.Paused && KickStarter.menuManager.keyboardControlWhenPaused) ||
+					(KickStarter.stateHandler.IsInGameplay () && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay))
 				{
-					Change ();
+					// Direct-controlling
 				}
 				else
 				{
-					Change (KickStarter.playerInput.GetMousePosition ().x - _menu.GetRect ().x);
+					switch (sliderOrientation)
+					{
+						case SliderOrientation.Horizontal:
+							Change (KickStarter.playerInput.GetMousePosition ().x - _menu.GetRect ().x);
+							break;
+
+						case SliderOrientation.Vertical:
+							Change (KickStarter.playerInput.GetInvertedMouse ().y - _menu.GetRect ().y);
+							break;
+
+						default:
+							break;
+					}
 				}
 			}
 
@@ -619,20 +735,33 @@ namespace AC
 				MenuSystem.OnElementClick (_menu, this, _slot, (int) _mouseState);
 			}
 
-			KickStarter.eventManager.Call_OnMenuElementClick (_menu, this, _slot, (int) _mouseState);
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
 		public bool KeyboardControl (Vector2 direction)
 		{
-			if (direction == Vector2.right)
+			Vector2 increaseDirection = (sliderOrientation == SliderOrientation.Horizontal) ? Vector2.right : Vector2.up;
+			Vector2 decreaseDirection = (sliderOrientation == SliderOrientation.Horizontal) ? Vector2.left : Vector2.down;
+
+			if (direction == increaseDirection)
 			{
+				if (clickSound)
+				{
+					KickStarter.sceneSettings.PlayDefaultSound (clickSound, false, true);
+				}
+
 				visualAmount += 0.02f; 
 				UpdateValue ();	
 				return true;
 			}
-			else if (direction == Vector2.left)
+			else if (direction == decreaseDirection)
 			{
+				if (clickSound)
+				{
+					KickStarter.sceneSettings.PlayDefaultSound (clickSound, false, true);
+				}
+
 				visualAmount -= 0.02f;
 				UpdateValue ();
 				return true;
@@ -641,32 +770,43 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on continuously.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
+		public override bool ProcessContinuousClick (AC.Menu _menu, MouseState _mouseState)
 		{
 			if (KickStarter.stateHandler.gameState == GameState.Cutscene)
 			{
-				return;
+				return false;
 			}
 
-			if (uiSlider != null)
+			float originalVisualAmount = visualAmount;
+
+			if (uiSlider)
 			{
 				visualAmount = uiSlider.value;
 				UpdateValue ();
 			}
 			else
 			{
-				if (KickStarter.settingsManager.inputMethod == InputMethod.KeyboardOrController)
+				if ((KickStarter.stateHandler.gameState == GameState.DialogOptions && KickStarter.menuManager.keyboardControlWhenDialogOptions) ||
+					(KickStarter.stateHandler.gameState == GameState.Paused && KickStarter.menuManager.keyboardControlWhenPaused) ||
+					(KickStarter.stateHandler.IsInGameplay () && KickStarter.playerInput.canKeyboardControlMenusDuringGameplay))
 				{
-					Change ();
+					// Direct-controlling
 				}
 				else
 				{
-					Change (KickStarter.playerInput.GetMousePosition ().x - _menu.GetRect ().x);
+					switch (sliderOrientation)
+					{
+						case SliderOrientation.Horizontal:
+							Change (KickStarter.playerInput.GetMousePosition ().x - _menu.GetRect ().x);
+							break;
+
+						case SliderOrientation.Vertical:
+							Change (KickStarter.playerInput.GetInvertedMouse ().y - _menu.GetRect ().y);
+							break;
+
+						default:
+							break;
+					}
 				}
 			}
 
@@ -674,16 +814,23 @@ namespace AC
 			{
 				MenuSystem.OnElementClick (_menu, this, 0, (int) _mouseState);
 			}
+
+			if (clickSound && originalVisualAmount != visualAmount)
+			{
+				KickStarter.sceneSettings.PlayDefaultSound(clickSound, false, true);
+			}
+
+			return true;
 		}
 
 		
 		protected override void AutoSize ()
 		{
-			AutoSize (new GUIContent (TranslateLabel (label, Options.GetLanguage ())));
+			AutoSize (new GUIContent (TranslateLabel (Options.GetLanguage ())));
 		}
 
 
-		/** ITranslatable implementation */
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
@@ -698,6 +845,11 @@ namespace AC
 
 
 		#if UNITY_EDITOR
+
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			label = updatedText;
+		}
 
 
 		public int GetNumTranslatables ()
@@ -742,6 +894,8 @@ namespace AC
 		}
 
 		#endif
+
+		#endregion
 
 	}
 	

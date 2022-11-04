@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"RememberSound.cs"
  * 
@@ -11,68 +11,105 @@
  */
 
 using UnityEngine;
+#if AddressableIsPresent
+using System.Collections;
+using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.AddressableAssets;
+#endif
 
 namespace AC
 {
 
-	/**
-	 * Attach this script to Sound objects you wish to save.
-	 */
+	/** Attach this script to Sound objects you wish to save. */
 	[RequireComponent (typeof (AudioSource))]
 	[RequireComponent (typeof (Sound))]
 	[AddComponentMenu("Adventure Creator/Save system/Remember Sound")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_remember_sound.html")]
-	#endif
 	public class RememberSound : Remember
 	{
 
-		/**
-		 * <summary>Serialises appropriate GameObject values into a string.</summary>
-		 * <returns>The data, serialised as a string</returns>
-		 */
+		private Sound sound;
+
+
 		public override string SaveData ()
 		{
-			Sound sound = GetComponent <Sound>();
-
 			SoundData soundData = new SoundData();
 			soundData.objectID = constantID;
 			soundData.savePrevented = savePrevented;
 
-			soundData = sound.GetSaveData (soundData);
-
+			soundData = Sound.GetSaveData (soundData);
+			
 			return Serializer.SaveScriptData <SoundData> (soundData);
 		}
 		
 
-		/**
-		 * <summary>Deserialises a string of data, and restores the GameObject to its previous state.</summary>
-		 * <param name = "stringData">The data, serialised as a string</param>
-		 * <param name = "restoringSaveFile">True if the game is currently loading a saved game file, as opposed to just switching scene</param>
-		 */
-		public override void LoadData (string stringData, bool restoringSaveFile = false)
+		public override void LoadData (string stringData)
 		{
 			SoundData data = Serializer.LoadScriptData <SoundData> (stringData);
 			if (data == null) return;
 			SavePrevented = data.savePrevented; if (savePrevented) return;
 
-			Sound sound = GetComponent <Sound>();
-			if (sound is Music) return;
+			if (Sound is Music) return;
 
-			if (!restoringSaveFile && sound.surviveSceneChange)
+			if (KickStarter.saveSystem.loadingGame == LoadingGame.No && Sound.surviveSceneChange)
 			{
 				return;
 			}
 
-			sound.LoadData (data);
+			#if AddressableIsPresent
+
+			if (data.isPlaying && KickStarter.settingsManager.saveAssetReferencesWithAddressables && !string.IsNullOrEmpty (data.clipID))
+			{
+				StopAllCoroutines ();
+				StartCoroutine (LoadDataFromAddressables (data));
+				return;
+			}
+
+			#endif
+
+			if (data.isPlaying)
+			{
+				Sound.audioSource.clip = AssetLoader.RetrieveAsset (Sound.audioSource.clip, data.clipID);
+			}
+
+			Sound.LoadData (data);
+		}
+
+
+		#if AddressableIsPresent
+
+		private IEnumerator LoadDataFromAddressables (SoundData data)
+		{
+			AsyncOperationHandle<AudioClip> handle = Addressables.LoadAssetAsync<AudioClip> (data.clipID);
+			yield return handle;
+			if (handle.Status == AsyncOperationStatus.Succeeded)
+			{
+				Sound.audioSource.clip = handle.Result;
+			}
+			Addressables.Release (handle);
+
+			Sound.LoadData (data);
+		}
+
+		#endif
+
+
+		private Sound Sound
+		{
+			get
+			{
+				if (sound == null)
+				{
+					sound = GetComponent <Sound>();
+				}
+				return sound;
+			}
 		}
 		
 	}
 	
 
-	/**
-	 * A data container used by the RememberSound script.
-	 */
+	/** A data container used by the RememberSound script. */
 	[System.Serializable]
 	public class SoundData : RememberData
 	{
@@ -110,9 +147,7 @@ namespace AC
 		/** The original time duration of the active change in relative volume */
 		public float originalRelativeChangeTime;
 
-		/**
-		 * The default Constructor.
-		 */
+		/** The default Constructor. */
 		public SoundData () { }
 
 	}

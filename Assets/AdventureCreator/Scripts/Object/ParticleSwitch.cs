@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ParticleSwitch.cs"
  * 
@@ -20,24 +20,31 @@ namespace AC
 	 * These functions can be called either through script, or with the "Object: Send message" Action.
 	 */
 	[AddComponentMenu("Adventure Creator/Misc/Particle switch")]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_particle_switch.html")]
-	#endif
 	public class ParticleSwitch : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** If True, then the Light component will be enabled when the game begins. */
 		public bool enableOnStart = false;
 
-		private ParticleSystem _particleSystem;
+		protected ParticleSystem _particleSystem;
+
+		#endregion
+
+
+		#region UnityStandards
 		
-		
-		private void Awake ()
+		protected void Awake ()
 		{
-			_particleSystem = GetComponent <ParticleSystem>();
 			Switch (enableOnStart);
 		}
-		
+
+		#endregion
+
+
+		#region PublicFunctions		
 
 		/**
 		 * Enables the ParticleSystem component on the GameObject this script is attached to.
@@ -62,9 +69,9 @@ namespace AC
 		 */
 		public void Pause ()
 		{
-			if (_particleSystem != null && !_particleSystem.isPaused)
+			if (ParticleSystem && !ParticleSystem.isPaused)
 			{
-				_particleSystem.Pause ();
+				ParticleSystem.Pause ();
 			}
 		}
 
@@ -74,31 +81,55 @@ namespace AC
 		 */
 		public void Interact ()
 		{
-			if (_particleSystem != null)
+			if (ParticleSystem)
 			{
-				#if UNITY_5_5_OR_NEWER
-				_particleSystem.Emit (_particleSystem.main.maxParticles);
-				#else
-				_particleSystem.Emit (_particleSystem.maxParticles);
-				#endif
+				ParticleSystem.Emit (ParticleSystem.main.maxParticles);
 			}
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
 		
-		
-		private void Switch (bool turnOn)
+		protected void Switch (bool turnOn)
 		{
-			if (_particleSystem != null)
+			if (ParticleSystem)
 			{
 				if (turnOn)
 				{
-					_particleSystem.Play ();
+					ParticleSystem.Play ();
 				}
 				else
 				{
-					_particleSystem.Stop ();
+					ParticleSystem.Stop ();
 				}
 			}
 		}
+
+		#endregion
+
+
+		#region GetSet
+
+		/** The ParticleSystem attached to the GameObject */
+		protected ParticleSystem ParticleSystem
+		{
+			get
+			{
+				if (_particleSystem == null)
+				{
+					_particleSystem = GetComponent <ParticleSystem>();
+					if (_particleSystem == null)
+					{
+						ACDebug.LogWarning ("No Particle System attached to Particle Switch!", this);
+					}
+				}
+				return _particleSystem;
+			}
+		}
+
+		#endregion
 		
 	}
 

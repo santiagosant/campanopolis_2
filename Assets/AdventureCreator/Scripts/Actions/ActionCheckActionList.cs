@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionCheckActionList.cs"
  * 
@@ -10,6 +10,7 @@
  * 
  */
 
+ using UnityEngine;
 using System.Collections.Generic;
 
 #if UNITY_EDITOR
@@ -33,41 +34,42 @@ namespace AC
 		public int constantID = 0;
 		public int parameterID = -1;
 
-		private bool isSkipping = false;
+		protected ActionListAsset runtimeActionListAsset;
+		protected bool isSkipping = false;
 
 
-		public ActionCheckActionList ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.ActionList;
-			title = "Check running";
-			description = "Queries whether or not a supplied ActionList is currently running. By looping the If condition is not met field back onto itself, this will effectively “wait” until the supplied ActionList has completed before continuing.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.ActionList; }}
+		public override string Title { get { return "Check running"; }}
+		public override string Description { get { return "Queries whether or not a supplied ActionList is currently running. By looping the If condition is not met field back onto itself, this will effectively “wait” until the supplied ActionList has completed before continuing."; }}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			isSkipping = false;
 			return 0f;
 		}
 
 
-		override public void Skip ()
+		public override void Skip ()
 		{
 			isSkipping = true;
 		}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			if (listSource == ListSource.InScene)
 			{
-				runtimeActionList = AssignFile <ActionList> (parameters, parameterID, constantID, actionList);
+				runtimeActionList = AssignFile<ActionList> (parameters, parameterID, constantID, actionList);
+			}
+			else
+			{
+				runtimeActionListAsset = (ActionListAsset)AssignObject<ActionListAsset> (parameters, parameterID, actionListAsset);
 			}
 		}
 
 
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (checkSelfSkipping)
 			{
@@ -83,9 +85,9 @@ namespace AC
 			{
 				return KickStarter.actionListManager.IsListRunning (runtimeActionList);
 			}
-			else if (listSource == ListSource.AssetFile && actionListAsset != null)
+			else if (listSource == ListSource.AssetFile && runtimeActionListAsset != null)
 			{
-				return KickStarter.actionListAssetManager.IsListRunning (actionListAsset);
+				return KickStarter.actionListAssetManager.IsListRunning (runtimeActionListAsset);
 			}
 			
 			return false;
@@ -94,7 +96,7 @@ namespace AC
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			checkSelfSkipping = EditorGUILayout.Toggle ("Check self is skipping?", checkSelfSkipping);
 			if (checkSelfSkipping)
@@ -121,12 +123,16 @@ namespace AC
 			}
 			else if (listSource == ListSource.AssetFile)
 			{
-				actionListAsset = (ActionListAsset) EditorGUILayout.ObjectField ("ActionList asset:", actionListAsset, typeof (ActionListAsset), true);
+				parameterID = Action.ChooseParameterGUI ("ActionList asset:", parameters, parameterID, ParameterType.UnityObject);
+				if (parameterID < 0)
+				{
+					actionListAsset = (ActionListAsset)EditorGUILayout.ObjectField ("ActionList asset:", actionListAsset, typeof (ActionListAsset), true);
+				}
 			}
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (listSource == ListSource.InScene)
 			{
@@ -148,23 +154,42 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (listSource == ListSource.InScene && parameterID < 0)
+			{
+				if (actionList && actionList.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset _actionListAsset)
+		{
+			if (listSource == ListSource.AssetFile && _actionListAsset == actionListAsset)
+				return true;
+			return base.ReferencesAsset (_actionListAsset);
+		}
+
 		#endif
 
 
-		public override void SetLastResult (ActionEnd _actionEnd)
+		public override void SetLastResult (int _lastRunOutput)
 		{
 			if (!IsTargetSkippable () && !checkSelfSkipping)
 			{
 				// When skipping, don't want to rely on last result if target can be skipped as well
-				base.SetLastResult (_actionEnd);
+				base.SetLastResult (_lastRunOutput);
 				return;
 			}
 
-			lastResult = new ActionEnd (-10);
+			ResetLastResult ();
 		}
 
 
-		private bool IsTargetSkippable ()
+		protected bool IsTargetSkippable ()
 		{
 			if (listSource == ListSource.InScene && actionList != null)
 			{
@@ -184,7 +209,7 @@ namespace AC
 		 */
 		public static ActionCheckActionList CreateNew_CheckSelfIsSkipping ()
 		{
-			ActionCheckActionList newAction = (ActionCheckActionList) CreateInstance <ActionCheckActionList>();
+			ActionCheckActionList newAction = CreateNew<ActionCheckActionList> ();
 			newAction.checkSelfSkipping = true;
 			return newAction;
 		}
@@ -197,7 +222,7 @@ namespace AC
 		 */
 		public static ActionCheckActionList CreateNew_CheckOther (ActionList actionList)
 		{
-			ActionCheckActionList newAction = (ActionCheckActionList) CreateInstance <ActionCheckActionList>();
+			ActionCheckActionList newAction = CreateNew<ActionCheckActionList> ();
 			newAction.listSource = ListSource.InScene;
 			newAction.actionList = actionList;
 			return newAction;
@@ -211,7 +236,7 @@ namespace AC
 		 */
 		public static ActionCheckActionList CreateNew_CheckOther (ActionListAsset actionListAsset)
 		{
-			ActionCheckActionList newAction = (ActionCheckActionList) CreateInstance <ActionCheckActionList>();
+			ActionCheckActionList newAction = CreateNew<ActionCheckActionList> ();
 			newAction.listSource = ListSource.AssetFile;
 			newAction.actionListAsset = actionListAsset;
 			return newAction;

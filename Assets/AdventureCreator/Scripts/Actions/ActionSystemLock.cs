@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionSystemLock.cs"
  * 
@@ -29,6 +29,7 @@ namespace AC
 		public LockType cursorLock = LockType.NoChange;
 		public LockType inputLock = LockType.NoChange;
 		public LockType interactionLock = LockType.NoChange;
+		public LockType draggableLock = LockType.NoChange;
 		public LockType menuLock = LockType.NoChange;
 		public LockType movementLock = LockType.NoChange;
 		public LockType cameraLock = LockType.NoChange;
@@ -37,17 +38,13 @@ namespace AC
 		public LockType saveLock = LockType.NoChange;
 		public LockType keyboardGameplayMenusLock = LockType.NoChange;
 
-		
-		public ActionSystemLock ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Engine;
-			title = "Manage systems";
-			description = "Enables and disables individual systems within Adventure Creator, such as Interactions. Can also be used to change the 'Movement method', as set in the Settings Manager, but note that this change will not be recorded in save games.";
-		}
+
+		public override ActionCategory Category { get { return ActionCategory.Engine; }}
+		public override string Title { get { return "Manage systems"; }}
+		public override string Description { get { return "Enables and disables individual systems within Adventure Creator, such as Interactions. Can also be used to change the 'Movement method', as set in the Settings Manager, but note that this change will not be recorded in save games."; }}
 		
 		
-		override public float Run ()
+		public override float Run ()
 		{
 			if (changeMovementMethod)
 			{
@@ -55,96 +52,160 @@ namespace AC
 				KickStarter.settingsManager.movementMethod = newMovementMethod;
 			}
 
-			if (cursorLock == LockType.Enabled)
+			switch (cursorLock)
 			{
-				KickStarter.stateHandler.SetCursorSystem (true);
-			}
-			else if (cursorLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetCursorSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetCursorSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetCursorSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (inputLock == LockType.Enabled)
+			switch (inputLock)
 			{
-				KickStarter.stateHandler.SetInputSystem (true);
-			}
-			else if (inputLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetInputSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetInputSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetInputSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (interactionLock == LockType.Enabled)
+			switch (interactionLock)
 			{
-				KickStarter.stateHandler.SetInteractionSystem (true);
-			}
-			else if (interactionLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetInteractionSystem (false);
-			}
-
-			if (menuLock == LockType.Enabled)
-			{
-				KickStarter.stateHandler.SetMenuSystem (true);
-			}
-			else if (menuLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetMenuSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetInteractionSystem (true);
+					break;
+				
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetInteractionSystem (false);
+					break;
+				
+				default:
+					break;
 			}
 
-			if (movementLock == LockType.Enabled)
+			switch (draggableLock)
 			{
-				KickStarter.stateHandler.SetMovementSystem (true);
-			}
-			else if (movementLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetMovementSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetDraggableSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetDraggableSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (cameraLock == LockType.Enabled)
+			switch (menuLock)
 			{
-				KickStarter.stateHandler.SetCameraSystem (true);
-			}
-			else if (cameraLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetCameraSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetMenuSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetMenuSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (triggerLock == LockType.Enabled)
+			switch (movementLock)
 			{
-				KickStarter.stateHandler.SetTriggerSystem (true);
-			}
-			else if (triggerLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetTriggerSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetMovementSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetMovementSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (playerLock == LockType.Enabled)
+			switch (cameraLock)
 			{
-				KickStarter.stateHandler.SetPlayerSystem (true);
-			}
-			else if (playerLock == LockType.Disabled)
-			{
-				KickStarter.stateHandler.SetPlayerSystem (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetCameraSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetCameraSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (saveLock == LockType.Disabled)
+			switch (triggerLock)
 			{
-				KickStarter.playerMenus.SetManualSaveLock (true);
-			}
-			else if (saveLock == LockType.Enabled)
-			{
-				KickStarter.playerMenus.SetManualSaveLock (false);
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetTriggerSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetTriggerSystem (false);
+					break;
+
+				default:
+					break;
 			}
 
-			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.inputMethod == InputMethod.KeyboardOrController)
+			switch (playerLock)
 			{
-				if (keyboardGameplayMenusLock == LockType.Disabled)
+				case LockType.Enabled:
+					KickStarter.stateHandler.SetPlayerSystem (true);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.stateHandler.SetPlayerSystem (false);
+					break;
+
+				default:
+					break;
+			}
+
+			switch (saveLock)
+			{
+				case LockType.Enabled:
+					KickStarter.playerMenus.SetManualSaveLock (false);
+					break;
+
+				case LockType.Disabled:
+					KickStarter.playerMenus.SetManualSaveLock (true);
+					break;
+
+				default:
+					break;
+			}
+
+			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.inputMethod != InputMethod.TouchScreen)
+			{
+				switch (keyboardGameplayMenusLock)
 				{
-					KickStarter.playerInput.canKeyboardControlMenusDuringGameplay = false;
-				}
-				else if (keyboardGameplayMenusLock == LockType.Enabled)
-				{
-					KickStarter.playerInput.canKeyboardControlMenusDuringGameplay = true;
+					case LockType.Enabled:
+						KickStarter.playerInput.CanKeyboardControlMenusDuringGameplay = true;
+						break;
+
+					case LockType.Disabled:
+						KickStarter.playerInput.CanKeyboardControlMenusDuringGameplay = false;
+						break;
+
+					default:
+						break;
 				}
 			}
 
@@ -154,17 +215,20 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI ()
+		public override void ShowGUI ()
 		{
-			changeMovementMethod = EditorGUILayout.BeginToggleGroup ("Change movement method?", changeMovementMethod);
-			newMovementMethod = (MovementMethod) EditorGUILayout.EnumPopup ("Movement method:", newMovementMethod);
-			EditorGUILayout.EndToggleGroup ();
+			changeMovementMethod = EditorGUILayout.ToggleLeft ("Change movement method?", changeMovementMethod);
+			if (changeMovementMethod)
+			{
+				newMovementMethod = (MovementMethod) EditorGUILayout.EnumPopup ("Movement method:", newMovementMethod);
+			}
 
 			EditorGUILayout.Space ();
 
 			cursorLock = (LockType) EditorGUILayout.EnumPopup ("Cursor:", cursorLock);
 			inputLock = (LockType) EditorGUILayout.EnumPopup ("Input:", inputLock);
 			interactionLock = (LockType) EditorGUILayout.EnumPopup ("Interactions:", interactionLock);
+			draggableLock = (LockType) EditorGUILayout.EnumPopup ("Draggables:", draggableLock);
 			menuLock = (LockType) EditorGUILayout.EnumPopup ("Menus:", menuLock);
 			movementLock = (LockType) EditorGUILayout.EnumPopup ("Movement:", movementLock);
 			cameraLock = (LockType) EditorGUILayout.EnumPopup ("Camera:", cameraLock);
@@ -172,14 +236,12 @@ namespace AC
 			playerLock = (LockType) EditorGUILayout.EnumPopup ("Player:", playerLock);
 			saveLock = (LockType) EditorGUILayout.EnumPopup ("Saving:", saveLock);
 
-			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.inputMethod == InputMethod.KeyboardOrController)
+			if (AdvGame.GetReferences () != null && AdvGame.GetReferences ().settingsManager != null && AdvGame.GetReferences ().settingsManager.inputMethod != InputMethod.TouchScreen)
 			{
-				keyboardGameplayMenusLock = (LockType) EditorGUILayout.EnumPopup ("Control in-game Menus:", keyboardGameplayMenusLock);
+				keyboardGameplayMenusLock = (LockType) EditorGUILayout.EnumPopup ("Direct-nav in-game Menus:", keyboardGameplayMenusLock);
 			}
-
-			AfterRunningOption ();
 		}
-		
+
 		#endif
 
 
@@ -195,15 +257,17 @@ namespace AC
 		 * <param name = "playerLock">Whether or not to disable the player system</param>
 		 * <param name = "saveLock">Whether or not to disable the save system</param>
 		 * <param name = "directControlInGameMenusLock">Whether or not to allow direct-navigation of in-game menus</param>
+		 * * <param name = "draggableLock">Whether or not to disable the draggable system</param>
 		 * <returns>The generated Action</returns>
 		 */
-		public static ActionSystemLock CreateNew (LockType cursorLock = LockType.NoChange, LockType inputLock = LockType.NoChange, LockType interactionLock = LockType.NoChange, LockType menuLock = LockType.NoChange, LockType movementLock = LockType.NoChange, LockType cameraLock = LockType.NoChange, LockType triggerLock = LockType.NoChange, LockType playerLock = LockType.NoChange, LockType saveLock = LockType.NoChange, LockType directControlInGameMenusLock = LockType.NoChange)
+		public static ActionSystemLock CreateNew (LockType cursorLock = LockType.NoChange, LockType inputLock = LockType.NoChange, LockType interactionLock = LockType.NoChange, LockType menuLock = LockType.NoChange, LockType movementLock = LockType.NoChange, LockType cameraLock = LockType.NoChange, LockType triggerLock = LockType.NoChange, LockType playerLock = LockType.NoChange, LockType saveLock = LockType.NoChange, LockType directControlInGameMenusLock = LockType.NoChange, LockType draggableLock = LockType.NoChange)
 		{
-			ActionSystemLock newAction = (ActionSystemLock) CreateInstance <ActionSystemLock>();
+			ActionSystemLock newAction = CreateNew<ActionSystemLock> ();
 			newAction.changeMovementMethod = false;
 			newAction.cursorLock = cursorLock;
 			newAction.inputLock = inputLock;
 			newAction.interactionLock = interactionLock;
+			newAction.draggableLock = draggableLock;
 			newAction.menuLock = menuLock;
 			newAction.movementLock = movementLock;
 			newAction.cameraLock = cameraLock;
@@ -228,16 +292,18 @@ namespace AC
 		 * <param name = "playerLock">Whether or not to disable the player system</param>
 		 * <param name = "saveLock">Whether or not to disable the save system</param>
 		 * <param name = "directControlInGameMenusLock">Whether or not to allow direct-navigation of in-game menus</param>
+		 * <param name = "draggableLock">Whether or not to disable the draggable system</param>
 		 * <returns>The generated Action</returns>
 		 */
-		public static ActionSystemLock CreateNew (MovementMethod newMovementMethod, LockType cursorLock = LockType.NoChange, LockType inputLock = LockType.NoChange, LockType interactionLock = LockType.NoChange, LockType menuLock = LockType.NoChange, LockType movementLock = LockType.NoChange, LockType cameraLock = LockType.NoChange, LockType triggerLock = LockType.NoChange, LockType playerLock = LockType.NoChange, LockType saveLock = LockType.NoChange, LockType directControlInGameMenusLock = LockType.NoChange)
+		public static ActionSystemLock CreateNew (MovementMethod newMovementMethod, LockType cursorLock = LockType.NoChange, LockType inputLock = LockType.NoChange, LockType interactionLock = LockType.NoChange, LockType menuLock = LockType.NoChange, LockType movementLock = LockType.NoChange, LockType cameraLock = LockType.NoChange, LockType triggerLock = LockType.NoChange, LockType playerLock = LockType.NoChange, LockType saveLock = LockType.NoChange, LockType directControlInGameMenusLock = LockType.NoChange, LockType draggableLock = LockType.NoChange)
 		{
-			ActionSystemLock newAction = (ActionSystemLock) CreateInstance <ActionSystemLock>();
+			ActionSystemLock newAction = CreateNew<ActionSystemLock> ();
 			newAction.changeMovementMethod = true;
 			newAction.newMovementMethod = newMovementMethod;
 			newAction.cursorLock = cursorLock;
 			newAction.inputLock = inputLock;
 			newAction.interactionLock = interactionLock;
+			newAction.draggableLock = draggableLock;
 			newAction.menuLock = menuLock;
 			newAction.movementLock = movementLock;
 			newAction.cameraLock = cameraLock;

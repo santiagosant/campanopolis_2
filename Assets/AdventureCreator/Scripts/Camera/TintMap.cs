@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"TintMap.cs"
  * 
@@ -20,11 +20,11 @@ namespace AC
 	 * The instance of this class stored in SceneSettings' tintMap variable can be read by FollowTintMap components to determine what their SpriteRenderer's colour should be.
 	 */
 	[RequireComponent (typeof (MeshRenderer))]
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_tint_map.html")]
-	#endif
 	public class TintMap : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** An optional texture to make use of. If this field is null, then the texture found on the attached MeshRenderer's material will be used instead */
 		public Texture2D tintMapTexture;
@@ -33,10 +33,14 @@ namespace AC
 		/** If True, then the MeshRenderer component will be disabled automatically when the game begins */
 		public bool disableRenderer = true;
 
-		private Texture2D actualTexture;
+		protected Texture2D actualTexture;
+
+		#endregion
 
 
-		private void Awake ()
+		#region UnityStandards
+
+		protected void Awake ()
 		{
 			AssignTexture (tintMapTexture);
 
@@ -46,19 +50,10 @@ namespace AC
 			}
 		}
 
+		#endregion
 
-		private void AssignTexture (Texture2D newTexture = null)
-		{
-			if (GetComponent <MeshRenderer>().material)
-			{
-				if (newTexture != null)
-				{
-					GetComponent <MeshRenderer>().material.mainTexture = newTexture;
-				}
-				actualTexture = (Texture2D) GetComponent <MeshRenderer>().material.mainTexture;
-			}
-		}
 
+		#region PublicFunctions
 
 		/**
 		 * <summary>Gets the colour tint at a specific position in the scene.</summary>
@@ -96,6 +91,25 @@ namespace AC
 				return new Color (newColour.r, newColour.g, newColour.b, alpha);
 			}
 		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected void AssignTexture (Texture2D newTexture = null)
+		{
+			if (GetComponent <MeshRenderer>().material)
+			{
+				if (newTexture)
+				{
+					GetComponent <MeshRenderer>().material.mainTexture = newTexture;
+				}
+				actualTexture = (Texture2D) GetComponent <MeshRenderer>().material.mainTexture;
+			}
+		}
+
+		#endregion
 
 	}
 

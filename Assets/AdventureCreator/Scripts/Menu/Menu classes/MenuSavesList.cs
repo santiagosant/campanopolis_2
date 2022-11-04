@@ -1,7 +1,8 @@
+
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"MenuSavesList.cs"
  * 
@@ -64,6 +65,10 @@ namespace AC
 
 		/** The display text when a slot represents a "new save" space */
 		public string newSaveText = "New save";
+		/** The display text when a slot represents an empty save space */
+		public string emptySlotText = "";
+		/** The translation ID associated with the emptySlotText */
+		public int emptySlotTextLineID = -1;
 		/** If True, a slot that represents a "new save" space can be displayed if appropriate */
 		public bool showNewSaveOption = true;
 		/** If True, and saveListType = AC_SaveListType.Load and fixedOption = True, then the element will be hidden if the slot ID it represents is not filled with a valid save */
@@ -80,14 +85,13 @@ namespace AC
 		private int eventSlot;
 
 
-		/**
-		 * Initialises the element when it is created within MenuManager.
-		 */
 		public override void Declare ()
 		{
 			uiSlots = null;
 
 			newSaveText = "New save";
+			emptySlotText = string.Empty;
+			emptySlotTextLineID = -1;
 			isVisible = true;
 			isClickable = true;
 			numSlots = 1;
@@ -109,8 +113,8 @@ namespace AC
 			optionToShow = 1;
 			hideIfNotValid = false;
 
-			importProductName = "";
-			importSaveFilename = "";
+			importProductName = string.Empty;
+			importSaveFilename = string.Empty;
 			checkImportBool = false;
 			checkImportVar = 0;
 
@@ -142,10 +146,16 @@ namespace AC
 			}
 			else
 			{
-				uiSlots = _element.uiSlots;
+				uiSlots = new UISlot[_element.uiSlots.Length];
+				for (int i=0; i<uiSlots.Length; i++)
+				{
+					uiSlots[i] = new UISlot (_element.uiSlots[i]);
+				}
 			}
 
 			newSaveText = _element.newSaveText;
+			emptySlotText = _element.emptySlotText;
+			emptySlotTextLineID = _element.emptySlotTextLineID;
 			textEffects = _element.textEffects;
 			outlineSize = _element.outlineSize;
 			anchor = _element.anchor;
@@ -172,35 +182,31 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Initialises the linked Unity UI GameObjects.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 */
-		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas)
+		public override void LoadUnityUI (AC.Menu _menu, Canvas canvas, bool addEventListeners = true)
 		{
 			int i=0;
 			foreach (UISlot uiSlot in uiSlots)
 			{
 				uiSlot.LinkUIElements (canvas, linkUIGraphic);
-				if (uiSlot != null && uiSlot.uiButton != null)
+
+				if (addEventListeners)
 				{
-					int j=i;
-					uiSlot.uiButton.onClick.AddListener (() => {
-						ProcessClickUI (_menu, j, KickStarter.playerInput.GetMouseState ());
-					});
+					if (uiSlot != null && uiSlot.uiButton)
+					{
+						int j=i;
+						uiSlot.uiButton.onClick.AddListener (() => {
+							ProcessClickUI (_menu, j, KickStarter.playerInput.GetMouseState ());
+						});
+					}
 				}
 				i++;
 			}
 		}
 
 
-		/**
-		 * <summary>Gets the first linked Unity UI GameObject associated with this element.</summary>
-		 * <param name = "The first Unity UI GameObject associated with the element</returns>
-		 */
 		public override GameObject GetObjectToSelect (int slotIndex = 0)
 		{
-			if (uiSlots != null && uiSlots.Length > slotIndex && uiSlots[slotIndex].uiButton != null && numSlots > slotIndex)
+			if (uiSlots != null && uiSlots.Length > slotIndex && uiSlots[slotIndex].uiButton && numSlots > slotIndex)
 			{
 				return uiSlots[slotIndex].uiButton.gameObject;
 			}
@@ -208,11 +214,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Gets the boundary of a slot</summary>
-		 * <param name = "_slot">The index number of the slot to get the boundary of</param>
-		 * <returns>The boundary Rect of the slot</returns>
-		 */
 		public override RectTransform GetRectTransform (int _slot)
 		{
 			if (uiSlots != null && uiSlots.Length > _slot)
@@ -236,7 +237,7 @@ namespace AC
 			string apiPrefix = "(AC.PlayerMenus.GetElementWithName (\"" + menu.title + "\", \"" + title + "\") as AC.MenuSavesList)";
 
 			MenuSource source = menu.menuSource;
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 
 			saveListType = (AC_SaveListType) CustomGUILayout.EnumPopup ("List type:", saveListType, apiPrefix + ".savesListType", "How this list behaves");
 			if (saveListType == AC_SaveListType.Save)
@@ -262,6 +263,11 @@ namespace AC
 			}
 			else if (saveListType == AC_SaveListType.Load)
 			{
+				if (fixedOption || allowEmptySlots)
+				{
+					emptySlotText = CustomGUILayout.TextField ("'Empty slot' text:", emptySlotText, apiPrefix + ".emptySlotText", "The display text when a slot is empty");
+				}
+
 				autoHandle = CustomGUILayout.Toggle ("Load when click on?", autoHandle, apiPrefix + ".autoHandle");
 				if (autoHandle)
 				{
@@ -282,7 +288,7 @@ namespace AC
 				checkImportBool = CustomGUILayout.Toggle ("Require Bool to be true?", checkImportBool, apiPrefix + ".checkImportBool", "If True, then a specific Boolean global variable must = True for an import file to be listed");
 				if (checkImportBool)
 				{
-					if (KickStarter.variablesManager != null)
+					if (KickStarter.variablesManager)
 					{
 						ShowVarGUI (KickStarter.variablesManager.vars);
 					}
@@ -303,7 +309,7 @@ namespace AC
 			{
 				numSlots = 1;
 				slotSpacing = 0f;
-				optionToShow = CustomGUILayout.IntField ("ID to display:", optionToShow, apiPrefix + ".optionToShow", "The index number of the save slot to show");
+				optionToShow = CustomGUILayout.IntField ("ID to display:", optionToShow, apiPrefix + ".optionToShow", "The ID of the save slot to show");
 
 				if (saveListType == AC_SaveListType.Load)
 				{
@@ -312,7 +318,8 @@ namespace AC
 			}
 			else
 			{
-				maxSlots = CustomGUILayout.IntField ("Maximum number of slots:", maxSlots, apiPrefix + ".maxSlots", "The maximum number of slots that can be displayed at once");
+				maxSlots = CustomGUILayout.IntField ("Maximum # of slots:", maxSlots, apiPrefix + ".maxSlots", "The maximum number of slots that can be displayed at once");
+				if (maxSlots < 0) maxSlots = 0;
 				allowEmptySlots = CustomGUILayout.Toggle ("Allow empty slots?", allowEmptySlots, apiPrefix + ".allowEmptySlots", "If True, then all slots will be shown even if they are not already assigned a save file.");
 
 				if (source == MenuSource.AdventureCreator)
@@ -321,23 +328,27 @@ namespace AC
 					{
 						numSlots = maxSlots;
 					}
-					else
+					else if (maxSlots > 1)
 					{
 						numSlots = CustomGUILayout.IntSlider ("Test slots:", numSlots, 1, maxSlots, apiPrefix + ".numSlots");
 					}
-					slotSpacing = CustomGUILayout.Slider ("Slot spacing:", slotSpacing, 0f, 30f, apiPrefix + ".slotSpacing");
-					orientation = (ElementOrientation) CustomGUILayout.EnumPopup ("Slot orientation:", orientation, apiPrefix + ".orientation");
-					if (orientation == ElementOrientation.Grid)
+
+					if (maxSlots > 1)
 					{
-						gridWidth = CustomGUILayout.IntSlider ("Grid size:", gridWidth, 1, 10, apiPrefix + ".gridWidth");
+						slotSpacing = CustomGUILayout.Slider ("Slot spacing:", slotSpacing, 0f, 30f, apiPrefix + ".slotSpacing");
+						orientation = (ElementOrientation) CustomGUILayout.EnumPopup ("Slot orientation:", orientation, apiPrefix + ".orientation");
+						if (orientation == ElementOrientation.Grid)
+						{
+							gridWidth = CustomGUILayout.IntSlider ("Grid size:", gridWidth, 1, 10, apiPrefix + ".gridWidth");
+						}
 					}
 				}
 			}
 
 			if (source != MenuSource.AdventureCreator)
 			{
-				EditorGUILayout.EndVertical ();
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.EndVertical ();
+				CustomGUILayout.BeginVertical ();
 				uiHideStyle = (UIHideStyle) CustomGUILayout.EnumPopup ("When invisible:", uiHideStyle, apiPrefix + ".uiHideStyle", "The method by which this element (or slots within it) are hidden from view when made invisible");
 				EditorGUILayout.LabelField ("Linked button objects", EditorStyles.boldLabel);
 
@@ -356,9 +367,14 @@ namespace AC
 				}
 
 				linkUIGraphic = (LinkUIGraphic) CustomGUILayout.EnumPopup ("Link graphics to:", linkUIGraphic, "", "What Image component the element's graphics should be linked to");
+
+				if (displayType != SaveDisplayType.LabelOnly)
+				{
+					ShowTextureGUI (apiPrefix);
+				}
 			}
 				
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			base.ShowGUI (menu);
 		}
@@ -413,7 +429,7 @@ namespace AC
 				if (variableNumber == -1)
 				{
 					// Wasn't found (variable was deleted?), so revert to zero
-					ACDebug.LogWarning ("Previously chosen variable no longer exists!");
+					if (checkImportVar > 0) ACDebug.LogWarning ("Previously chosen variable no longer exists!");
 					variableNumber = 0;
 					checkImportVar = 0;
 				}
@@ -428,14 +444,14 @@ namespace AC
 		{
 			actionListOnSave = ActionListAssetMenu.AssetGUI (label, actionListOnSave,  menuTitle + "_" + title + "_" + suffix, apiPrefix + ".actionListOnSave",tooltip);
 			
-			if (actionListOnSave != null && actionListOnSave.useParameters && actionListOnSave.parameters.Count > 0)
+			if (actionListOnSave && actionListOnSave.NumParameters > 0)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.BeginHorizontal ();
-				parameterID = Action.ChooseParameterGUI (string.Empty, actionListOnSave.parameters, parameterID, ParameterType.Integer);
+				parameterID = Action.ChooseParameterGUI (string.Empty, actionListOnSave.DefaultParameters, parameterID, ParameterType.Integer);
 
 				bool found = false;
-				foreach (ActionParameter _parameter in actionListOnSave.parameters)
+				foreach (ActionParameter _parameter in actionListOnSave.DefaultParameters)
 				{
 					if (_parameter.parameterType == ParameterType.Integer)
 					{
@@ -454,7 +470,7 @@ namespace AC
 					}
 				}
 				EditorGUILayout.EndHorizontal ();
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 		}
 
@@ -462,24 +478,113 @@ namespace AC
 		public override int GetVariableReferences (int _varID)
 		{
 			int numFound = 0;
+			string tokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, _varID);
 
-			if (saveListType == AC_SaveListType.Import && checkImportBool && checkImportVar == _varID)
+			switch (saveListType)
 			{
-				numFound ++;
+				case AC_SaveListType.Save:
+					if (newSaveText.ToLower ().Contains (tokenText))
+					{
+						numFound++;
+					}
+					break;
+
+				case AC_SaveListType.Load:
+					if (emptySlotText.ToLower ().Contains (tokenText))
+					{
+						numFound++;
+					}
+					break;
+
+				case AC_SaveListType.Import:
+					if (checkImportBool && checkImportVar == _varID)
+					{
+						numFound++;
+					}
+					break;
+
+				default:
+					break;
 			}
 
-			return numFound + base.GetVariableReferences (_varID);
+			return numFound;
 		}
-		
+
+
+		public override int UpdateVariableReferences (int oldVarID, int newVarID)
+		{
+			int numFound = 0;
+			string oldTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, oldVarID);
+			string newTokenText = AdvGame.GetVariableTokenText (VariableLocation.Global, newVarID);
+
+			switch (saveListType)
+			{
+				case AC_SaveListType.Save:
+					if (newSaveText.ToLower ().Contains (oldTokenText))
+					{
+						newSaveText = newSaveText.Replace (oldTokenText, newTokenText);
+						numFound++;
+					}
+					break;
+
+				case AC_SaveListType.Load:
+					if (emptySlotText.ToLower ().Contains (oldTokenText))
+					{
+						emptySlotText = emptySlotText.Replace (oldTokenText, newTokenText);
+						numFound++;
+					}
+					break;
+
+				case AC_SaveListType.Import:
+					if (checkImportBool && checkImportVar == oldVarID)
+					{
+						checkImportVar = newVarID;
+						numFound++;
+					}
+					break;
+
+				default:
+					break;
+			}
+
+			return numFound;
+		}
+
+
+		public override bool ReferencesAsset (ActionListAsset actionListAsset)
+		{
+			if (actionListOnSave == actionListAsset)
+				return true;
+			return false;
+		}
+
 		#endif
 
 
-		/**
-		 * <summary>Gets the display text of the element</summary>
-		 * <param name = "slot">The index number of the slot</param>
-		 * <param name = "languageNumber">The index number of the language number to get the text in</param>
-		 * <returns>The display text of the element's slot, or the whole element if it only has one slot</returns>
-		 */
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			foreach (UISlot uiSlot in uiSlots)
+			{
+				if (uiSlot.uiButton && uiSlot.uiButton.gameObject == gameObject) return true;
+				if (uiSlot.uiButtonID == id && id != 0) return true;
+			}
+			return false;
+		}
+
+
+		public override int GetSlotIndex (GameObject gameObject)
+		{
+			for (int i = 0; i < uiSlots.Length; i++)
+			{
+				if (uiSlots[i].uiButton && uiSlots[i].uiButton == gameObject)
+				{
+					return 0;
+				}
+			}
+			return base.GetSlotIndex (gameObject);
+		}
+
+
 		public override string GetLabel (int _slot, int languageNumber)
 		{
 			if (saveListType == AC_SaveListType.Save)
@@ -490,14 +595,14 @@ namespace AC
 					{
 						if (!SaveSystem.DoesSaveExist (optionToShow))
 						{
-							return TranslateLabel (newSaveText, languageNumber);
+							return TranslateLabel (newSaveText, lineID, languageNumber);
 						}
 					}
 					else
 					{
-						if ((_slot + offset) == (numSlots - 1))
+						if ((_slot + offset) == KickStarter.saveSystem.GetNumSaves ())
 						{
-							return TranslateLabel (newSaveText, languageNumber);
+							return TranslateLabel (newSaveText, lineID, languageNumber);
 						}
 					}
 				}
@@ -505,9 +610,18 @@ namespace AC
 				{
 					if (!SaveSystem.DoesSaveExist (_slot + offset))
 					{
-						return TranslateLabel (newSaveText, languageNumber);
+						return TranslateLabel (newSaveText, lineID, languageNumber);
 					}
 				}
+			}
+			else if (saveListType == AC_SaveListType.Load)
+			{
+				string label = SaveSystem.GetSaveSlotLabel (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+				if (string.IsNullOrEmpty (label) && (fixedOption || allowEmptySlots))
+				{
+					label = TranslateLabel (emptySlotText, emptySlotTextLineID, languageNumber);
+				}
+				return label;
 			}
 			return SaveSystem.GetSaveSlotLabel (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
 		}
@@ -525,7 +639,7 @@ namespace AC
 
 		public override bool IsSelectedByEventSystem (int slotIndex)
 		{
-			if (uiSlots != null && slotIndex >= 0 && uiSlots.Length > slotIndex && uiSlots[slotIndex] != null && uiSlots[slotIndex].uiButton != null)
+			if (uiSlots != null && slotIndex >= 0 && uiSlots.Length > slotIndex && uiSlots[slotIndex] != null && uiSlots[slotIndex].uiButton)
 			{
 				return KickStarter.playerMenus.IsEventSystemSelectingObject (uiSlots[slotIndex].uiButton.gameObject);
 			}
@@ -533,9 +647,6 @@ namespace AC
 		}
 
 
-		/**
-		 * Hides all linked Unity UI GameObjects associated with the element.
-		 */
 		public override void HideAllUISlots ()
 		{
 			LimitUISlotVisibility (uiSlots, 0, uiHideStyle);
@@ -550,13 +661,13 @@ namespace AC
 
 				if (newSaveSlot && saveListType == AC_SaveListType.Save)
 				{
-					if (!fixedOption && (_slot + offset) == (KickStarter.saveSystem.GetNumSaves ()))
+					if (!fixedOption && (_slot + offset) == KickStarter.saveSystem.GetNumSaves ())
 					{
-						fullText = TranslateLabel (newSaveText, languageNumber);
+						fullText = TranslateLabel (newSaveText, lineID, languageNumber);
 					}
 					else if (fixedOption)
 					{
-						fullText = TranslateLabel (newSaveText, languageNumber);
+						fullText = TranslateLabel (newSaveText, lineID, languageNumber);
 					}
 					else
 					{
@@ -571,7 +682,7 @@ namespace AC
 					}
 					else
 					{
-						fullText = TranslateLabel (newSaveText, languageNumber);
+						fullText = TranslateLabel (newSaveText, lineID, languageNumber);
 					}
 				}
 				else
@@ -583,6 +694,11 @@ namespace AC
 					else
 					{
 						fullText = SaveSystem.GetSaveSlotLabel (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+
+						if (string.IsNullOrEmpty (fullText) && saveListType == AC_SaveListType.Load && (fixedOption || allowEmptySlots))
+						{
+							fullText = TranslateLabel (emptySlotText, emptySlotTextLineID, languageNumber);
+						}
 					}
 				}
 
@@ -594,7 +710,8 @@ namespace AC
 					}
 				}
 
-				labels [_slot] = fullText;
+				if (_slot < labels.Length)
+					labels [_slot] = fullText;
 			}
 
 			if (Application.isPlaying)
@@ -606,6 +723,7 @@ namespace AC
 						if (!SaveSystem.DoesSaveExist (optionToShow))
 						{
 							LimitUISlotVisibility (uiSlots, 0, uiHideStyle);
+							return;
 						}
 						else
 						{
@@ -641,13 +759,6 @@ namespace AC
 		}
 		
 
-		/**
-		 * <summary>Draws the element using OnGUI</summary>
-		 * <param name = "_style">The GUIStyle to draw with</param>
-		 * <param name = "_slot">The index number of the slot to display</param>
-		 * <param name = "zoom">The zoom factor</param>
-		 * <param name = "isActive If True, then the element will be drawn as though highlighted</param>
-		 */
 		public override void Display (GUIStyle _style, int _slot, float zoom, bool isActive)
 		{
 			base.Display (_style, _slot, zoom, isActive);
@@ -664,12 +775,12 @@ namespace AC
 				{
 					tex = SaveSystem.GetSaveSlotScreenshot (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
 				}
-				if (tex == null && blankSlotTexture != null)
+				if (tex == null && blankSlotTexture)
 				{
 					tex = blankSlotTexture;
 				}
 
-				if (tex != null)
+				if (tex)
 				{
 					GUI.DrawTexture (ZoomRect (GetSlotRectRelative (_slot), zoom), tex, ScaleMode.StretchToFill, true, 0f);
 				}
@@ -699,75 +810,76 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Performs what should happen when the element is clicked on.</summary>
-		 * <param name = "_menu">The element's parent Menu</param>
-		 * <param name = "_slot">The index number of ths slot that was clicked</param>
-		 * <param name = "_mouseState">The state of the mouse button</param>
-		 */
-		public override void ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
+		public override bool ProcessClick (AC.Menu _menu, int _slot, MouseState _mouseState)
 		{
 			if (KickStarter.stateHandler.gameState == GameState.Cutscene)
 			{
-				return;
+				return false;
 			}
 
 			eventSlot = _slot;
 			ClearAllEvents ();
 
-			if (saveListType == AC_SaveListType.Save)
+			switch (saveListType)
 			{
-				if (autoHandle)
-				{
-					EventManager.OnFinishSaving += OnCompleteSave;
-					EventManager.OnFailSaving += OnFailSaveLoad;
-
-					if (newSaveSlot && _slot == (numSlots - 1))
+				case AC_SaveListType.Save:
+					if (autoHandle)
 					{
-						SaveSystem.SaveNewGame ();
-
-						if (KickStarter.settingsManager.orderSavesByUpdateTime)
+						if (PlayerMenus.IsSavingLocked (null, true))
 						{
-							offset = 0;
+							return false;
+						}
+
+						EventManager.OnFinishSaving += OnCompleteSave;
+						EventManager.OnFailSaving += OnFailSaveLoad;
+
+						if (newSaveSlot && _slot == (numSlots - 1))
+						{
+							SaveSystem.SaveNewGame ();
+
+							if (KickStarter.settingsManager.orderSavesByUpdateTime)
+							{
+								offset = 0;
+							}
+							else
+							{
+								Shift (AC_ShiftInventory.ShiftNext, 1);
+							}
 						}
 						else
 						{
-							Shift (AC_ShiftInventory.ShiftNext, 1);
+							SaveSystem.SaveGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
 						}
 					}
 					else
 					{
-						SaveSystem.SaveGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+						RunActionList (_slot);
 					}
-				}
-				else
-				{
-					RunActionList (_slot);
-				}
-			}
-			else if (saveListType == AC_SaveListType.Load)
-			{
-				if (autoHandle)
-				{
-					EventManager.OnFinishLoading += OnCompleteLoad;
-					EventManager.OnFailLoading += OnFailSaveLoad;
+					break;
 
-					SaveSystem.LoadGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
-				}
-				else
-				{
-					RunActionList (_slot);
-				}
-			}
-			else if (saveListType == AC_SaveListType.Import)
-			{
-				EventManager.OnFinishImporting += OnCompleteImport;
-				EventManager.OnFailImporting += OnFailImport;
+				case AC_SaveListType.Load:
+					if (autoHandle)
+					{
+						EventManager.OnFinishLoading += OnCompleteLoad;
+						EventManager.OnFailLoading += OnFailSaveLoad;
 
-				SaveSystem.ImportGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+						SaveSystem.LoadGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+					}
+					else
+					{
+						RunActionList (_slot);
+					}
+					break;
+
+				case AC_SaveListType.Import:
+					EventManager.OnFinishImporting += OnCompleteImport;
+					EventManager.OnFailImporting += OnFailImport;
+
+					SaveSystem.ImportGame (_slot + offset, GetOptionID (_slot), fixedOption || allowEmptySlots);
+					break;
 			}
 	
-			base.ProcessClick (_menu, _slot, _mouseState);
+			return base.ProcessClick (_menu, _slot, _mouseState);
 		}
 
 
@@ -847,11 +959,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Recalculates the element's size.
-		 * This should be called whenever a Menu's shape is changed.</summary>
-		 * <param name = "source">How the parent Menu is displayed (AdventureCreator, UnityUiPrefab, UnityUiInScene)</param>
-		 */
 		public override void RecalculateSize (MenuSource source)
 		{
 			newSaveSlot = false;
@@ -895,7 +1002,6 @@ namespace AC
 
 						if (saveListType == AC_SaveListType.Save &&
 							numSlots < KickStarter.settingsManager.maxSaves &&
-							numSlots < maxSlots &&
 							showNewSaveOption)
 						{
 							newSaveSlot = true;
@@ -935,7 +1041,7 @@ namespace AC
 		{
 			if (displayType == SaveDisplayType.ScreenshotOnly)
 			{
-				if (blankSlotTexture != null)
+				if (blankSlotTexture)
 				{
 					AutoSize (new GUIContent (blankSlotTexture));
 				}
@@ -946,7 +1052,7 @@ namespace AC
 			}
 			else if (displayType == SaveDisplayType.LabelAndScreenshot)
 			{
-				if (blankSlotTexture != null)
+				if (blankSlotTexture)
 				{
 					AutoSize (new GUIContent (blankSlotTexture));
 				}
@@ -962,11 +1068,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Checks if the element's slots can be shifted in a particular direction.</summary>
-		 * <param name = "shiftType">The direction to shift slots in (Left, Right)</param>
-		 * <returns>True if the element's slots can be shifted in the particular direction</returns>
-		 */
 		public override bool CanBeShifted (AC_ShiftInventory shiftType)
 		{
 			if (numSlots == 0 || fixedOption)
@@ -989,8 +1090,8 @@ namespace AC
 			}
 			return true;
 		}
-		
-		
+
+
 		private int GetMaxOffset ()
 		{
 			if (numSlots == 0 || fixedOption)
@@ -1002,11 +1103,6 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Shifts which slots are on display, if the number of slots the element has exceeds the number of slots it can show at once.</summary>
-		 * <param name = "shiftType">The direction to shift slots in (Left, Right)</param>
-		 * <param name = "amount">The amount to shift slots by</param>
-		 */
 		public override void Shift (AC_ShiftInventory shiftType, int amount)
 		{
 			if (fixedOption) return;
@@ -1032,37 +1128,85 @@ namespace AC
 		}
 
 
-		/** ITranslatable implementation */
+		private string TranslateLabel (string label, int _lineID, int languageNumber)
+		{
+			if (KickStarter.runtimeLanguages == null)
+			{
+				return label;
+			}
+			return KickStarter.runtimeLanguages.GetTranslation (label, _lineID, languageNumber, GetTranslationType (0));
+		}
+
+
+		#region ITranslatable
 
 		public string GetTranslatableString (int index)
 		{
+			if (index == 1)
+			{
+				return emptySlotText;
+			}
 			return newSaveText;
 		}
 
 
 		public int GetTranslationID (int index)
 		{
+			if (index == 1)
+			{
+				return emptySlotTextLineID;
+			}
 			return lineID;
+		}
+
+
+		public AC_TextType GetTranslationType (int index)
+		{
+			return AC.AC_TextType.MenuElement;
 		}
 
 
 		#if UNITY_EDITOR
 
+		public void UpdateTranslatableString (int index, string updatedText)
+		{
+			if (index == 1)
+			{
+				emptySlotText = updatedText;
+			}
+			else
+			{
+				newSaveText = updatedText;
+			}
+		}
+
+
 		public int GetNumTranslatables ()
 		{
-			return 1;
+			return 2;
 		}
 
 
 		public bool HasExistingTranslation (int index)
 		{
+			if (index == 1)
+			{
+				return (emptySlotTextLineID > 0);
+			}
 			return (lineID > -1);
 		}
 
 
 		public void SetTranslationID (int index, int _lineID)
 		{
-			lineID = _lineID;
+			if (index == 1)
+			{
+				emptySlotTextLineID = _lineID;
+			}
+			else
+			{
+				lineID = _lineID;
+			}
 		}
 
 
@@ -1078,25 +1222,35 @@ namespace AC
 		}
 
 
-		public AC_TextType GetTranslationType (int index)
-		{
-			return AC.AC_TextType.MenuElement;
-		}
-
-
 		public bool CanTranslate (int index)
 		{
-			if (saveListType == AC_SaveListType.Save && showNewSaveOption)
+			if (index == 1)
 			{
-				if ((!fixedOption && allowEmptySlots) || showNewSaveOption)
+				if (saveListType == AC_SaveListType.Load)
 				{
-					return !string.IsNullOrEmpty (newSaveText);
+					if (fixedOption || allowEmptySlots)
+					{
+						return !string.IsNullOrEmpty (emptySlotText);
+					}
 				}
+				return false;
 			}
-			return false;
+			else
+			{
+				if (saveListType == AC_SaveListType.Save && showNewSaveOption)
+				{
+					if ((!fixedOption && allowEmptySlots) || showNewSaveOption)
+					{
+						return !string.IsNullOrEmpty (newSaveText);
+					}
+				}
+				return false;
+			}
 		}
 
 		#endif
+
+		#endregion
 
 	}
 

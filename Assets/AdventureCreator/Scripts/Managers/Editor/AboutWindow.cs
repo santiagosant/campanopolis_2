@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -19,7 +21,7 @@ namespace AC
 			}
 
 			window = EditorWindow.GetWindowWithRect <AboutWindow> (new Rect (0, 0, 420, 340), true, "Adventure Creator", true);
-			UnityVersionHandler.SetWindowTitle (window, "Adventure Creator");
+			window.titleContent.text = "Adventure Creator";
 		}
 
 
@@ -59,9 +61,9 @@ namespace AC
 			}
 			GUI.enabled = true;
 
-			if (GUILayout.Button ("Documentation"))
+			if (GUILayout.Button ("Manual"))
 			{
-				Application.OpenURL (Resource.manualLink);
+				Application.OpenURL (System.Environment.CurrentDirectory + "/" + Resource.MainFolderPath + "/Manual.pdf");
 			}
 
 			if (GUILayout.Button ("Tutorials"))
@@ -85,7 +87,7 @@ namespace AC
 			{
 				if (GUILayout.Button ("New Game Wizard"))
 				{
-					this.Close ();
+					Close ();
 					NewGameWizardWindow.Init ();
 				}
 			}
@@ -101,3 +103,5 @@ namespace AC
 	}
 
 }
+
+#endif

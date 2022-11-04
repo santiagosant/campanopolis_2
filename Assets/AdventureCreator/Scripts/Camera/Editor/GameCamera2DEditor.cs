@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -15,32 +17,44 @@ namespace AC
 			_target.ShowCursorInfluenceGUI ();
 			EditorGUILayout.Space ();
 
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Horizontal movement", EditorStyles.boldLabel);
 		
-			_target.lockHorizontal = CustomGUILayout.Toggle ("Lock?", _target.lockHorizontal, "", "If True, then horizontal panning is prevented");
+			_target.lockHorizontal = CustomGUILayout.Toggle ("Lock?", _target.lockHorizontal, string.Empty, "If True, then horizontal panning is prevented");
 			if (!_target.GetComponent <Camera>().orthographic || !_target.lockHorizontal)
 			{
-				_target.afterOffset.x = CustomGUILayout.FloatField ("Offset:", _target.afterOffset.x, "", "The horizontal panning offset");
+				_target.afterOffset.x = CustomGUILayout.FloatField ("Offset:", _target.afterOffset.x, string.Empty, "The horizontal panning offset");
 			}
 		
 			if (!_target.lockHorizontal)
 			{
-				_target.freedom.x = CustomGUILayout.FloatField ("Track freedom:",_target.freedom.x, "", "The amount of freedom when tracking a target. Higher values will result in looser tracking");
-				_target.directionInfluence.x = CustomGUILayout.FloatField ("Target direction factor:", _target.directionInfluence.x, "", "The influence that the target's facing direction has on the tracking position");
-				_target.limitHorizontal = CustomGUILayout.Toggle ("Constrain?", _target.limitHorizontal, "", "If True, then horizontal panning will be limited to minimum and maximum values");
+				_target.freedom.x = CustomGUILayout.FloatField ("Track freedom:",_target.freedom.x, string.Empty, "The amount of freedom when tracking a target. Higher values will result in looser tracking");
+				_target.directionInfluence.x = CustomGUILayout.FloatField ("Target direction factor:", _target.directionInfluence.x, string.Empty, "The influence that the target's facing direction has on the tracking position");
+				_target.limitHorizontal = CustomGUILayout.Toggle ("Constrain?", _target.limitHorizontal, string.Empty, "If True, then horizontal panning will be limited to minimum and maximum values");
 
 				if (_target.limitHorizontal)
 				{
-					EditorGUILayout.BeginVertical ("Button");
-					_target.constrainHorizontal[0] = CustomGUILayout.FloatField ("Minimum constraint:", _target.constrainHorizontal[0], "", "The lower horizontal panning limit");
-					_target.constrainHorizontal[1] = CustomGUILayout.FloatField ("Maximum constraint:", _target.constrainHorizontal[1], "", "The upper horizontal panning limit");
-					EditorGUILayout.EndVertical ();
+					if (_target.GetComponent<Camera> ().orthographic)
+					{
+						_target.backgroundConstraint = (SpriteRenderer) CustomGUILayout.ObjectField<SpriteRenderer> ("Background constraint:", _target.backgroundConstraint, true, string.Empty, "If set, this sprite's boundary will be used to set the constraint limits");
+						if (_target.backgroundConstraint)
+						{
+							_target.autoScaleToFitBackgroundConstraint = CustomGUILayout.Toggle ("Auto-set Orthographic size to fit?", _target.autoScaleToFitBackgroundConstraint, string.Empty, "If True, then the Camera's Orthographic Size value will be reduced if the background is not large enough to fill the screen.");
+						}
+					}
+
+					if (!_target.GetComponent<Camera>().orthographic || _target.backgroundConstraint == null)
+					{
+						CustomGUILayout.BeginVertical ();
+						_target.constrainHorizontal[0] = CustomGUILayout.FloatField ("Minimum constraint:", _target.constrainHorizontal[0], string.Empty, "The lower horizontal panning limit");
+						_target.constrainHorizontal[1] = CustomGUILayout.FloatField ("Maximum constraint:", _target.constrainHorizontal[1], string.Empty, "The upper horizontal panning limit");
+						CustomGUILayout.EndVertical ();
+					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
-			EditorGUILayout.BeginVertical ("Button");
+			CustomGUILayout.BeginVertical ();
 			EditorGUILayout.LabelField ("Vertical movement", EditorStyles.boldLabel);
 		
 			_target.lockVertical = CustomGUILayout.Toggle ("Lock?", _target.lockVertical, "", "If True, then vertical panning is prevented");
@@ -57,17 +71,29 @@ namespace AC
 
 				if (_target.limitVertical)
 				{
-					EditorGUILayout.BeginVertical ("Button");
-					_target.constrainVertical[0] = CustomGUILayout.FloatField ("Minimum constraint:", _target.constrainVertical[0], "", "The lower vertical panning limit");
-					_target.constrainVertical[1] = CustomGUILayout.FloatField ("Maximum constraint:", _target.constrainVertical[1], "", "The upper vertical panning limit");
-					EditorGUILayout.EndVertical ();
+					if (_target.GetComponent<Camera> ().orthographic)
+					{
+						_target.backgroundConstraint = (SpriteRenderer) CustomGUILayout.ObjectField<SpriteRenderer> ("Background constraint:", _target.backgroundConstraint, true, string.Empty, "If set, this sprite's boundary will be used to set the constraint limits");
+						if (_target.backgroundConstraint)
+						{
+							_target.autoScaleToFitBackgroundConstraint = CustomGUILayout.Toggle ("Auto-set Orthographic size to fit?", _target.autoScaleToFitBackgroundConstraint, string.Empty, "If True, then the Camera's Orthographic Size value will be reduced if the background is not large enough to fill the screen.");
+						}
+					}
+
+					if (!_target.GetComponent<Camera> ().orthographic || _target.backgroundConstraint == null)
+					{
+						CustomGUILayout.BeginVertical ();
+						_target.constrainVertical[0] = CustomGUILayout.FloatField ("Minimum constraint:", _target.constrainVertical[0], "", "The lower vertical panning limit");
+						_target.constrainVertical[1] = CustomGUILayout.FloatField ("Maximum constraint:", _target.constrainVertical[1], "", "The upper vertical panning limit");
+						CustomGUILayout.EndVertical ();
+					}
 				}
 			}
-			EditorGUILayout.EndVertical ();
+			CustomGUILayout.EndVertical ();
 			
 			if (!_target.lockHorizontal || !_target.lockVertical)
 			{
-				EditorGUILayout.BeginVertical ("Button");
+				CustomGUILayout.BeginVertical ();
 				EditorGUILayout.LabelField ("Target object to control camera movement", EditorStyles.boldLabel);
 				
 				_target.targetIsPlayer = CustomGUILayout.Toggle ("Target is Player?", _target.targetIsPlayer, "", "If True, the camera will follow the active Player");
@@ -85,7 +111,7 @@ namespace AC
 					_target.unitSnap = CustomGUILayout.FloatField ("Snap unit size:", _target.unitSnap, "", "The step size when snapping");
 				}
 
-				EditorGUILayout.EndVertical ();
+				CustomGUILayout.EndVertical ();
 			}
 			
 			if (!_target.IsCorrectRotation ())
@@ -111,3 +137,5 @@ namespace AC
 	}
 
 }
+
+#endif

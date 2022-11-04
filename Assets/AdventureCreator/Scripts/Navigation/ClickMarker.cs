@@ -1,7 +1,7 @@
 ﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ClickMarker.cs"
  * 
@@ -20,21 +20,25 @@ namespace AC
 	 * An example script that demonstrates how a "Click Marker" can be animated at the Player's intended destination during Point And Click mode.
 	 * Click Markers can be set within SettingsManager.
 	 */
-	#if !(UNITY_4_6 || UNITY_4_7 || UNITY_5_0)
 	[HelpURL("https://www.adventurecreator.org/scripting-guide/class_a_c_1_1_click_marker.html")]
-	#endif
 	public class ClickMarker : MonoBehaviour
 	{
+
+		#region Variables
 
 		/** How long the marker will remain visible on-screen */
 		public float lifeTime = 0.5f;
 
-		private float startTime;
-		private Vector3 startScale;
-		private Vector3 endScale = Vector3.zero;
+		protected float startTime;
+		protected Vector3 startScale;
+		protected Vector3 endScale = Vector3.zero;
+
+		#endregion
 
 
-		private void Start ()
+		#region UnityStandards
+
+		protected void Start ()
 		{
 			Destroy (this.gameObject, lifeTime);
 
@@ -47,8 +51,12 @@ namespace AC
 			StartCoroutine ("ShrinkMarker");
 		}
 
+		#endregion
 
-		private IEnumerator ShrinkMarker ()
+
+		#region ProtectedFunctions
+
+		protected IEnumerator ShrinkMarker ()
 		{
 			while (lifeTime > 0f)
 			{
@@ -56,6 +64,8 @@ namespace AC
 				yield return new WaitForFixedUpdate ();
 			}
 		}
+
+		#endregion
 
 	}
 

@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿#if UNITY_EDITOR
+
+using UnityEngine;
 using UnityEditor;
 
 namespace AC
@@ -32,12 +34,16 @@ namespace AC
 				}
 				else if (_target.GetComponent <Collider2D>() != null && !_target.GetComponent <Collider2D>().isTrigger)
 				{
-					EditorGUILayout.HelpBox ("This object's 2D Collider component must have 'Is Trigger?' set.", MessageType.Warning);
+					EditorGUILayout.HelpBox ("This object's 2D Collider component must have 'Is Trigger' checked.", MessageType.Warning);
 				}
 				
 				if (_target.GetComponent <Rigidbody2D>() == null && _target.GetComponentInParent <Rigidbody2D>() == null)
 				{
-					EditorGUILayout.HelpBox ("A 2D Rigidbody component must be placed on this object.", MessageType.Warning);
+					EditorGUILayout.HelpBox ("A 2D Kinematic Rigidbody component must be placed on this object.", MessageType.Warning);
+				}
+				else if (_target.GetComponent<Rigidbody2D>() && !_target.GetComponent<Rigidbody2D>().isKinematic)
+				{
+					EditorGUILayout.HelpBox ("This object's 2D Rigidbody component must have 'Is Kinematic' checked.", MessageType.Warning);
 				}
 			}
 			else
@@ -53,10 +59,17 @@ namespace AC
 
 				if (_target.GetComponent <Rigidbody>() == null && _target.GetComponentInParent <Rigidbody>() == null)
 				{
-					EditorGUILayout.HelpBox ("A Rigidbody component must be placed on this object.", MessageType.Warning);
+					EditorGUILayout.HelpBox ("A Kinematic Rigidbody component must be placed on this object.", MessageType.Warning);
+				}
+				else if (_target.GetComponent <Rigidbody>() && !_target.GetComponent <Rigidbody>().isKinematic)
+				{
+					EditorGUILayout.HelpBox ("This object's Rigidbody component must have 'Is Kinematic' checked.", MessageType.Warning);
 				}
 			}
 		}
 	
 	}
+
 }
+
+#endif

@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionContainerCheck.cs"
  * 
@@ -26,7 +26,7 @@ namespace AC
 
 		public int invParameterID = -1;
 		public int invID;
-		private int invNumber;
+		protected int invNumber;
 
 		public bool useActive = false;
 		public int parameterID = -1;
@@ -40,20 +40,16 @@ namespace AC
 		public IntCondition intCondition;
 
 		#if UNITY_EDITOR
-		private InventoryManager inventoryManager;
+		protected InventoryManager inventoryManager;
 		#endif
 
 		
-		public ActionContainerCheck ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Container;
-			title = "Check";
-			description = "Queries the contents of a Container for a stored Item, and reacts accordingly.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Container; }}
+		public override string Title { get { return "Check"; }}
+		public override string Description { get { return "Queries the contents of a Container for a stored Item, and reacts accordingly."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			runtimeContainer = AssignFile <Container> (parameters, parameterID, constantID, container);
 			invID = AssignInvItemID (parameters, invParameterID, invID);
@@ -65,7 +61,7 @@ namespace AC
 		}
 
 		
-		override public bool CheckCondition ()
+		public override bool CheckCondition ()
 		{
 			if (runtimeContainer == null)
 			{
@@ -76,51 +72,32 @@ namespace AC
 			
 			if (doCount)
 			{
-				if (intCondition == IntCondition.EqualTo)
+				switch (intCondition)
 				{
-					if (count == intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.NotEqualTo)
-				{
-					if (count != intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.LessThan)
-				{
-					if (count < intValue)
-					{
-						return true;
-					}
-				}
-				
-				else if (intCondition == IntCondition.MoreThan)
-				{
-					if (count > intValue)
-					{
-						return true;
-					}
+					case IntCondition.EqualTo:
+						return (count == intValue);
+
+					case IntCondition.NotEqualTo:
+						return (count != intValue);
+
+					case IntCondition.LessThan:
+						return (count < intValue);
+
+					case IntCondition.MoreThan:
+						return (count > intValue);
+
+					default:
+						return false;
 				}
 			}
 			
-			else if (count > 0)
-			{
-				return true;
-			}
-			
-			return false;	
+			return (count > 0);
 		}
 		
 
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			if (AdvGame.GetReferences ().inventoryManager)
 			{
@@ -155,7 +132,7 @@ namespace AC
 					if (invNumber == -1)
 					{
 						// Wasn't found (item was possibly deleted), so revert to zero
-						ACDebug.LogWarning ("Previously chosen item no longer exists!");
+						if (invID > 0) LogWarning ("Previously chosen item no longer exists!");
 						
 						invNumber = 0;
 						invID = 0;
@@ -228,13 +205,13 @@ namespace AC
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			AssignConstantID <Container> (container, constantID, parameterID);
 		}
 
 		
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			if (inventoryManager == null)
 			{
@@ -252,6 +229,17 @@ namespace AC
 			return string.Empty;
 		}
 
+
+		public override bool ReferencesObjectOrID (GameObject _gameObject, int id)
+		{
+			if (!useActive && parameterID < 0)
+			{
+				if (container && container.gameObject == _gameObject) return true;
+				if (constantID == id) return true;
+			}
+			return base.ReferencesObjectOrID (_gameObject, id);
+		}
+
 		#endif
 
 
@@ -263,7 +251,7 @@ namespace AC
 		*/
 		public static ActionContainerCheck CreateNew (Container container, int itemID)
 		{
-			ActionContainerCheck newAction = (ActionContainerCheck) CreateInstance <ActionContainerCheck>();
+			ActionContainerCheck newAction = CreateNew<ActionContainerCheck> ();
 			newAction.container = container;
 			newAction.invID = itemID;
 			return newAction;

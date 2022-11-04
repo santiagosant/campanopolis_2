@@ -1,7 +1,7 @@
 /*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"ActionVarCopy.cs"
  * 
@@ -38,26 +38,22 @@ namespace AC
 		public int newVariablesConstantID = 0;
 
 		#if UNITY_EDITOR
-		private VariableType oldVarType = VariableType.Boolean;
-		private VariableType newVarType = VariableType.Boolean;
+		protected VariableType oldVarType = VariableType.Boolean;
+		protected VariableType newVarType = VariableType.Boolean;
 		#endif
 
-		private LocalVariables localVariables;
+		protected LocalVariables localVariables;
 		protected GVar oldRuntimeVariable;
 		protected GVar newRuntimeVariable;
 		protected Variables newRuntimeVariables;
 
 
-		public ActionVarCopy ()
-		{
-			this.isDisplayed = true;
-			category = ActionCategory.Variable;
-			title = "Copy";
-			description = "Copies the value of one Variable to another. This can be between Global and Local Variables, but only of those with the same type, such as Integer or Float.";
-		}
+		public override ActionCategory Category { get { return ActionCategory.Variable; }}
+		public override string Title { get { return "Copy"; }}
+		public override string Description { get { return "Copies the value of one Variable to another. This can be between Global and Local Variables, but only of those with the same type, such as Integer or Float."; }}
 
 
-		override public void AssignValues (List<ActionParameter> parameters)
+		public override void AssignValues (List<ActionParameter> parameters)
 		{
 			oldRuntimeVariable = null;
 			switch (oldLocation)
@@ -115,7 +111,7 @@ namespace AC
 		}
 
 
-		override public void AssignParentList (ActionList actionList)
+		public override void AssignParentList (ActionList actionList)
 		{
 			if (actionList != null)
 			{
@@ -130,7 +126,7 @@ namespace AC
 		}
 
 
-		override public float Run ()
+		public override float Run ()
 		{
 			if (oldRuntimeVariable != null && newRuntimeVariable != null)
 			{
@@ -142,7 +138,7 @@ namespace AC
 		}
 
 		
-		private void CopyVariable (GVar newVar, GVar oldVar)
+		protected void CopyVariable (GVar newVar, GVar oldVar)
 		{
 			if (newVar == null || oldVar == null)
 			{
@@ -157,11 +153,12 @@ namespace AC
 		
 		#if UNITY_EDITOR
 		
-		override public void ShowGUI (List<ActionParameter> parameters)
+		public override void ShowGUI (List<ActionParameter> parameters)
 		{
 			// OLD
 
 			oldLocation = (VariableLocation) EditorGUILayout.EnumPopup ("'From' source:", oldLocation);
+			bool gotOldVar = false;
 
 			switch (oldLocation)
 			{
@@ -169,6 +166,7 @@ namespace AC
 					if (AdvGame.GetReferences ().variablesManager != null)
 					{
 						oldVariableID = ShowVarGUI (AdvGame.GetReferences ().variablesManager.vars, parameters, ParameterType.GlobalVariable, oldVariableID, oldParameterID, false);
+						gotOldVar = (AdvGame.GetReferences ().variablesManager.vars.Count > 0);
 					}
 					break;
 
@@ -180,6 +178,7 @@ namespace AC
 					else if (localVariables != null)
 					{
 						oldVariableID = ShowVarGUI (localVariables.localVars, parameters, ParameterType.LocalVariable, oldVariableID, oldParameterID, false);
+						gotOldVar = (localVariables.localVars.Count > 0);
 					}
 					else
 					{
@@ -196,10 +195,11 @@ namespace AC
 					}
 					else
 					{
-						oldVariables = (Variables) EditorGUILayout.ObjectField ("'Old' component:", oldVariables, typeof (Variables), true);
+						oldVariables = (Variables) EditorGUILayout.ObjectField ("'From' component:", oldVariables, typeof (Variables), true);
 						if (oldVariables != null)
 						{
 							oldVariableID = ShowVarGUI (oldVariables.vars, null, ParameterType.ComponentVariable, oldVariableID, oldParameterID, false);
+							gotOldVar = (oldVariables.vars.Count > 0);
 						}
 
 						oldVariablesConstantID = FieldToID <Variables> (oldVariables, oldVariablesConstantID);
@@ -213,6 +213,7 @@ namespace AC
 			// NEW
 
 			newLocation = (VariableLocation) EditorGUILayout.EnumPopup ("'To' source:", newLocation);
+			bool gotNewVar = false;
 
 			switch (newLocation)
 			{
@@ -220,6 +221,7 @@ namespace AC
 					if (AdvGame.GetReferences ().variablesManager != null)
 					{
 						newVariableID = ShowVarGUI (AdvGame.GetReferences ().variablesManager.vars, parameters, ParameterType.GlobalVariable, newVariableID, newParameterID, true);
+						gotNewVar = (AdvGame.GetReferences ().variablesManager.vars.Count > 0);
 					}
 					break;
 
@@ -231,6 +233,7 @@ namespace AC
 					else if (localVariables != null)
 					{
 						newVariableID = ShowVarGUI (localVariables.localVars, parameters, ParameterType.LocalVariable, newVariableID, newParameterID, true);
+						gotNewVar = (localVariables.localVars.Count > 0);
 					}
 					else
 					{
@@ -247,10 +250,11 @@ namespace AC
 					}
 					else
 					{
-						newVariables = (Variables) EditorGUILayout.ObjectField ("'New' component:", newVariables, typeof (Variables), true);
+						newVariables = (Variables) EditorGUILayout.ObjectField ("'To' component:", newVariables, typeof (Variables), true);
 						if (newVariables != null)
 						{
-							newVariableID = ShowVarGUI (oldVariables.vars, null, ParameterType.ComponentVariable, newVariableID, newParameterID, false);
+							newVariableID = ShowVarGUI (newVariables.vars, null, ParameterType.ComponentVariable, newVariableID, newParameterID, true);
+							gotNewVar = (newVariables.vars.Count > 0);
 						}
 
 						newVariablesConstantID = FieldToID <Variables> (newVariables, newVariablesConstantID);
@@ -260,12 +264,10 @@ namespace AC
 			}
 
 			// Types match?
-			if (oldParameterID == -1 && newParameterID == -1 && newVarType != oldVarType)
+			if (oldParameterID == -1 && newParameterID == -1 && newVarType != oldVarType && gotOldVar && gotNewVar)
 			{
 				EditorGUILayout.HelpBox ("The chosen Variables do not share the same Type - a conversion will be attemped", MessageType.Info);
 			}
-
-			AfterRunningOption ();
 		}
 
 
@@ -295,7 +297,7 @@ namespace AC
 				if (variableNumber == -1 && (parameters == null || parameters.Count == 0 || parameterID == -1))
 				{
 					// Wasn't found (variable was deleted?), so revert to zero
-					ACDebug.LogWarning ("Previously chosen variable no longer exists!");
+					if (variableID > 0) LogWarning ("Previously chosen variable no longer exists!");
 					variableNumber = 0;
 					variableID = 0;
 				}
@@ -316,6 +318,7 @@ namespace AC
 				else
 				{
 					variableNumber = EditorGUILayout.Popup (label, variableNumber, labelList.ToArray());
+					variableNumber = Mathf.Max (0, variableNumber);
 					variableID = vars [variableNumber].id;
 				}
 			}
@@ -349,7 +352,7 @@ namespace AC
 		}
 
 
-		override public string SetLabel ()
+		public override string SetLabel ()
 		{
 			switch (newLocation)
 			{
@@ -444,13 +447,13 @@ namespace AC
 		}
 
 
-		public override int GetVariableReferences (List<ActionParameter> parameters, VariableLocation _location, int varID, Variables _variables)
+		public override int GetNumVariableReferences (VariableLocation _location, int varID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
 		{
 			int thisCount = 0;
 
 			if (oldLocation == _location && oldVariableID == varID)
 			{
-				if (_location != VariableLocation.Component || (_variables != null && oldVariables == _variables))
+				if (_location != VariableLocation.Component || (_variables && _variables == oldVariables) || (oldVariablesConstantID != 0 && _variablesConstantID == oldVariablesConstantID))
 				{
 					thisCount ++;
 				}
@@ -458,28 +461,81 @@ namespace AC
 
 			if (newLocation == _location && newVariableID == varID)
 			{
-				if (_location != VariableLocation.Component || (_variables != null && newVariables == _variables))
+				if (_location != VariableLocation.Component || (_variables && _variables == newVariables) || (newVariablesConstantID != 0 && _variablesConstantID == newVariablesConstantID))
 				{
 					thisCount ++;
 				}
 			}
 
-			thisCount += base.GetVariableReferences (parameters, _location, varID, _variables);
+			thisCount += base.GetNumVariableReferences (_location, varID, parameters, _variables, _variablesConstantID);
 			return thisCount;
 		}
 
 
-		override public void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
+		public override int UpdateVariableReferences (VariableLocation _location, int oldVarID, int newVarID, List<ActionParameter> parameters, Variables _variables = null, int _variablesConstantID = 0)
+		{
+			int thisCount = 0;
+
+			if (oldLocation == _location && oldVariableID == oldVarID)
+			{
+				if (_location != VariableLocation.Component || (_variables && _variables == oldVariables) || (oldVariablesConstantID != 0 && _variablesConstantID == oldVariablesConstantID))
+				{
+					oldVariableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			if (newLocation == _location && newVariableID == newVarID)
+			{
+				if (_location != VariableLocation.Component || (_variables && _variables == newVariables) || (newVariablesConstantID != 0 && _variablesConstantID == newVariablesConstantID))
+				{
+					newVariableID = newVarID;
+					thisCount++;
+				}
+			}
+
+			thisCount += base.UpdateVariableReferences (_location, oldVarID, newVarID, parameters, _variables, _variablesConstantID);
+			return thisCount;
+		}
+
+
+		public override void AssignConstantIDs (bool saveScriptsToo, bool fromAssetFile)
 		{
 			if (oldLocation == VariableLocation.Component)
 			{
+				if (saveScriptsToo && oldVariables && oldParameterID < 0)
+				{
+					AddSaveScript<RememberVariables> (oldVariables);
+				}
+
 				AssignConstantID <Variables> (oldVariables, oldVariablesConstantID, oldParameterID);
 			}
 
 			if (newLocation == VariableLocation.Component)
 			{
+				if (saveScriptsToo && newVariables && newParameterID < 0)
+				{
+					AddSaveScript<RememberVariables> (newVariables);
+				}
+
 				AssignConstantID <Variables> (newVariables, newVariablesConstantID, newParameterID);
 			}
+		}
+
+
+		public override bool ReferencesObjectOrID (GameObject gameObject, int id)
+		{
+			if (oldParameterID < 0 && oldLocation == VariableLocation.Component)
+			{
+				if (oldVariables && oldVariables.gameObject == gameObject) return true;
+				if (oldVariablesConstantID == id && id != 0) return true;
+			}
+			if (newParameterID < 0 && oldLocation == VariableLocation.Component)
+			{
+				if (newVariables && newVariables.gameObject == gameObject) return true;
+				if (newVariablesConstantID == id && id != 0) return true;
+			}
+			return base.ReferencesObjectOrID (gameObject, id);
 		}
 
 		#endif
@@ -497,7 +553,7 @@ namespace AC
 		 */
 		public static ActionVarCopy CreateNew (VariableLocation fromVariableLocation, Variables fromVariables, int fromVariableID, VariableLocation toVariableLocation, Variables toVariables, int toVariableID)
 		{
-			ActionVarCopy newAction = (ActionVarCopy) CreateInstance <ActionVarCopy>();
+			ActionVarCopy newAction = CreateNew<ActionVarCopy> ();
 			newAction.oldLocation = fromVariableLocation;
 			newAction.oldVariables = fromVariables;
 			newAction.oldVariableID = fromVariableID;

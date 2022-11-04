@@ -1,11 +1,7 @@
-﻿#if UNITY_2017_1_OR_NEWER
-#define CAN_USE_TIMELINE
-#endif
-
-/*
+﻿/*
  *
  *	Adventure Creator
- *	by Chris Burton, 2013-2019
+ *	by Chris Burton, 2013-2022
  *	
  *	"EventManager.cs"
  * 
@@ -15,10 +11,8 @@
  */
 
 using UnityEngine;
-using System.Collections.Generic;
-#if CAN_USE_TIMELINE
 using UnityEngine.Playables;
-#endif
+using System.Collections.Generic;
 
 namespace AC
 {
@@ -46,6 +40,10 @@ namespace AC
 		public delegate string Delegate_OnRequestSpeechTokenReplacement (Speech speech, string tokenKey, string tokenValue);
 		/** A delegate for the OnRequestTextTokenReplacement event */
 		public delegate string Delegate_OnRequestTextTokenReplacement (string tokenKey, string tokenValue);
+		/** A delegate for the OnLoadSpeechAssetBundle event */
+		public delegate void Delegate_OnLoadSpeechAssetBundle (int language);
+		/** A delegate for the OnSkipSpeech event */
+		public delegate void Delegate_OnSkipSpeech (Speech speech, bool justCompletingScroll);
 		/** An event triggered whenever a new line of dialogue begins */
 		public static event Delegate_StartSpeech OnStartSpeech;
 		/** An event triggered whenever a new line of dialogue begins */
@@ -74,9 +72,14 @@ namespace AC
 		public static event Delegate_OnRequestSpeechTokenReplacement OnRequestSpeechTokenReplacement;
 		/** An event triggered whenever a custom text token is used in text, and it's replacement is requested (it will be removed otherwise) */
 		public static event Delegate_OnRequestTextTokenReplacement OnRequestTextTokenReplacement;
+		/** An event triggered whenever an audio or lipsync asset bundle has completed loading */
+		public static event Delegate_OnLoadSpeechAssetBundle OnLoadSpeechAssetBundle;
+		/** An event triggered when speech is skipped due to input */
+		public static event Delegate_OnSkipSpeech OnSkipSpeech;
 
 
-		/** <summary>Triggers the OnStartSpeech and OnStartSpeech_Alt events.</summary>
+		/**
+		 * <summary>Triggers the OnStartSpeech and OnStartSpeech_Alt events.</summary>
 		 * <param name = "speech">The Speech class instance that has begun</param>
 		 * <param name = "speakingCharacter">The character who is speaking. If null, the line is considered to be a narration</param>
 		 * <param name = "speechText">The dialogue text</param>
@@ -95,7 +98,22 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnStopSpeech and OnStopSpeech events.</summary>
+		/**
+		 * <summary>Triggers the OnSkipSpeech event.</summary>
+		 * <param name = "speech">The Speech class instance being skipped</param>
+		 * <param name = "justCompletingScroll">If True, then the Speech class has not ended - and the skipping input merely ended scrolling</param>
+		 */
+		public void Call_OnSkipSpeech (Speech speech, bool justCompletingScroll)
+		{
+			if (OnSkipSpeech != null)
+			{
+				OnSkipSpeech (speech, justCompletingScroll);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnStopSpeech and OnStopSpeech events.</summary>
 		 * <param name = "speech">The Speech class instance that has ended</param>
 		 * <param name = "speakingCharacter">The character who is speaking. If null, the line is considered to be a narration</param>
 		 */
@@ -112,7 +130,8 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnStartSpeechScroll and OnStartSpeechScroll_Alt events.</summary>
+		/** 
+		 * <summary>Triggers the OnStartSpeechScroll and OnStartSpeechScroll_Alt events.</summary>
 		 * <param name = "speech">The Speech class instance that has started scrolling</param>
 		 * <param name = "speakingCharacter">The character who is speaking. If null, the line is considered to be a narration</param>
 		 * <param name = "speechText">The dialogue text</param>
@@ -131,7 +150,8 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnEndSpeechScroll and OnEndSpeechSroll_Alt events.</summary>
+		/**
+		 * <summary>Triggers the OnEndSpeechScroll and OnEndSpeechSroll_Alt events.</summary>
 		 * <param name = "speech">The Speech class instance that has stopped scrolling</param>
 		 * <param name = "speakingCharacter">The character who is speaking. If null, the line is considered to be a narration</param>
 		 * <param name = "speechText">The dialogue text</param>
@@ -150,7 +170,8 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnCompleteSpeechScroll and OnCompleteSpeechScroll_Alt events.</summary>
+		/**
+		 * <summary>Triggers the OnCompleteSpeechScroll and OnCompleteSpeechScroll_Alt events.</summary>
 		 * <param name = "speech">The Speech class instance that has completed scrolling</param>
 		 * <param name = "speakingCharacter">The character who is speaking. If null, the line is considered to be a narration</param>
 		 * <param name = "speechText">The dialogue text</param>
@@ -169,7 +190,8 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnSpeechToken event.</summary>
+		/**
+		 * <summary>Triggers the OnSpeechToken event.</summary>
 		 * <param name = "speech">The Speech class instance that contains the token text</param>
 		 * <param name = "tokenKey">The token text to the left of the colon, i.e 'var'</param>
 		 * <param name = "tokenKey">The token text to the right of the colon, i.e '2'</param>
@@ -187,7 +209,8 @@ namespace AC
 		}
 
 
-		/** <summary>Triggers the OnRequstSpeechTokenReplacement event.</summary>
+		/**
+		 * <summary>Triggers the OnRequstSpeechTokenReplacement event.</summary>
 		 * <param name = "speech">The Speech class instance that contains the token text</param>
 		 * <param name = "tokenKey">The token text to the left of the colon, i.e 'var'</param>
 		 * <param name = "tokenKey">The token text to the right of the colon, i.e '2'</param>
@@ -219,6 +242,19 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Triggers the OnLoadSpeechAssetBundle event.</summary>
+		 * <param name = "language">The language index of the asset bundle that was loaded</param>
+		 */
+		public void Call_OnLoadSpeechAssetBundle (int language)
+		{
+			if (OnLoadSpeechAssetBundle != null)
+			{
+				OnLoadSpeechAssetBundle (language);
+			}
+		}
+
+
 		// GameState
 
 		/** A delegate for the OnEnterGameState and OnExitGameState events */
@@ -232,7 +268,7 @@ namespace AC
 		 * <summary>Triggers the OnEnterGameState and OnExitGameState events.</summary>
 		 * <param name = "oldGameState">The previous GameState (Normal, Cutscene, DialogOptions, Paused)</param>
 		 */
-		public void Call_OnChangeGameState (GameState oldGameState)
+		public void Call_OnChangeGameState (GameState oldGameState, GameState newGameState)
 		{
 			if (OnExitGameState != null)
 			{
@@ -240,7 +276,7 @@ namespace AC
 			}
 			if (OnEnterGameState != null)
 			{
-				OnEnterGameState (KickStarter.stateHandler.gameState);
+				OnEnterGameState (newGameState);
 			}
 		}
 
@@ -255,6 +291,8 @@ namespace AC
 		public static event Delegate_Conversation OnStartConversation;
 		/** An event triggered whenever a Conversation option is chosen */
 		public static event Delegate_ConversationChoice OnClickConversation;
+		/** An event triggered whenever a Conversation, and its dialogue option ActionLists, has ended. Note that this does not trigger when options are overridden. */
+		public static event Delegate_Conversation OnEndConversation;
 
 
 		/**
@@ -263,9 +301,22 @@ namespace AC
 		 */
 		public void Call_OnStartConversation (Conversation conversation)
 		{
-			if (OnStartConversation != null)
+			if (OnStartConversation != null && conversation != null)
 			{
 				OnStartConversation (conversation);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnEndConversation event.</summary>
+		 * <param name = "conversation">The Conversation that was ended</param>
+		 */
+		public void Call_OnEndConversation (Conversation conversation)
+		{
+			if (OnEndConversation != null && conversation != null)
+			{
+				OnEndConversation (conversation);
 			}
 		}
 
@@ -290,6 +341,8 @@ namespace AC
 		public delegate void Delegate_ChangeHotspot (Hotspot hotspot);
 		/** A delegate for the OnHotspotInteract event */
 		public delegate void Delegate_InteractHotspot (Hotspot hotspot, AC.Button button);
+		/** A delegate for the OnHotspotSetInteractionState event */
+		public delegate void Delegate_OnHotspotSetInteractionState (Hotspot hotspot, AC.Button button, bool newState);
 		/** A delegate for the OnModifyHotspotDetectorCollection event */
 		public delegate List<Hotspot> Delegate_HotspotCollection (DetectHotspots hotspotDetector, List<Hotspot> hotspots);
 		/** An event triggered whenever a Hotspot is selected */
@@ -299,19 +352,23 @@ namespace AC
 		/** An event triggered whenever a Hotspot's button is interacted with */
 		public static Delegate_InteractHotspot OnHotspotInteract;
 		/** An event triggered whenever a Hotspot is double-clicked */
-		public static Delegate_ChangeHotspot OnDoubleClickHotspot;
+		public static Delegate_InteractHotspot OnDoubleClickHotspot;
 		/** An event triggered whenever a Hotspot is turned on */
 		public static Delegate_ChangeHotspot OnHotspotTurnOn;
 		/** An event triggered whenever a Hotspot is turned off */
 		public static Delegate_ChangeHotspot OnHotspotTurnOff;
 		/** An event triggered when the act of the Player moving to a given Hotspot in order to interact with it is cancelled */
 		public static Delegate_ChangeHotspot OnHotspotStopMovingTo;
+		/** An event triggered when the Player has finished moving and turning to a given Hotspot prior to interacting with it */
+		public static Delegate_InteractHotspot OnHotspotReach;
 		/** An event triggered whenever a DetectHotspots script modifies its internal collection of nearby Hotspots */
 		public static Delegate_HotspotCollection OnModifyHotspotDetectorCollection;
 		/** An event triggered whenever a Hotspot is registered to the StateHandler - typically by enabling its GameObject */
 		public static Delegate_ChangeHotspot OnRegisterHotspot;
 		/** An event triggered whenever a Hotspot is unregistered from the StateHandler - typically by disabling its GameObject */
 		public static Delegate_ChangeHotspot OnUnregisterHotspot;
+		/** An event triggered whenever a Hotspot button's enabled state is changed */
+		public static Delegate_OnHotspotSetInteractionState OnHotspotSetInteractionState;
 
 
 		/**
@@ -354,13 +411,13 @@ namespace AC
 		 * <summary>Triggers the OnDoubleClickHotspot event, regardless of the Hotspot's doubleClickingHotspot variable.</summary>
 		 * <param name = "hotspot">The Hotspot that was double-clicked.</param>
 		 */
-		public void Call_OnDoubleClickHotspot (Hotspot hotspot)
+		public void Call_OnDoubleClickHotspot (Hotspot hotspot, AC.Button button)
 		{
 			if (hotspot == null) return;
 
 			if (OnDoubleClickHotspot != null)
 			{
-				OnDoubleClickHotspot (hotspot);
+				OnDoubleClickHotspot (hotspot, button);
 			}
 		}
 
@@ -392,6 +449,23 @@ namespace AC
 
 
 		/**
+		 * <summary>Triggers the OnHotspotSetButtonState  event</summary>
+		 * <param name = "hotspot">The affected Hotspot</param>
+		 * <param name = "button">The Button that was updated</param>
+		 * <param name = "isOn">If True, Button was enabled, otherwise it was disabled</param>
+		 */
+		public void Call_OnHotspotSetInteractionState(Hotspot hotspot, Button button, bool isOn)
+		{
+			if (hotspot == null || button == null) return;
+
+			if (OnHotspotSetInteractionState != null)
+			{
+				OnHotspotSetInteractionState(hotspot, button, isOn);
+			}
+		}
+
+
+		/**
 		 * <summary>Triggers the OnHotspotStopMovingTo event</summary>
 		 * <param name = "hotspot">The Hotspot that the Player is moving towards</param>
 		 */
@@ -402,6 +476,22 @@ namespace AC
 			if (OnHotspotStopMovingTo != null)
 			{
 				OnHotspotStopMovingTo (hotspot);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnHotspotReach event</summary>
+		 * <param name = "hotspot">The Hotspot that the Player has reached</param>
+		 * <param name = "button">The specific Button on the Hotspot that was interacted with. This will be null if the interaction is unhandled.</param>
+		 */
+		public void Call_OnHotspotReach (Hotspot hotspot, AC.Button button)
+		{
+			if (hotspot == null) return;
+
+			if (OnHotspotReach != null)
+			{
+				OnHotspotReach (hotspot, button);
 			}
 		}
 
@@ -463,11 +553,33 @@ namespace AC
 		 */
 		public void Call_OnRunTrigger (AC_Trigger trigger, GameObject collidingObject)
 		{
-			if (trigger == null || collidingObject == null) return;
+			if (trigger == null) return;
 
 			if (OnRunTrigger != null)
 			{
 				OnRunTrigger (trigger, collidingObject);
+			}
+		}
+
+
+		// Misc
+
+		/** A delegate for the OnTeleport event */
+		public delegate void Delegate_OnTeleport (GameObject gameObject);
+		/** An event triggered when an object is teleported using the 'Object: Teleport' Action */
+		public static Delegate_OnTeleport OnTeleport;
+
+		/**
+		 * <summary>Triggers the OnTeleport event</summary>
+		 * <param name="_object">The object that was teleported</param>
+		 */
+		public void Call_OnTeleport (GameObject _object)
+		{
+			if (_object == null) return;
+
+			if (OnTeleport != null)
+			{
+				OnTeleport (_object);
 			}
 		}
 
@@ -546,6 +658,8 @@ namespace AC
 		public delegate void Delegate_OnModifyJournalPage (MenuJournal journal, JournalPage page, int index);
 		/** A delegate for the Delegate_OnRequestMenuElementHotspotLabel event */
 		public delegate string Delegate_OnRequestMenuElementHotspotLabel (AC.Menu _menu, MenuElement _element, int _slot, int _language);
+		/** A delegate for the OnRequestInventoryCountText event */
+		public delegate string Delegate_OnRequestInventoryCountText (InvInstance invInstance, bool isSelectedCursor);
 
 		/** An event triggered whenever a MenuElement inside a Menu is clicked */
 		public static Delegate_OnMenuElementClick OnMenuElementClick;
@@ -573,57 +687,59 @@ namespace AC
 		public static Delegate_OnModifyJournalPage OnJournalPageRemove;
 		/** An event triggered whenever the Hotspot label for a menu element is requested */
 		public static Delegate_OnRequestMenuElementHotspotLabel OnRequestMenuElementHotspotLabel;
+		/** An event triggered whenever the Inventory "Count" label for an Inventory item instance is requested */
+		public static Delegate_OnRequestInventoryCountText OnRequestInventoryCountText;
 
 
 		/**
 		 * <summary>Triggers the OnMenuElementClick event.</summary>
-		 * <param name = "_menu">The Menu that the clicked MenuElement is a part of</param>
-		 * <param name = "_element">The MenuElement that was clicked on</param>
-		 * <param name = "_slot">The slot index that was clicked, if the MenuElement consists of multiple slots (0 otherwise)</param>
-		 * <param name = "_buttonPressed">Equals 1 if a left-click, or 2 if a right-click</param>
+		 * <param name = "menu">The Menu that the clicked MenuElement is a part of</param>
+		 * <param name = "element">The MenuElement that was clicked on</param>
+		 * <param name = "slot">The slot index that was clicked, if the MenuElement consists of multiple slots (0 otherwise)</param>
+		 * <param name = "buttonPressed">Equals 1 if a left-click, or 2 if a right-click</param>
 		 */
-		public void Call_OnMenuElementClick (AC.Menu _menu, MenuElement _element, int _slot, int _buttonPressed)
+		public void Call_OnMenuElementClick (AC.Menu menu, MenuElement element, int slot, int buttonPressed)
 		{
 			if (OnMenuElementClick != null)
 			{
-				OnMenuElementClick (_menu, _element, _slot, _buttonPressed);
+				OnMenuElementClick (menu, element, slot, buttonPressed);
 			}
 		}
 
 
 		/**
 		 * <summary>Triggers the OnMouseOverMenuElement event.</summary>
-		 * <param name = "_menu">The Menu that the mouse is over</param>
-		 * <param name = "_element">The MenuElement that the mouse is over</param>
-		 * <param name = "_slot">The slot index that the mouse is over, if the MenuElement consists of multiple slots (0 otherwise)</param>
+		 * <param name = "menu">The Menu that the mouse is over</param>
+		 * <param name = "element">The MenuElement that the mouse is over</param>
+		 * <param name = "slot">The slot index that the mouse is over, if the MenuElement consists of multiple slots (0 otherwise)</param>
 		 */
-		public void Call_OnMouseOverMenuElement (AC.Menu _menu, MenuElement _element, int _slot)
+		public void Call_OnMouseOverMenuElement (AC.Menu menu, MenuElement element, int slot)
 		{
 			if (OnMouseOverMenu != null)
 			{
-				OnMouseOverMenu (_menu, _element, _slot);
+				OnMouseOverMenu (menu, element, slot);
 			}
 		}
 
 
 		/**
 		 * <summary>Triggers either the OnMenuElementShow or OnMenuElementHide events, depending on the state of the element's isVisible property.</summary>
-		 * <param name = "_element">The MenuElement whose visibility has changed</param>
+		 * <param name = "element">The MenuElement whose visibility has changed</param>
 		 */
-		public void Call_OnMenuElementChangeVisibility (MenuElement _element)
+		public void Call_OnMenuElementChangeVisibility (MenuElement element)
 		{
-			if (_element.IsVisible)
+			if (element.IsVisible)
 			{
 				if (OnMenuElementShow != null)
 				{
-					OnMenuElementShow (_element);
+					OnMenuElementShow (element);
 				}
 			}
 			else
 			{
 				if (OnMenuElementHide != null)
 				{
-					OnMenuElementHide (_element);
+					OnMenuElementHide (element);
 				}
 			}
 		}
@@ -631,14 +747,14 @@ namespace AC
 
 		/**
 		 * <summary>Triggers the OnMenuElementShift</summary>
-		 * <param name = "_element">The MenuElement whose slots have been shifted</param>
+		 * <param name = "element">The MenuElement whose slots have been shifted</param>
 		 * <param name = "shiftType">The direction in which the slots where shifted (ShiftLeft, ShiftRight)</param>
 		 */
-		public void Call_OnMenuElementShift (MenuElement _element, AC_ShiftInventory shiftType)
+		public void Call_OnMenuElementShift (MenuElement element, AC_ShiftInventory shiftType)
 		{
 			if (OnMenuElementShift != null)
 			{
-				OnMenuElementShift (_element, shiftType);
+				OnMenuElementShift (element, shiftType);
 			}
 		}
 
@@ -657,28 +773,28 @@ namespace AC
 
 		/**
 		 * <summary>Triggers the OnMenuTurnOn event.</summary>
-		 * <param name = "_menu">The Menu that is being turned on</param>
+		 * <param name = "menu">The Menu that is being turned on</param>
 		 * <param name = "isInstant">If true, the transition is being skipped and the Menu is being turned on instantly</param>
 		 */
-		public void Call_OnMenuTurnOn (AC.Menu _menu, bool isInstant)
+		public void Call_OnMenuTurnOn (AC.Menu menu, bool isInstant)
 		{
 			if (OnMenuTurnOn != null)
 			{
-				OnMenuTurnOn (_menu, isInstant);
+				OnMenuTurnOn (menu, isInstant);
 			}
 		}
 
 
 		/**
 		 * <summary>Triggers the OnMenuTurnOff event.</summary>
-		 * <param name = "_menu">The Menu that is being turned off</param>
+		 * <param name = "menu">The Menu that is being turned off</param>
 		 * <param name = "isInstant">If true, the transition is being skipped and the Menu is being turned off instantly</param>
 		 */
-		public void Call_OnMenuTurnOff (AC.Menu _menu, bool isInstant)
+		public void Call_OnMenuTurnOff (AC.Menu menu, bool isInstant)
 		{
 			if (OnMenuTurnOff != null)
 			{
-				OnMenuTurnOff (_menu, isInstant);
+				OnMenuTurnOff (menu, isInstant);
 			}
 		}
 
@@ -700,13 +816,13 @@ namespace AC
 		/**
 		 * <summary>Triggers the OnEnableInteractionMenus event</summary>
 		 * <param name = "hotspot">The Hotspot for which Interaction menus were turned on for. Null if invItem is not.</param>
-		 * <param name = "invItem">The Inventory item for which Interaction menus were turned on for.  Null if hotspot is not.</param>
+		 * <param name = "invInstance">The Inventory item instance for which Interaction menus were turned on for.  Null if hotspot is not.</param>
 		 */
-		public void Call_OnEnableInteractionMenus (Hotspot hotspot, InvItem invItem)
+		public void Call_OnEnableInteractionMenus (Hotspot hotspot, InvInstance invInstance)
 		{
 			if (OnEnableInteractionMenus != null)
 			{
-				OnEnableInteractionMenus (hotspot, invItem);
+				OnEnableInteractionMenus (hotspot, (InvInstance.IsValid (invInstance)) ? invInstance.InvItem : null);
 			}
 		}
 
@@ -750,6 +866,22 @@ namespace AC
 			if (OnRequestMenuElementHotspotLabel != null)
 			{
 				return OnRequestMenuElementHotspotLabel (_menu, _element, _slot, language);
+			}
+			return string.Empty;
+		}
+
+
+		/**
+		 * <summary>Triggers the OnRequestInventoryCountText event</summary>
+		 * <param name = "invInstance">The item instance to get the "count" text for</param>
+		 * <param name = "isSelectedCursor">True if the item is currently selected and this is for the active cursor</param>
+		 * <returns>The custom "count" text for the item instance, or empty for the default value</returns>
+		 */
+		public string Call_OnRequestInventoryCountText (InvInstance invInstance, bool isSelectedCursor)
+		{
+			if (OnRequestInventoryCountText != null)
+			{
+				return OnRequestInventoryCountText (invInstance, isSelectedCursor);
 			}
 			return string.Empty;
 		}
@@ -918,19 +1050,23 @@ namespace AC
 
 		// Characters
 
-		/** A delegate for the OnSetPlayer event */
-		public delegate void Delegate_SetPlayer (Player player);
+		/** A delegate for the OnSetPlayer, OnPlayerSpawn, and OnPlayerRemove events */
+		public delegate void Delegate_Player (Player player);
 		/** An event triggered whenever a new Player is loaded into the scene */
-		public static Delegate_SetPlayer OnSetPlayer;
+		public static Delegate_Player OnSetPlayer;
+		/** An event triggered after a Player is spawned in the scene */
+		public static Delegate_Player OnPlayerSpawn;
+		/** An event triggered before a Player is removed the scene */
+		public static Delegate_Player OnPlayerRemove;
+		/** An event triggered whenever the Player jumps */
+		public static Delegate_Player OnPlayerJump;
 
-		#if CAN_USE_TIMELINE
 		/** A delegate for the OnCharacterEnterTimeline and OnCharacterExitTimeline events */
 		public delegate void Delegate_OnCharacterTimeline (AC.Char character, PlayableDirector director, int trackIndex);
 		/** An event triggered whenever a character is about to be controlled by a Timeline */
 		public static Delegate_OnCharacterTimeline OnCharacterEnterTimeline;
 		/** An event triggered whenevr a character is no longer controlled by a Timeline */
 		public static Delegate_OnCharacterTimeline OnCharacterExitTimeline;
-		#endif
 
 		/** A delegate for the OnCharacterEndPath event */
 		public delegate void Delegate_OnCharacterEndPath (AC.Char character, Paths path);
@@ -964,6 +1100,21 @@ namespace AC
 		/** An event triggered whenever the player is commanded to move via point-and-click */
 		public static Delegate_OnPointAndClick OnPointAndClick;
 
+		/** A delegate for the OnSetLookDirection event */
+		public delegate void Delegate_OnSetLookDirection (AC.Char character, Vector3 direction, bool isInstant);
+		/** An event triggered whenever a character updates their facing direction */
+		public static Delegate_OnSetLookDirection OnSetLookDirection;
+
+		/** A delegate for the OnCharacterSetExpression event */
+		public delegate void Delegate_OnCharacterSetExpression (AC.Char character, Expression expression);
+		/** An event triggered whenever a character's expression is updated */
+		public static Delegate_OnCharacterSetExpression OnCharacterSetExpression;
+
+		/** A delegate for the OnCharacterTeleport event */
+		public delegate void Delegate_OnCharacterTeleport (AC.Char character, Vector3 position, Quaternion rotation);
+		/** An event triggered whenever a character is teleported */
+		public static Delegate_OnCharacterTeleport OnCharacterTeleport;
+
 
 		/** 
 		 * <summary>Triggers the OnSetPlayer event.</summary>
@@ -971,6 +1122,8 @@ namespace AC
 		 */
 		public void Call_OnSetPlayer (Player player)
 		{
+			if (player == null) return;
+
 			if (OnSetPlayer != null)
 			{
 				OnSetPlayer (player);
@@ -978,7 +1131,49 @@ namespace AC
 		}
 
 
-		#if CAN_USE_TIMELINE
+		/**
+		 * <summary>Triggers the OnPlayerSpawn event.</summary>
+		 * <param name="player">The Player being spawned</param>
+		 */
+		public void Call_OnPlayerSpawn (Player player)
+		{
+			if (player == null) return;
+
+			if (OnPlayerSpawn != null)
+			{
+				OnPlayerSpawn (player);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnPlayerRemove event.</summary>
+		 * <param name="player">The Player being removed</param>
+		 */
+		public void Call_OnPlayerRemove (Player player)
+		{
+			if (player == null) return;
+
+			if (OnPlayerRemove != null)
+			{
+				OnPlayerRemove (player);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnPlayerJump event. This event will also be fired if a jump attempt is made, but the Player does not have the correct Rigidbody component to do so</summary>
+		 * <param name="player">The Player jumping</param>
+		 */
+		public void Call_OnPlayerJump (Player player)
+		{
+			if (OnPlayerJump != null)
+			{
+				OnPlayerJump (player);
+			}
+		}
+
+
 		/** 
 		 * <summary>Calls either the OnCharacterEnterTimeline or OnCharacterExitTimeline events</summary>
 		 * <param name = "character">The character on the Timeline</param>
@@ -1006,7 +1201,6 @@ namespace AC
 				}
 			}
 		}
-		#endif
 
 
 		/**
@@ -1089,7 +1283,7 @@ namespace AC
 		 */
 		public void Call_OnOccupyPlayerStart (Player player, PlayerStart playerStart)
 		{
-			if (OnOccupyPlayerStart != null)
+			if (OnOccupyPlayerStart != null && player != null)
 			{
 				OnOccupyPlayerStart (player, playerStart);
 			}
@@ -1110,30 +1304,98 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Triggers the OnSetLookDirection event</summary>
+		 * <param name="character">The character that is turning</param>
+		 * <param name="direction">The character's intended facing direction</param>
+		 * <param name="isInstant">If True, the character will turn instantly to face this new direction</param>
+		 */
+		public void Call_OnSetLookDirection (AC.Char character, Vector3 direction, bool isInstant)
+		{
+			if (OnSetLookDirection != null)
+			{
+				OnSetLookDirection (character, direction, isInstant);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnCharacterSetExpression event</summary>
+		 * <param name="character">The affected character</param>
+		 * <param name="expression">The character's expression. This will be null if the character's expression is reset</param>
+		 */
+		public void Call_OnCharacterSetExpression (AC.Char character, Expression expression)
+		{
+			if (OnCharacterSetExpression != null)
+			{
+				OnCharacterSetExpression.Invoke (character, expression);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnCharacterTeleport event.</summary>
+		 * <param name="character">The character being teleported</param>
+		 * <param name="position">The new position</param>
+		 * <param name="rotation">The new rotation</param>
+		 */
+		public void Call_OnCharacterTeleport (AC.Char character, Vector3 position, Quaternion rotation)
+		{
+			if (OnCharacterTeleport != null)
+			{
+				OnCharacterTeleport (character, position, rotation);
+			}
+		}
+
+
 		// Inventory
 
 		/** A delegate for the OnInventoryAdd, OnInventoryRemove and OnInventoryInteract events */
-		public delegate void Delegate_ChangeInventory (InvItem invItem, int value);
+		public delegate void Delegate_ChangeInventory (InvItem invItem, int amount);
+		/** A delegate for the OnInventoryAdd_Alt and OnInventoryRemove_Alt events */
+		public delegate void Delegate_ChangeInventory_Alt (InvCollection invCollection, InvInstance invInstance, int amount);
 		/** A delegate for the OnInventoryCombine events */
 		public delegate void Delegate_CombineInventory (InvItem invItem, InvItem invItem2);
+		/** A delegate for the OnInventoryCombine_Alt events */
+		public delegate void Delegate_CombineInventory_Alt (InvInstance invInstanceA, InvInstance invInstanceB);
+		/** A delegate for the OnInventoryInteract_Alt events */
+		public delegate void Delegate_InteractInventory_Alt (InvInstance invInstance, int iconID);
 		/** A delegate for the OnInventorySelect and OnInventoryDeselect events */
-		public delegate void Delegate_Inventory (InvItem _int);
+		public delegate void Delegate_Inventory (InvItem invItem);
+		/** A delegate for the OnInventorySelect_Alt and OnInventoryDeselect_Alt events */
+		public delegate void Delegate_Inventory_Alt (InvCollection invCollection, InvInstance invInstance);
 		/** A delegate for the OnContainerAdd and OnContainerRemove events */
-		public delegate void Delegate_Container (Container container, ContainerItem containerItem);
+		public delegate void Delegate_Container (Container container, InvInstance containerItem);
+		/** A delegate for the OnInventoryHighlight event */
+		public delegate void Delegate_InventoryHighlight (InvItem invItem, HighlightType highlightType);
+		/** A delegate for the OnInventoryHighlight_Alt event */
+		public delegate void Delegate_InventoryHighlight_Alt (InvInstance invInstance, HighlightType highlightType);
 		/** A delegate for the OnCraftingSucceed event */
 		public delegate void Delegate_Crafting (Recipe recipe);
 		/** An event triggered whenever an item is added to the player's inventory */
 		public static Delegate_ChangeInventory OnInventoryAdd;
+		/** An event triggered whenever an item is added to the player's inventory */
+		public static Delegate_ChangeInventory_Alt OnInventoryAdd_Alt;
 		/** An event triggered whenever an item is removed from the player's inventory */
 		public static Delegate_ChangeInventory OnInventoryRemove;
+		/** An event triggered whenever an item is removed from the player's inventory */
+		public static Delegate_ChangeInventory_Alt OnInventoryRemove_Alt;
 		/** An event triggered whenever an inventory item is selected by the player */
 		public static Delegate_Inventory OnInventorySelect;
+		/** An event triggered whenever an inventory item is selected by the player */
+		public static Delegate_Inventory_Alt OnInventorySelect_Alt;
 		/** An event triggered whenever an inventory item is de-selected by the player */
 		public static Delegate_Inventory OnInventoryDeselect;
+		/** An event triggered whenever an inventory item is de-selected by the player */
+		public static Delegate_Inventory_Alt OnInventoryDeselect_Alt;
 		/** An event triggered whenever an inventory item is interacted with */
 		public static Delegate_ChangeInventory OnInventoryInteract;
+		/** An event triggered whenever an inventory item is interacted with */
+		public static Delegate_InteractInventory_Alt OnInventoryInteract_Alt;
 		/** An event triggered whenever two inventory items are combined together. This is triggered even if the item is "used" with itself */
 		public static Delegate_CombineInventory OnInventoryCombine;
+		/** An event triggered whenever two inventory items are combined together. This is triggered even if the item is "used" with itself */
+		public static Delegate_CombineInventory_Alt OnInventoryCombine_Alt;
 		/** An event triggered whenever an item is added to a Container */
 		public static Delegate_Container OnContainerAdd;
 		/** An event triggered whenever an item is removed from a Container */
@@ -1142,80 +1404,137 @@ namespace AC
 		public static Delegate_Container OnContainerRemoveFail;
 		/** An event triggered whenever a recipe has been succesfully created */
 		public static Delegate_Crafting OnCraftingSucceed;
+		/** An event triggered whenever an item is highlighted using the "Object: Highlight" Action */
+		public static Delegate_InventoryHighlight OnInventoryHighlight;
+		/** An event triggered whenever an item is highlighted using the "Object: Highlight" Action */
+		public static Delegate_InventoryHighlight_Alt OnInventoryHighlight_Alt;
 
 
 		/**
 		 * <summary>Triggers either the OnInventoryAdd, OnInventoryRemove, OnInventorySelect or OnInventoryDeselect events.<summary>
-		 * <param name = "invItem">The inventory item that was manipulated</param>
+		 * <param name = "invCollection">The collection of items that was affected</param>
+		 * <param name = "invInstance">The instance of the inventory item that was manipulated</param>
 		 * <param name = "inventoryEventType">How the inventory item was manipulated (Add, Remove, Select, Deselect)</param>
-		 * <param name = "amount">How many instances of the inventory item were affected, if appropriate</param>
+		 * <param name = "amountOverride">If non-negative, how many instances of the inventory item were affected, if not that used in InvInstance</param>
 		 */
-		public void Call_OnChangeInventory (InvItem invItem, InventoryEventType inventoryEventType, int amount = 1)
+		public void Call_OnChangeInventory (InvCollection invCollection, InvInstance invInstance, InventoryEventType inventoryEventType, int amountOverride = -1)
 		{
-			if (invItem == null) return;
+			if (invInstance == null) return;
 
-			if (inventoryEventType == InventoryEventType.Add && OnInventoryAdd != null)
+			if (invCollection == null) invCollection = invInstance.GetSource ();
+			
+			bool isPlayerInventory = (invCollection != null) ? invCollection.IsPlayerInventory () : false;
+			Container container = (isPlayerInventory || invCollection == null) ? null : invCollection.GetSourceContainer ();
+			
+			switch (inventoryEventType)
 			{
-				OnInventoryAdd (invItem, amount);
-			}
-			else if (inventoryEventType == InventoryEventType.Remove && OnInventoryRemove != null)
-			{
-				OnInventoryRemove (invItem, amount);
-			}
-			else if (inventoryEventType == InventoryEventType.Select && OnInventorySelect != null)
-			{
-				OnInventorySelect (invItem);
-			}
-			else if (inventoryEventType == InventoryEventType.Deselect && OnInventoryDeselect != null)
-			{
-				OnInventoryDeselect (invItem);
+				case InventoryEventType.Add:
+					if (isPlayerInventory)
+					{
+						if (OnInventoryAdd != null)
+						{
+							OnInventoryAdd (invInstance.InvItem, (amountOverride < 0) ? invInstance.Count : amountOverride);
+						}
+					}
+					else if (container)
+					{
+						if (OnContainerAdd != null)
+						{
+							OnContainerAdd (container, invInstance);
+						}
+					}
+					if (OnInventoryAdd_Alt != null && invCollection != null)
+					{
+						OnInventoryAdd_Alt (invCollection, invInstance, (amountOverride < 0) ? invInstance.Count : amountOverride);
+					}
+					
+					break;
+
+				case InventoryEventType.Remove:
+					if (isPlayerInventory)
+					{
+						if (OnInventoryRemove != null)
+						{
+							OnInventoryRemove (invInstance.InvItem, (amountOverride < 0) ? invInstance.Count : amountOverride);
+						}
+					}
+					else if (container)
+					{
+						if (OnContainerRemove != null)
+						{
+							OnContainerRemove (container, invInstance);
+						}
+					}
+					if (OnInventoryRemove_Alt != null && invCollection != null)
+					{
+						OnInventoryRemove_Alt (invCollection, invInstance, (amountOverride < 0) ? invInstance.Count : amountOverride);
+					}
+					break;
+
+				case InventoryEventType.Select:
+					if (OnInventorySelect != null)
+					{
+						OnInventorySelect (invInstance.InvItem);
+					}
+					if (OnInventorySelect_Alt != null && invCollection != null)
+					{
+						OnInventorySelect_Alt (invCollection, invInstance);
+					}
+					break;
+
+				case InventoryEventType.Deselect:
+					if (OnInventoryDeselect != null)
+					{
+						OnInventoryDeselect (invInstance.InvItem);
+					}
+					if (OnInventoryDeselect_Alt != null)
+					{
+						OnInventoryDeselect_Alt (invCollection, invInstance);
+					}
+					break;
+
+				default:
+					break;
 			}
 		}
 
 
 		/**
-		 * <summary>Triggers either the OnInventoryCombine or InventoryInteract events.</summary>
+		 * <summary>Triggers the InventoryInteract and OnInventoryInteract_Alt events.</summary>
+		 * <param name = "invInstance">The instance of the inventory item that was manipulated</param>
 		 * <param name = "iconID">The ID number of the 'use' icon, as defined in CursorManager, if the item was used</param>
-		 * <param name = "combineItem">The other inventory item, if the item was combined with another</param>
 		 */
-		public void Call_OnUseInventory (InvItem invItem, int iconID, InvItem combineItem = null)
+		public void Call_OnUseInventory (InvInstance invInstance, int iconID)
 		{
-			if (invItem == null) return;
+			if (!InvInstance.IsValid (invInstance)) return;
 
-			if (OnInventoryCombine != null && combineItem != null)
+			if (OnInventoryInteract != null)
 			{
-				OnInventoryCombine (invItem, combineItem);
+				OnInventoryInteract (invInstance.InvItem, iconID);
 			}
-			else if (OnInventoryInteract != null && combineItem == null)
+			if (OnInventoryInteract_Alt != null)
 			{
-				OnInventoryInteract (invItem, iconID);
+				OnInventoryInteract_Alt (invInstance, iconID);
 			}
 		}
 
 
 		/**
-		 * <summary>Triggers either the OnContainerAdd or OnContainerRemove events.<summary>
-		 * <param name = "transferringToContainer">If True, an item is being added to a Container; otherwise, it is being removed</param>
-		 * <param name = "container">The Container being manipulated</param>
-		 * <param name = "containerItem">The ContainerItem being moved to/from the Container</param>
+		 * <summary>Triggers the OnInventoryCombine and OnInventoryCombine_Alt events.</summary>
+		 * <param name = "invInstanceA">The first inventory item instance</param>
+		 * <param name = "invInstanceB">The second inventory item instance</param>
 		 */
-		public void Call_OnUseContainer (bool transferringToContainer, Container container, ContainerItem containerItem)
+		public void Call_OnCombineInventory (InvInstance invInstanceA, InvInstance invInstanceB)
 		{
-			if (containerItem == null || container == null) return;
+			if (!InvInstance.IsValid (invInstanceA) || !InvInstance.IsValid (invInstanceB)) return;
 
-			if (transferringToContainer)
+			if (OnInventoryCombine != null)
 			{
-				if (OnContainerAdd != null)
-				{
-					OnContainerAdd (container, containerItem);
-				}
+				OnInventoryCombine (invInstanceA.InvItem, invInstanceB.InvItem);
 			}
-			else
+			if (OnInventoryCombine_Alt != null)
 			{
-				if (OnContainerRemove != null)
-				{
-					OnContainerRemove (container, containerItem);
-				}
+				OnInventoryCombine_Alt (invInstanceA, invInstanceB);
 			}
 		}
 
@@ -1223,15 +1542,15 @@ namespace AC
 		/**
 		 * <summary>Triggers the OnContainerRemoveFail event.<summary>
 		 * <param name = "container">The Container being manipulated</param>
-		 * <param name = "containerItem">The ContainerItem that could not be removed from the Container</param>
+		 * <param name = "invInstance">The inventory item instance that could not be removed from the Container</param>
 		 */
-		public void Call_OnUseContainerFail (Container container, ContainerItem containerItem)
+		public void Call_OnUseContainerFail (Container container, InvInstance invInstance)
 		{
-			if (containerItem == null || container == null) return;
+			if (!InvInstance.IsValid (invInstance) || container == null) return;
 
 			if (OnContainerRemoveFail != null)
 			{
-				OnContainerRemoveFail (container, containerItem);
+				OnContainerRemoveFail (container, invInstance);
 			}
 		}
 
@@ -1249,6 +1568,26 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Triggers the OnInventoryHiglight and OnInventoryHighlight_Alt event</summary>
+		 * <param name = "invInstance">The instance of the item being highlight</param>
+		 * <param name = "highlightType">The highlighting effect being applied</param>
+		 */
+		public void Call_OnInventoryHighlight (InvInstance invInstance, HighlightType highlightType)
+		{
+			if (!InvInstance.IsValid (invInstance)) return;
+
+			if (OnInventoryHighlight != null)
+			{
+				OnInventoryHighlight (invInstance.InvItem, highlightType);
+			}
+			if (OnInventoryHighlight_Alt != null)
+			{
+				OnInventoryHighlight_Alt (invInstance, highlightType);
+			}
+		}
+
+
 		// Moveable objects
 		
 		/** A delegate for the OnGrabMoveable and OnDropMoveable events */
@@ -1261,8 +1600,9 @@ namespace AC
 		public delegate void Delegate_OnDraggableSnap (DragBase dragBase, DragTrack track, TrackSnapData trackSnapData);
 		/** An event triggered whenever a draggable object snaps into a pre-set position */
 		public static event Delegate_OnDraggableSnap OnDraggableSnap;
-		
-		/** <summary>Triggers the OnGrabMoveable event.</summary>
+
+		/**
+		 * <summary>Triggers the OnGrabMoveable event.</summary>
 		 * <param name = "dragBase">The object being picked up</param>
 		 */
 		public void Call_OnGrabMoveable (DragBase dragBase)
@@ -1301,9 +1641,27 @@ namespace AC
 		}
 
 
+		/** A delegate for the OnPickUpThrow event */
+		public delegate void Delegate_OnPickUpThrow (Moveable_PickUp pickUp);
+		/** An event triggered whenever a Moveable_PickUp is thrown */
+		public static event Delegate_OnPickUpThrow OnPickUpThrow;
+
+		/**
+		 * <summary>Triggers the OnPickUp throw event</summary>
+		 * <param name = "pickUp">The object being thrown</param>
+		 */
+		public void Call_OnPickUpThrow (Moveable_PickUp pickUp)
+		{
+			if (OnPickUpThrow != null)
+			{
+				OnPickUpThrow (pickUp);
+			}
+		}
+
+
 		// Camera
 
-		/** A delegate for the Delegate_OnSwitchCamera events */
+		/** A delegate for the OnSwitchCamera event */
 		public delegate void Delegate_OnSwitchCamera (_Camera fromCamera, _Camera toCamera, float transitionTime);
 		/** A delegate for the Delegate_OnShakeCamera events */
 		public delegate void Delegate_OnShakeCamera (float intensity, float duration);
@@ -1311,14 +1669,26 @@ namespace AC
 		public static event Delegate_OnSwitchCamera OnSwitchCamera;
 		/** An event triggered whenever the MainCamera is shaken */
 		public static event Delegate_OnShakeCamera OnShakeCamera;
-		
+		/** An event triggered whenever the MainCamera updates its internal record of the playable screen area, due to the aspect ratio or screen size changing */
+		public static event Delegate_Generic OnUpdatePlayableScreenArea;
+
+		/** A delegate for the OnCameraSplitScreenStart event */
+		public delegate void Delegate_OnCameraSplitScreenStart (_Camera camera, CameraSplitOrientation splitOrientation, float splitAmountMain, float splitAmountOther, bool isTopLeftSplit);
+		/** An event triggered when the split-screen effect begins */
+		public static event Delegate_OnCameraSplitScreenStart OnCameraSplitScreenStart;
+		/** A delegate for the OnCameraSplitScreenStop event */
+		public delegate void Delegate_OnCameraSplitScreenStop (_Camera camera);
+		/** An event triggered when the split-screen effect ends */
+		public static event Delegate_OnCameraSplitScreenStop OnCameraSplitScreenStop;
+
+
 		/**
 		 * <summary>Triggers the OnSwitchCamera event.</summary>
 		 * <param name = "dragBase">The object being picked up</param>
 		 */
 		public void Call_OnSwitchCamera (_Camera fromCamera, _Camera toCamera, float transitionTime)
 		{
-			if (OnSwitchCamera != null)
+			if (OnSwitchCamera != null && toCamera != null)
 			{
 				OnSwitchCamera (fromCamera, toCamera, transitionTime);
 			}
@@ -1338,6 +1708,45 @@ namespace AC
 			}
 		}
 
+
+		/** Triggers the OnUpdatePlayableScreenArea event */
+		public void Call_OnUpdatePlayableScreenArea ()
+		{
+			if (OnUpdatePlayableScreenArea != null)
+			{
+				OnUpdatePlayableScreenArea ();
+			}
+		}
+
+
+		/** 
+		 * <summary>Triggers the OnCameraSplitScreenStart event</summary>
+		 * <param name = "camera">The camera used in the effect</param>
+		 * <param name = "splitOrientation">The orientation of the effect (Horizontal, Vertical)</param>
+		 * <param name = "splitAmountMain">The proportion of the screen used by the MainCamera</param>
+		 * <param name = "splitAmountOther">The proportion of the screen used by the other camera</param>
+		 * <param name = "isTopLeftSplit">If True, the MainCamera will be attached to the top or left camera (depending on the orientation)</param>
+		 */
+		public void Call_OnCameraSplitScreenStart (_Camera camera, CameraSplitOrientation splitOrientation, float splitAmountMain, float splitAmountOther, bool isTopLeftSplit)
+		{
+			if (OnCameraSplitScreenStart != null && camera)
+			{
+				OnCameraSplitScreenStart (camera, splitOrientation, splitAmountMain, splitAmountOther, isTopLeftSplit);
+			}
+		}
+
+
+		/** 
+		 * <summary>Triggers the OnCameraSplitScreenStop event</summary>
+		 * <param name = "splitCamera">The camera used in the effect that was not used by the MainCamera</param>
+		 */
+		public void Call_OnCameraSplitScreenStop (_Camera splitCamera)
+		{
+			if (OnCameraSplitScreenStop != null && splitCamera != null)
+			{
+				OnCameraSplitScreenStop (splitCamera);
+			}
+		}
 
 		// Options
 
@@ -1413,26 +1822,47 @@ namespace AC
 		/** A delegate for the OnAfterSceneChange event */
 		public delegate void Delegate_AfterSceneChange (LoadingGame loadingGame);
 		/** A delegate for the OnCompleteScenePreload event */
-		public delegate void Delegate_OnCompleteScenePreload (SceneInfo sceneInfo);
+		public delegate void Delegate_OnCompleteScenePreload (string nextSceneName);
+		/** A delegate for the OnAddSubScene event */
+		public delegate void Delegate_Scene (SubScene subScene);
 		/** An event triggered just before the active scene is changed */
-		public static event Delegate_NoParameters OnBeforeChangeScene;
+		public static event Delegate_OnCompleteScenePreload OnBeforeChangeScene;
 		/** An event triggered just after the active scene is changed */
 		public static event Delegate_AfterSceneChange OnAfterChangeScene;
 		/** An event triggered whenever a scene starts, but not due to loading a save file */
 		public static event Delegate_NoParameters OnStartScene;
 		/** An event triggered after a request to preload a scene is completed */
 		public static event Delegate_OnCompleteScenePreload OnCompleteScenePreload;
+		/** An event triggered once the a scene load is complete, but awaits a call to SceneChanger.ActivateLoadedScene before gameplay continues */
+		public static event Delegate_OnCompleteScenePreload OnAwaitSceneActivation;
+		/** An event triggered when an AC scene is loaded in as a sub-scene (i.e. not the active scene) */
+		public static event Delegate_Scene OnAddSubScene;
 
-		/**
+
+		/** 
 		 * <summary>Triggers the OnBeforeChangeScene event.</summary>
+		 * <param name="nextSceneName">The name of the next scene to be loaded next</param>
 		 */
-		public void Call_OnBeforeChangeScene ()
+		public void Call_OnBeforeChangeScene (string nextSceneName)
 		{
 			if (OnBeforeChangeScene != null)
 			{
-				OnBeforeChangeScene ();
+				OnBeforeChangeScene (nextSceneName);
 			}
 		}
+
+
+		/** <summary>Triggers the OnAddSubScene event</summary> 
+		 * <param name = "subScene">The SubScene class instance that represents the opened scene</param>
+		 */
+		public void Call_OnAddSubScene (SubScene subScene)
+		{
+			if (OnAddSubScene != null)
+			{
+				OnAddSubScene (subScene);
+			}
+		}
+
 
 		/**
 		 * <summary>Triggers the OnAfterChangeScene event.</summary>
@@ -1447,9 +1877,7 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Triggers the OnStartScene event.</summary>
-		 */
+		/** Triggers the OnStartScene event. */
 		public void Call_OnStartScene ()
 		{
 			if (OnStartScene != null)
@@ -1461,14 +1889,92 @@ namespace AC
 
 		/**
 		 * <summary>Triggers the OnCompleteScenePreload event.</summary>
-		 * <param name = "preloadedSceneInfo">A container for information about the scene that was preloaded</param>
+		 * <param name = "preloadedSceneName">The name of the scene that was preloaded</param>
 		 */
-		public void Call_OnCompleteScenePreload (SceneInfo preloadedSceneInfo)
+		public void Call_OnCompleteScenePreload (string preloadedSceneName)
 		{
 			if (OnCompleteScenePreload != null)
 			{
-				OnCompleteScenePreload (preloadedSceneInfo);
+				OnCompleteScenePreload (preloadedSceneName);
 			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnAwaitSceneActivation event.</summary>
+		 * <param name = "nextSceneName">The name of the next scene</param>
+		 */
+		public void Call_OnAwaitSceneActivation (string nextSceneName)
+		{
+			if (OnAwaitSceneActivation != null)
+			{
+				OnAwaitSceneActivation (nextSceneName);
+			}
+		}
+
+
+		// Engine management
+
+		/** An event triggered if AC is manually turned on by calling KickStarter.TurnOnAC (); */
+		public static event Delegate_NoParameters OnManuallyTurnACOn;
+		/** An event triggered if AC is manually turned off by calling KickStarter.TurnOffAC (); */
+		public static event Delegate_NoParameters OnManuallyTurnACOff;
+		/** An event triggered once an AC scene is initialised, but before any save data is loaded in */
+		public static event Delegate_NoParameters OnInitialiseScene;
+		/** A delegate for the OnDebugLog event */
+		public delegate object Delegate_OnDebugLog (object message, DebugLogType debugLogType, UnityEngine.Object context, bool isDisplayed);
+		/** An event triggered when a Debug message is fired at runtime */
+		public static event Delegate_OnDebugLog OnDebugLog;
+
+
+		/**
+		 * <summary>Triggers either the OnManuallyTurnOnAC or OnManuallyTurnOfAC event</summary>
+		 * <param name = "turnOn">True if AC was turned on</param>
+		 */
+		public void Call_OnManuallySwitchAC (bool turnOn)
+		{
+			if (turnOn)
+			{
+				if (OnManuallyTurnACOn != null)
+				{
+					OnManuallyTurnACOn ();
+				}
+			}
+			else
+			{
+				if (OnManuallyTurnACOff != null)
+				{
+					OnManuallyTurnACOff ();
+				}
+			}
+		}
+
+
+		/** Triggers the OnInitialiseScene event */
+		public void Call_OnInitialiseScene ()
+		{
+			if (OnInitialiseScene != null)
+			{
+				OnInitialiseScene ();
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnDebugLog event</summary>
+		 * <param name = "message">The message being logged</param>
+		 * <param name = "debugLogType">The type of log</param>
+		 * <param name = "context">The context, i.e. the object that is the reason for the log</param>
+		 * <param name = "isDisplayed">If True, the message will be displayed in the Unity Console</param>
+		 * <returns>The message, which can be modified if necessary</returns>
+		 */
+		public object Call_OnDebugLog (object message, DebugLogType debugLogType, UnityEngine.Object context, bool isDisplayed)
+		{
+			if (OnDebugLog != null)
+			{
+				return OnDebugLog (message, debugLogType, context, isDisplayed);
+			}
+			return message;
 		}
 
 
@@ -1506,7 +2012,43 @@ namespace AC
 		}
 
 
-		// Soundtrack
+		// Objectives
+
+		/** A delegate for the OnObjectiveUpdate and OnObjectiveSelect events */
+		public delegate void Delegate_HandleObjective (Objective objective, ObjectiveState state);
+		/** An event triggered when a Objective's state is changed */
+		public static event Delegate_HandleObjective OnObjectiveUpdate;
+		/** An event triggered when a Objective is selected */
+		public static event Delegate_HandleObjective OnObjectiveSelect;
+
+
+		/**
+		 * <summary>Triggers the OnUpdateObjective event</summary>
+		 * <param name = "objectiveInstance">The instance of the updated Objective</param>
+		 */
+		public void Call_OnObjectiveUpdate (ObjectiveInstance objectiveInstance)
+		{
+			if (OnObjectiveUpdate != null)
+			{
+				OnObjectiveUpdate (objectiveInstance.Objective, objectiveInstance.CurrentState);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnObjectiveSelect event</summary>
+		 * <param name = "objectiveInstance">The instance of the selected Objective</param>
+		 */
+		public void Call_OnObjectiveSelect (ObjectiveInstance objectiveInstance)
+		{
+			if (OnObjectiveSelect != null)
+			{
+				OnObjectiveSelect (objectiveInstance.Objective, objectiveInstance.CurrentState);
+			}
+		}
+
+
+		// Sound
 
 		/** A delegate for the OnPlayMusic and OnPlayAmbience events */
 		public delegate void Delegate_OnPlaySoundtrack (int trackID, bool loop, float fadeTime, int startingSample);
@@ -1520,6 +2062,16 @@ namespace AC
 		public static event Delegate_OnStopSoundtrack OnStopMusic;
 		/** An event triggered when the Ambience stops */
 		public static event Delegate_OnStopSoundtrack OnStopAmbience;
+		/** A delegate for the OnPlayFootstepSound event */
+		public delegate void Delegate_PlayFootstepSound (AC.Char character, FootstepSounds footstepSounds, bool isWalkingSound, AudioSource audioSource, AudioClip audioClip);
+		/** An event triggered whenever the FootstepSounds component plays an AudioClip */
+		public static Delegate_PlayFootstepSound OnPlayFootstepSound;
+		/** A delegate for the OnPlaySound and OnStopSound events */
+		public delegate void Delegate_OnHandleSound (Sound sound, AudioSource audioSource, AudioClip audioClip, float fadeTime);
+		/** An event triggered when a Sound component plays audio */
+		public static event Delegate_OnHandleSound OnPlaySound;
+		/** An event triggered when a Sound component stops playing audio */
+		public static event Delegate_OnHandleSound OnStopSound;
 
 
 		/**
@@ -1577,6 +2129,55 @@ namespace AC
 		}
 
 
+		/**
+		 * <summary>Triggers the OnPlayFootstepSound event.</summary>
+		 * <param name = "character">The moving character</param>
+		 * <param name = "footstepSounds">The FootstepSounds component (if used) that triggered the audio</param>
+		 * <param name = "isWalkingSound">If True, the character is walking.  If False, the character is running</param>
+		 * <param name = "audioSource">The AudioSource component playing the audio</param>
+		 * <param name = "audioClip">The audio being played</param>
+		 */
+		public void Call_OnPlayFootstepSound (AC.Char character, FootstepSounds footstepSounds, bool isWalkingSound, AudioSource audioSource, AudioClip audioClip)
+		{
+			if (OnPlayFootstepSound != null)
+			{
+				OnPlayFootstepSound (character, footstepSounds, isWalkingSound, audioSource, audioClip);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnPlaySound event</summary>
+		 * <param name = "sound">The Sound that triggered the audio</param>
+		 * <param name = "_audioSource">The AudioSource componet that is playing the audio</param>
+		 * <param name = "audioClip">The clip being played</param>
+		 * <param name = "fadeInTime">The duration of the fade-in effect</param>
+		 */
+		public void Call_OnPlaySound (Sound sound, AudioSource _audioSource, AudioClip audioClip, float fadeInTime)
+		{
+			if (OnPlaySound != null)
+			{
+				OnPlaySound (sound, _audioSource, audioClip, fadeInTime);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers the OnStopSound event</summary>
+		 * <param name = "sound">The Sound that triggered the audio</param>
+		 * <param name = "_audioSource">The AudioSource componet that is playing the audio</param>
+		 * <param name = "audioClip">The clip being stopped</param>
+		 * <param name = "fadeInTime">The duration of the fade-out effect. The audio will finish playing after this time</param>
+		 */
+		public void Call_OnStopSound (Sound sound, AudioSource _audioSource, AudioClip audioClip, float fadeOutTime)
+		{
+			if (OnStopSound != null)
+			{
+				OnStopSound (sound, _audioSource, audioClip, fadeOutTime);
+			}
+		}
+
+
 		// ActionLists
 
 		/** A delegate for the OnBeginActionList event */
@@ -1595,6 +2196,8 @@ namespace AC
 		public static event Delegate_OnPauseActionList OnPauseActionList;
 		/** An event triggered when an ActionList is resumed */
 		public static event Delegate_OnPauseActionList OnResumeActionList;
+		/** An event triggered when skipping a cutscene */
+		public static event Delegate_Generic OnSkipCutscene;
 
 
 
@@ -1651,6 +2254,70 @@ namespace AC
 			if (OnResumeActionList != null)
 			{
 				OnResumeActionList (actionList);
+			}
+		}
+
+
+		/** Triggers the OnSkipCutscene event */
+		public void Call_OnSkipCutscene ()
+		{
+			if (OnSkipCutscene != null)
+			{
+				OnSkipCutscene ();
+			}
+		}
+
+
+		// Quick-time events
+
+		/** A delegate for the OnQTEBegin event */
+		public delegate void Delegate_OnQTEBegin (QTEType qteType, string inputName, float duration);
+		/** An event triggered when quick-time event is begun */
+		public static event Delegate_OnQTEBegin OnQTEBegin;
+
+		/** A delegate for the OnQTEWin and OnQTELose events */
+		public delegate void Delegate_OnQTEWinLose (QTEType qteType);
+		/** An event triggered when a quick-time event is won */
+		public static event Delegate_OnQTEWinLose OnQTEWin;
+		/** An event triggered when a quick-time event is lost */
+		public static event Delegate_OnQTEWinLose OnQTELose;
+
+
+		/**
+		 * <summary>Triggers the OnQTEBegin event</summary>
+		 * <param name = "qteType">The type of QTE that began</param>
+		 * <param name = "inputName">The name of the input axis used to complete the QTE</param>
+		 * <param name = "duration">The duration, in seconds</param>
+		 */
+		public void Call_OnQTEBegin (QTEType qteType, string inputName, float duration)
+		{
+			if (OnQTEBegin != null)
+			{
+				OnQTEBegin (qteType, inputName, duration);
+			}
+		}
+
+
+		/**
+		 * <summary>Triggers either the OnQTEWin or OnQTELose events</summary>
+		 * <param name = "qteType">The type of QTE that ended</param>
+		 * <param name = "wasWon">If True, OnQTEWin will be triggered. Otherwise, OnQTELose will be triggered.</param>
+		 */
+		public void Call_OnQTEEnd (QTEType qteType, bool wasWon)
+		{
+			if (wasWon)
+			{
+				if (OnQTEWin != null)
+				{
+					OnQTEWin (qteType);
+				}
+			}
+			else
+			{
+				if (OnQTELose != null)
+				{
+					OnQTELose (qteType);
+				}
 			}
 		}
 
