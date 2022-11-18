@@ -1089,11 +1089,16 @@ MonoBehaviour:
   comment: 
   willWait: 0
   endAction: 0
-  skipAction: -1
+  skipAction: -99
   skipActionActual: {fileID: 0}
   linkedCutscene: {fileID: 0}
   linkedAsset: {fileID: 0}
-  endings: []
+  endings:
+  - resultAction: 0
+    skipAction: -1
+    skipActionActual: {fileID: 0}
+    linkedCutscene: {fileID: 0}
+    linkedAsset: {fileID: 0}
   isEnabled: 1
   isAssetFile: 0
   isBreakPoint: 0
@@ -1239,7 +1244,7 @@ MonoBehaviour:
   comment: 
   willWait: 0
   endAction: 0
-  skipAction: -1
+  skipAction: -99
   skipActionActual: {fileID: 0}
   linkedCutscene: {fileID: 0}
   linkedAsset: {fileID: 0}
@@ -1601,7 +1606,7 @@ BoxCollider2D:
   m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: 2.7607954, y: 0.15758705}
+  m_Offset: {x: 2.7607954, y: 1.8218216}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -1612,7 +1617,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1.2759871, y: 0.5519917}
+  m_Size: {x: 1.2759871, y: 3.8804605}
   m_EdgeRadius: 0
 --- !u!4 &1579065008683851406
 Transform:
@@ -1640,7 +1645,7 @@ GameObject:
   - component: {fileID: 1579065008678146094}
   - component: {fileID: 1579065008677091150}
   m_Layer: 0
-  m_Name: Exit
+  m_Name: Camino
   m_TagString: Untagged
   m_Icon: {fileID: 5721338939258241955, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0

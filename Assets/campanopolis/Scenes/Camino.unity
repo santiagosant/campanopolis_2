@@ -1703,7 +1703,7 @@ BoxCollider2D:
   m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: 0, y: -0.75335497}
+  m_Offset: {x: 0, y: -0.7317976}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -1714,7 +1714,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1, y: 2.5067096}
+  m_Size: {x: 1, y: 2.8774974}
   m_EdgeRadius: 0
 --- !u!1 &1599157733747300118
 GameObject:
@@ -1728,7 +1728,7 @@ GameObject:
   - component: {fileID: 1599157733742806422}
   - component: {fileID: 1599157733741814518}
   m_Layer: 0
-  m_Name: Calle 2
+  m_Name: Calle Principal
   m_TagString: Untagged
   m_Icon: {fileID: 5721338939258241955, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
@@ -2442,7 +2442,7 @@ GameObject:
   - component: {fileID: 5058734796048228673}
   - component: {fileID: 5058734796053415457}
   m_Layer: 0
-  m_Name: ExitReja
+  m_Name: Reja
   m_TagString: Untagged
   m_Icon: {fileID: 5721338939258241955, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
@@ -2475,7 +2475,7 @@ BoxCollider2D:
   m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: 0, y: 0}
+  m_Offset: {x: -0.116410136, y: -0.3535421}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -2486,7 +2486,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1, y: 1}
+  m_Size: {x: 1.2328203, y: 1.7070842}
   m_EdgeRadius: 0
 --- !u!114 &5058734796053415457
 MonoBehaviour:

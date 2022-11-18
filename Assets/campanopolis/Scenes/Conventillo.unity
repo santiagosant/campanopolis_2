@@ -1514,7 +1514,7 @@ GameObject:
   - component: {fileID: 69110834774407351}
   - component: {fileID: 69110834762817495}
   m_Layer: 0
-  m_Name: CasaCamino
+  m_Name: Calle Principal
   m_TagString: Untagged
   m_Icon: {fileID: 5721338939258241955, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
@@ -1533,7 +1533,7 @@ BoxCollider2D:
   m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: -0.100111246, y: -0.25584006}
+  m_Offset: {x: -0.31568563, y: -0.17392176}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -1544,7 +1544,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 2.2235832, y: 0.48831987}
+  m_Size: {x: 3.8274572, y: 0.6521565}
   m_EdgeRadius: 0
 --- !u!114 &682743590398651235
 MonoBehaviour:
@@ -2252,7 +2252,7 @@ BoxCollider2D:
   m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: 0.27432275, y: -0.12148574}
+  m_Offset: {x: 0.18378145, y: 0.09840015}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -2263,7 +2263,7 @@ BoxCollider2D:
     adaptiveTiling: 0
   m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1.5486455, y: 0.22405869}
+  m_Size: {x: 1.7297281, y: 0.6638305}
   m_EdgeRadius: 0
 --- !u!1 &3798860505739254216
 GameObject:
@@ -2277,7 +2277,7 @@ GameObject:
   - component: {fileID: 3798860505733778248}
   - component: {fileID: 3798860505732688936}
   m_Layer: 0
-  m_Name: Pasillo
+  m_Name: Camino del Jardin
   m_TagString: Untagged
   m_Icon: {fileID: 5721338939258241955, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
