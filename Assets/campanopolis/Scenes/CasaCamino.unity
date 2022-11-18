@@ -2286,7 +2286,7 @@ MonoBehaviour:
     isBlocking: 0
     parameterID: -1
     invParameterID: -1
-  oneClick: 0
+  oneClick: 1
   provideLookInteraction: 0
   lookButton:
     interaction: {fileID: 0}
@@ -2465,7 +2465,7 @@ MonoBehaviour:
     isBlocking: 0
     parameterID: -1
     invParameterID: -1
-  oneClick: 0
+  oneClick: 1
   provideLookInteraction: 0
   lookButton:
     interaction: {fileID: 0}

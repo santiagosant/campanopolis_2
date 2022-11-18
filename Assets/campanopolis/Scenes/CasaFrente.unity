@@ -1420,7 +1420,7 @@ MonoBehaviour:
     isBlocking: 0
     parameterID: -1
     invParameterID: -1
-  oneClick: 0
+  oneClick: 1
   provideLookInteraction: 0
   lookButton:
     interaction: {fileID: 0}
@@ -2417,7 +2417,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 1.92
+  orthographic size: 1.05
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -2441,7 +2441,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8604971690744587437}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -10}
+  m_LocalPosition: {x: 0.32, y: -0.87, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 1204321627}
@@ -2491,11 +2491,11 @@ MonoBehaviour:
   followCursorSpeed: 3
   cursorInfluenceDuringCutscenes: 0
   cutsceneBehaviour: 0
-  lockHorizontal: 1
-  lockVertical: 1
-  limitHorizontal: 0
-  limitVertical: 0
-  backgroundConstraint: {fileID: 0}
+  lockHorizontal: 0
+  lockVertical: 0
+  limitHorizontal: 1
+  limitVertical: 1
+  backgroundConstraint: {fileID: 2032338279}
   autoScaleToFitBackgroundConstraint: 0
   constrainHorizontal: {x: 0, y: 0}
   constrainVertical: {x: 0, y: 0}
