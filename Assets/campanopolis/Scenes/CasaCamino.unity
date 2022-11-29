@@ -6058,11 +6058,11 @@ MonoBehaviour:
   followCursorSpeed: 3
   cursorInfluenceDuringCutscenes: 0
   cutsceneBehaviour: 0
-  lockHorizontal: 1
-  lockVertical: 1
-  limitHorizontal: 0
-  limitVertical: 0
-  backgroundConstraint: {fileID: 0}
+  lockHorizontal: 0
+  lockVertical: 0
+  limitHorizontal: 1
+  limitVertical: 1
+  backgroundConstraint: {fileID: 2032338279}
   autoScaleToFitBackgroundConstraint: 0
   constrainHorizontal: {x: 0, y: 0}
   constrainVertical: {x: 0, y: 0}
