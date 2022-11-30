@@ -12,15 +12,27 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b776810ebfa374d7ba8f0fb5ed6e3265, type: 3}
   m_Name: campanopolis_SettingsManager
   m_EditorClassIdentifier: 
+  separateEditorSaveFiles: 0
   saveFileName: campanopolis
   saveTimeDisplay: 0
   customSaveFormat: MMMM dd, yyyy
   takeSaveScreenshots: 0
+  saveScreenshots: 0
+  screenshotResolutionFactor: 1
   useProfiles: 0
   maxSaves: 5
   orderSavesByUpdateTime: 0
   reloadSceneWhenLoading: 0
-  useJsonSerialization: 0
+  saveWithThreading: 0
+  saveAssetReferencesWithAddressables: 0
+  saveLabels:
+    defaultSaveLabel: Save
+    saveLabelID: -1
+    defaultImportLabel: Import
+    importLabelID: -1
+    defaultAutosaveLabel: Autosave
+    autosaveLabelID: -1
+  referenceScenesInSave: 0
   sceneAttributes: []
   actionListOnStart: {fileID: 0}
   blackOutWhenSkipping: 0
@@ -29,6 +41,7 @@ MonoBehaviour:
   players: []
   movementMethod: 0
   inputMethod: 0
+  simulatedCursorMoveSpeed: 4
   interactionMethod: 2
   selectInteractions: 0
   autoHideInteractionIcons: 1
@@ -41,24 +54,30 @@ MonoBehaviour:
   autoCycleWhenInteract: 0
   showHoverInteractionInHotspotLabel: 0
   allowDefaultinteractions: 0
+  alwaysCloseInteractionMenus: 1
   whenReselectHotspot: 0
   lockCursorOnStart: 0
   hideLockedCursor: 0
   disableFreeAimWhenDragging: 0
+  disableFreeAimWhenDraggingPickUp: 0
   runConversationsWithKeys: 0
   clickUpInteractions: 0
   defaultMouseClicks: 1
   allowGameplayDuringConversations: 0
+  walkToHotspotMarkers: 1
+  dragThreshold: 0
   shareInventory: 0
   inventoryDragDrop: 0
   dragDropThreshold: 0
   allowInventoryInteractionsDuringConversations: 0
   inventoryDropLook: 0
+  inventoryDropLookNoDrag: 0
   inventoryInteractions: 1
   inventoryDisableLeft: 1
   allowDefaultInventoryInteractions: 0
   inventoryDisableUnhandled: 1
   inventoryDisableDefined: 1
+  inventoryInteractionsHaltPlayer: 0
   activeWhenHover: 0
   inventoryActiveEffect: 1
   inventoryPulseSpeed: 1
@@ -74,14 +93,18 @@ MonoBehaviour:
   giveInvWithIconID: 0
   autoDisableUnhandledHotspots: 0
   clickPrefab: {fileID: 0}
+  clickMarkerPosition: 0
   walkableClickRange: 0.5
   navMeshSearchDirection: 1
+  ignoreOffScreenNavMesh: 1
   doubleClickMovement: 0
   magnitudeAffectsDirect: 0
   directTurnsInstantly: 0
+  stopTurningWhenReleaseInput: 0
   disableMovementWhenInterationMenusAreOpen: 0
   directMovementType: 0
   limitDirectMovement: 0
+  cameraLockSnapAngleThreshold: 5
   directMovementPerspective: 0
   destinationAccuracy: 0.8
   experimentalAccuracy: 0
@@ -96,6 +119,7 @@ MonoBehaviour:
   useFPCamDuringConversations: 1
   onlyInteractWhenCursorUnlocked: 0
   freeAimSmoothSpeed: 50
+  firstPersonMovementSmoothing: 1
   assumeInputsDefined: 0
   activeInputs: []
   freeAimTouchSpeed: 0.01
@@ -109,11 +133,16 @@ MonoBehaviour:
   firstPersonTouchScreen: 1
   directTouchScreen: 0
   touchUpWhenPaused: 0
+  touchUpInteractScene: 0
   forceAspectRatio: 0
+  aspectRatioEnforcement: 0
   wantedAspectRatio: 1.5
+  maxAspectRatio: 2.39
+  renderBorderCamera: 1
   landscapeModeOnly: 1
   cameraPerspective: 0
   cacheCameraMain: 0
+  linearColorTextures: 0
   movingTurning: 3
   hotspotDetection: 0
   closeInteractionMenusIfPlayerLeavesVicinity: 0
@@ -122,6 +151,21 @@ MonoBehaviour:
   hotspotIconDisplay: 0
   hotspotIcon: 0
   hotspotIconTexture: {fileID: 0}
+  hotspotIconGraphic:
+    texture: {fileID: 0}
+    isAnimated: 0
+    numFrames: 1
+    numRows: 1
+    numCols: 1
+    size: 0.04
+    animSpeed: 4
+    endAnimOnLastFrame: 0
+    skipFirstFrameWhenLooping: 0
+    clickOffset: {x: 0, y: 0}
+    frameSpeeds: []
+    alwaysAnimate: 0
+  highlightMaterialPropertyOverride: 
+  disableHotspotsWhileDraggingPlayer: 1
   hotspotIconSize: 0.04
   playerFacesHotspots: 0
   onlyFaceHotspotOnSelect: 0
@@ -140,14 +184,26 @@ MonoBehaviour:
   backgroundImageLayer: BackgroundImage
   deactivatedLayer: Ignore Raycast
   useLoadingScreen: 0
+  manualSceneActivation: 0
   loadingSceneIs: 0
+  loadScenesFromAddressable: 0
   loadingSceneName: 
   loadingScene: 0
   useAsyncLoading: 0
   loadingDelay: 0
+  blackOutWhenInitialising: 1
+  spawnPersistentEnginePrefab: 1
   playMusicWhilePaused: 0
+  playAmbienceWhilePaused: 0
   musicStorages: []
   ambienceStorages: []
+  loadAmbienceFadeTime: 0
+  crossfadeAmbienceWhenLoading: 0
+  restartAmbienceTrackWhenLoading: 0
+  loadMusicFadeTime: 0
+  crossfadeMusicWhenLoading: 0
+  restartMusicTrackWhenLoading: 0
+  autoEndOtherMusicWhenPlayed: 1
   volumeControl: 0
   musicMixerGroup: {fileID: 0}
   sfxMixerGroup: {fileID: 0}
@@ -163,5 +219,5 @@ MonoBehaviour:
   defaultSpeechVolume: 1
   showDebugLogs: 0
   printActionCommentsInConsole: 0
+  actionCommentLogging: 0
   showActiveActionLists: 0
-  showHierarchyIcons: 1

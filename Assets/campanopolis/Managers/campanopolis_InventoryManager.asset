@@ -57,7 +57,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: 7db8be9f75e542048adb632e8492ed86, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []
@@ -112,7 +112,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: ae951c2aad07e974b8de289d2dfed61f, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []
@@ -167,7 +167,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: 439fcc601cb583240ba3023902a5ef99, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []
@@ -222,7 +222,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: ffe1ec5cf9fb18c48b9917b028c0d33c, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []
@@ -277,7 +277,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: 4078dbeecefcd30479e3ae50da98a8ea, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []
@@ -332,7 +332,7 @@ MonoBehaviour:
       label: on
       lineID: -1
     useActionList: {fileID: 0}
-    lookActionList: {fileID: 0}
+    lookActionList: {fileID: 11400000, guid: 909db76c67411354cbc48eb12e90ad0a, type: 2}
     interactions: []
     combineInteractions: []
     combineActionList: []

@@ -13,11 +13,15 @@ MonoBehaviour:
   m_Name: campanopolis_CursorManager
   m_EditorClassIdentifier: 
   cursorRendering: 0
+  uiCursorPrefab: {fileID: 0}
   cursorDisplay: 0
   allowMainCursor: 1
   lockSystemCursor: 1
   keepCursorWithinScreen: 1
+  confineSystemCursor: 0
   allowWalkCursor: 0
+  syncWalkCursorWithInteraction: 0
+  walkCursor_ID: 0
   addWalkPrefix: 0
   walkPrefix:
     label: Walk to
@@ -84,6 +88,19 @@ MonoBehaviour:
     clickOffset: {x: 0, y: 0}
     frameSpeeds: []
     alwaysAnimate: 0
+  cameraDragIcon:
+    texture: {fileID: 0}
+    isAnimated: 0
+    numFrames: 1
+    numRows: 1
+    numCols: 1
+    size: 0.04
+    animSpeed: 4
+    endAnimOnLastFrame: 0
+    skipFirstFrameWhenLooping: 0
+    clickOffset: {x: 0, y: 0}
+    frameSpeeds: []
+    alwaysAnimate: 0
   inventoryHandling: 0
   hotspotPrefix1:
     label: Use
@@ -97,6 +114,10 @@ MonoBehaviour:
   hotspotPrefix4:
     label: to
     lineID: -1
+  displayCountSize: 1.6
+  displayCountFont: {fileID: 0}
+  displayCountTextEffects: 0
+  displayCountColor: {r: 1, g: 1, b: 1, a: 1}
   cursorIcons:
   - texture: {fileID: 2800000, guid: fca3605bfa5c847a19ca115a1c925bd1, type: 3}
     isAnimated: 0
@@ -146,8 +167,14 @@ MonoBehaviour:
     label: Look at
     lineID: -1
     id: 2
-  unhandledCursorInteractions: []
+  unhandledCursorInteractions:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
   passUnhandledHotspotAsParameter: 0
+  onlyShowCursorLabelOverHotspots: 0
+  allowCursorCyclingWhenPaused: 0
   lookUseCursorAction: 0
   lookCursor_ID: 0
+  hideCursorWhenDraggingMoveables: 1
   forceCursorInEditor: 1
