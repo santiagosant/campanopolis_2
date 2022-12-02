@@ -18,8 +18,20 @@ EditorBuildSettings:
     path: Assets/campanopolis/Scenes/CasaCamino.unity
     guid: 41eaeaf5885c1b644bfee015453bf5ca
   - enabled: 1
+    path: Assets/campanopolis/Scenes/Molino.unity
+    guid: 050ca18e3221ff34ab183868c0ab56f3
+  - enabled: 1
+    path: Assets/campanopolis/Scenes/Muelle.unity
+    guid: f586aa8e049f9ee44a21fc9bc5ac313b
+  - enabled: 1
+    path: Assets/campanopolis/Scenes/Puente.unity
+    guid: 935a093954e6c3c4ebb456eb7b512875
+  - enabled: 1
     path: Assets/campanopolis/Scenes/Conventillo.unity
     guid: 10ccf02be71dd5b4bb6ab837e32edea7
+  - enabled: 1
+    path: Assets/campanopolis/Scenes/12Casas.unity
+    guid: 8234cec30831c64499d1cb57cb84ba06
   - enabled: 1
     path: Assets/campanopolis/Scenes/Pasillo.unity
     guid: eec95e775970f424fb839653d284967a

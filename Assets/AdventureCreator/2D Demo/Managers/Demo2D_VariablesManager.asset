@@ -32,7 +32,7 @@ MonoBehaviour:
     textValLineID: -1
     popUpsLineID: -1
     description: 
-    showInFilter: 0
+    showInFilter: 1
   - label: Placed worm
     id: 1
     type: 0
@@ -52,7 +52,7 @@ MonoBehaviour:
     textValLineID: -1
     popUpsLineID: -1
     description: 
-    showInFilter: 0
+    showInFilter: 1
   - label: Lunch fallen
     id: 2
     type: 0
@@ -72,7 +72,7 @@ MonoBehaviour:
     textValLineID: -1
     popUpsLineID: -1
     description: 
-    showInFilter: 0
+    showInFilter: 1
   varPresets: []
   updateRuntime: 1
   popUpLabelData: []
