@@ -2040,7 +2040,7 @@ MonoBehaviour:
     layer: 
     color: {r: 0.97355413, g: 0.9467987, b: 0.96139956, a: 1}
     scale: 60
-  affectScale: 0
+  affectScale: 1
   affectSpeed: 1
   originScale: 100
   sortingMapScaleType: 0
