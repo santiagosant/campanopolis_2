@@ -1,6 +1,30 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-3401322025491089422
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3cc1f751990d444ef9e1381090933b8b, type: 3}
+  m_Name: ElobjetodelTano_Examine
+  m_EditorClassIdentifier: 
+  actions:
+  - {fileID: 5070107725525227671}
+  isSkippable: 1
+  actionListType: 0
+  unfreezePauseMenus: 1
+  useParameters: 0
+  canRunMultipleInstances: 0
+  canSurviveSceneChanges: 0
+  revertToDefaultParametersAfterRunning: 0
+  parameters: []
+  tagID: 0
+  backupData: []
+--- !u!114 &5070107725525227671
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -36,7 +60,7 @@ MonoBehaviour:
     x: 14
     y: 14
     width: 300
-    height: 172
+    height: 187
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
   showOutputSockets: 1
   parentActionListInEditor: {fileID: 0}
@@ -46,7 +70,7 @@ MonoBehaviour:
   isPlayer: 1
   playerID: -1
   speaker: {fileID: 0}
-  messageText: Bueno... gracias Charly
+  messageText: No quiero saber porque estaba en el agua
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -60,27 +84,3 @@ MonoBehaviour:
   mouthClip2D: 
   mouthLayer: 0
   waitTimeOffset: 0
---- !u!114 &11400000
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3cc1f751990d444ef9e1381090933b8b, type: 3}
-  m_Name: serrucho_Examine
-  m_EditorClassIdentifier: 
-  actions:
-  - {fileID: -3401322025491089422}
-  isSkippable: 1
-  actionListType: 0
-  unfreezePauseMenus: 1
-  useParameters: 0
-  canRunMultipleInstances: 0
-  canSurviveSceneChanges: 0
-  revertToDefaultParametersAfterRunning: 0
-  parameters: []
-  tagID: 0
-  backupData: []

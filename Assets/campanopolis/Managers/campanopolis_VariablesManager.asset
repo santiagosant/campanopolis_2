@@ -56,7 +56,7 @@ MonoBehaviour:
   - label: Dalia cambia
     id: 2
     type: 0
-    val: 0
+    val: 1
     floatVal: 0
     textVal: 
     gameObjectVal: {fileID: 0}
@@ -115,6 +115,166 @@ MonoBehaviour:
     showInFilter: 1
   - label: volante no mas
     id: 5
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Pista-1
+    id: 6
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Pista-2
+    id: 7
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Pista-3
+    id: 8
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Pista-4
+    id: 9
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Broma-F
+    id: 11
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Charly Cambia
+    id: 12
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Tano Cambia
+    id: 10
+    type: 0
+    val: 0
+    floatVal: 0
+    textVal: 
+    gameObjectVal: {fileID: 0}
+    gameObjectSaveReferences: 1
+    objectVal: {fileID: 0}
+    popUps: []
+    vector3Val: {x: 0, y: 0, z: 0}
+    link: 0
+    pmVar: 
+    updateLinkOnStart: 0
+    canTranslate: 1
+    popUpID: 0
+    textValLineID: -1
+    popUpsLineID: -1
+    description: 
+    showInFilter: 1
+  - label: Tano Objeto
+    id: 13
     type: 0
     val: 0
     floatVal: 0
