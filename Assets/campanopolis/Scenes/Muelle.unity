@@ -2082,11 +2082,11 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: -1.0630181, y: -1.0197344}
+    - - {x: -0.92280006, y: -1.3894002}
       - {x: -0.21826345, y: -2.5877075}
       - {x: 1.0395678, y: -5.0345135}
       - {x: -8.321241, y: -5.0876646}
-      - {x: -3.5820265, y: -1.0463309}
+      - {x: -3.78598, y: -1.3905026}
 --- !u!114 &1723547058550253821
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2898,7 +2898,7 @@ MonoBehaviour:
   affectSorting: 1
   mapType: 1
   sortingAreas:
-  - z: 4.1337023
+  - z: 3.6365654
     order: 1
     layer: 
     color: {r: 0.97355413, g: 0.9467987, b: 0.96139956, a: 1}
