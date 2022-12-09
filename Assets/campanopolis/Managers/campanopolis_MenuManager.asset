@@ -2601,7 +2601,7 @@ MonoBehaviour:
   - {fileID: 6054162565623774359}
   spacing: 0
   sizeType: 0
-  autoSizeEveryFrame: 0
+  autoSizeEveryFrame: 1
   orientation: 1
   transitionType: 0
   panDirection: 0
