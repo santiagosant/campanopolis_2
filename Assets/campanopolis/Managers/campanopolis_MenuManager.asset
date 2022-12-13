@@ -2565,7 +2565,7 @@ MonoBehaviour:
   _isLocked: 0
   id: 5
   title: Conversation
-  manualSize: {x: 35, y: 27}
+  manualSize: {x: 40, y: 32}
   positionType: 2
   manualPosition: {x: 28.5, y: 59.4}
   positionSmoothing: 0
@@ -2600,7 +2600,7 @@ MonoBehaviour:
   - {fileID: 3571063618853627495}
   - {fileID: 6054162565623774359}
   spacing: 0
-  sizeType: 0
+  sizeType: 1
   autoSizeEveryFrame: 1
   orientation: 1
   transitionType: 0

@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/campanopolis/Scenes/PlazaCentral.unity
+    guid: 60a8fb98679abec4da2e2a02011368b9
+  - enabled: 1
     path: Assets/campanopolis/Scenes/CasaFrente.unity
     guid: 2cda990e2423bbf4892e6590ba056729
   - enabled: 1
@@ -32,9 +35,6 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/campanopolis/Scenes/12Casas.unity
     guid: 8234cec30831c64499d1cb57cb84ba06
-  - enabled: 1
-    path: Assets/campanopolis/Scenes/PlazaCentral.unity
-    guid: 60a8fb98679abec4da2e2a02011368b9
   - enabled: 1
     path: Assets/campanopolis/Scenes/Pasillo.unity
     guid: eec95e775970f424fb839653d284967a
