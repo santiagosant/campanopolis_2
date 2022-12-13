@@ -2599,7 +2599,7 @@ MonoBehaviour:
   elements:
   - {fileID: 3571063618853627495}
   - {fileID: 6054162565623774359}
-  spacing: 0
+  spacing: 1.18
   sizeType: 1
   autoSizeEveryFrame: 1
   orientation: 1
@@ -2641,10 +2641,10 @@ MonoBehaviour:
   biggestElementSize: {x: 388.15, y: 151.47}
   rect:
     serializedVersion: 2
-    x: 121.990005
-    y: 257.49902
-    width: 388.15
-    height: 151.47
+    x: 89.33501
+    y: 275.15604
+    width: 420.4
+    height: 202.87999
   showInFilter: 1
 --- !u!114 &-1934469105849111270
 MonoBehaviour:
@@ -4220,7 +4220,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ID: 0
   title: DialogueList
-  slotSize: {x: 35, y: 5.2}
+  slotSize: {x: 37.3, y: 9.8}
   sizeType: 1
   positionType: 0
   slotSpacing: 0
@@ -4245,12 +4245,12 @@ MonoBehaviour:
   maxAutoWidthFactor: 0.5
   relativeRect:
     serializedVersion: 2
-    x: 0
-    y: 0
-    width: 388.15
-    height: 145.86
+    x: 12.401799
+    y: 12.401799
+    width: 392.023
+    height: 186.39601
   relativePosition: {x: 0, y: 0}
-  numSlots: 5
+  numSlots: 3
   uiSlots:
   - uiButton: {fileID: 0}
     uiButtonID: 14180912
@@ -4274,7 +4274,7 @@ MonoBehaviour:
   anchor: 3
   fixedOption: 0
   optionToShow: 1
-  maxSlots: 5
+  maxSlots: 3
   markAlreadyChosen: 0
   alreadyChosenFontColour: {r: 1, g: 1, b: 1, a: 1}
   alreadyChosenFontHighlightedColour: {r: 1, g: 1, b: 1, a: 1}
@@ -5123,10 +5123,10 @@ MonoBehaviour:
   maxAutoWidthFactor: 0.5
   relativeRect:
     serializedVersion: 2
-    x: 0
-    y: 145.86
-    width: 388.15
-    height: 5.61
+    x: 12.401799
+    y: 211.1996
+    width: 367.85
+    height: 6.34
   relativePosition: {x: 0, y: 0}
   numSlots: 1
   uiSlider: {fileID: 0}

@@ -346,7 +346,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 1064
-    y: 3033
+    y: 3283
     width: 300
     height: 267
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -408,7 +408,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 2024
+    y: 2274
     width: 300
     height: 237
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -421,7 +421,7 @@ MonoBehaviour:
   playerID: -1
   speaker: {fileID: 230498803}
   messageText: "Ay\xFAdame a completar este verso. Si me gusta tu opini\xF3n te dar\xE9
-    una Herramienta que puede servirte para arreglar el Radio - Tel\xE9fono. [wait:4]"
+    una Herramienta que puede servirte para arreglar el Radio - Tel\xE9fono. "
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -533,7 +533,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 714
-    y: 1785
+    y: 2066
     width: 300
     height: 237
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -625,7 +625,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 304
+    y: 554
     width: 300
     height: 237
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -637,8 +637,8 @@ MonoBehaviour:
   isPlayer: 0
   playerID: -1
   speaker: {fileID: 230498803}
-  messageText: Hoy, ya ves, estoy tranquilo... Por eso es que, buenamente,  [wait:2]
-    te suplico que no vengas a turbar mi dulce paz.... [wait:2]
+  messageText: 'Hoy, ya ves, estoy tranquilo... Por eso es que, buenamente,  te suplico
+    que no vengas a turbar mi dulce paz.... '
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -1130,7 +1130,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 1757
+    y: 2007
     width: 300
     height: 237
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1143,7 +1143,7 @@ MonoBehaviour:
   playerID: -1
   speaker: {fileID: 230498803}
   messageText: "Mi Buenos Aires queridoooo... Cu\xE1ndo yo te vuelva a ver, No habr\xE1
-    m\xE1s penas ni olvidoooo.....\nle hiciera un copo final... [wait:4]"
+    m\xE1s penas ni olvidoooo.....\nle hiciera un copo final..."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -1213,7 +1213,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 13
+    skipAction: 14
     skipActionActual: {fileID: 34966617}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -1223,7 +1223,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 1064
-    y: 2751
+    y: 3001
     width: 300
     height: 252
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1237,7 +1237,7 @@ MonoBehaviour:
   speaker: {fileID: 0}
   messageText: "Por una cabeza, metej\xF3n de un d\xEDa, de aquella coqueta y risue\xF1a
     mujer que, al jurar sonriendo, el amor que est\xE1 mintiendoQuema en una hoguera
-    todo mi querer... [wait:4]"
+    todo mi querer..."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -1316,7 +1316,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 2751
+    y: 3001
     width: 300
     height: 217
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1329,127 +1329,7 @@ MonoBehaviour:
   playerID: -1
   speaker: {fileID: 0}
   messageText: "C\xF3mo olvidarte en esta queja, cafet\xEDn de Buenos Aires, si sos
-    lo \xFAnico en la vida que se pareci\xF3 a mi vieja...[wait:4]"
-  lineID: -1
-  multiLineIDs: 
-  isBackground: 0
-  noAnimation: 0
-  headClip: {fileID: 0}
-  mouthClip: {fileID: 0}
-  play2DHeadAnim: 0
-  headClip2D: 
-  headLayer: 0
-  play2DMouthAnim: 0
-  mouthClip2D: 
-  mouthLayer: 0
-  waitTimeOffset: 0
---- !u!114 &343679533
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ed656dc9f403a441f8fe89408c7a7189, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  id: 0
-  isDisplayed: 0
-  showComment: 0
-  comment: 
-  willWait: 0
-  endAction: 0
-  skipAction: -1
-  skipActionActual: {fileID: 0}
-  linkedCutscene: {fileID: 0}
-  linkedAsset: {fileID: 0}
-  endings:
-  - resultAction: 1
-    skipAction: 18
-    skipActionActual: {fileID: 1692470349}
-    linkedCutscene: {fileID: 0}
-    linkedAsset: {fileID: 0}
-  isEnabled: 1
-  isAssetFile: 0
-  isBreakPoint: 0
-  nodeRect:
-    serializedVersion: 2
-    x: 714
-    y: 572
-    width: 300
-    height: 21
-  overrideColor: {r: 1, g: 1, b: 1, a: 1}
-  showOutputSockets: 1
-  parentActionListInEditor: {fileID: 0}
-  constantID: 0
-  parameterID: -1
-  messageParameterID: -1
-  isPlayer: 1
-  playerID: -1
-  speaker: {fileID: 0}
-  messageText: "Est\xE1 bien, perdona por molestarte. No era mi intenci\xF3n."
-  lineID: -1
-  multiLineIDs: 
-  isBackground: 0
-  noAnimation: 0
-  headClip: {fileID: 0}
-  mouthClip: {fileID: 0}
-  play2DHeadAnim: 0
-  headClip2D: 
-  headLayer: 0
-  play2DMouthAnim: 0
-  mouthClip2D: 
-  mouthLayer: 0
-  waitTimeOffset: 0
---- !u!114 &383272840
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ed656dc9f403a441f8fe89408c7a7189, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  id: 0
-  isDisplayed: 0
-  showComment: 0
-  comment: 
-  willWait: 0
-  endAction: 0
-  skipAction: -1
-  skipActionActual: {fileID: 0}
-  linkedCutscene: {fileID: 0}
-  linkedAsset: {fileID: 0}
-  endings:
-  - resultAction: 2
-    skipAction: 20
-    skipActionActual: {fileID: 2075253550}
-    linkedCutscene: {fileID: 0}
-    linkedAsset: {fileID: 0}
-  isEnabled: 1
-  isAssetFile: 0
-  isBreakPoint: 0
-  nodeRect:
-    serializedVersion: 2
-    x: 680
-    y: 1399
-    width: 300
-    height: 21
-  overrideColor: {r: 1, g: 1, b: 1, a: 1}
-  showOutputSockets: 1
-  parentActionListInEditor: {fileID: 0}
-  constantID: 0
-  parameterID: -1
-  messageParameterID: -1
-  isPlayer: 1
-  playerID: -1
-  speaker: {fileID: 0}
-  messageText: Muchas gracias, es usted un grosero.
+    lo \xFAnico en la vida que se pareci\xF3 a mi vieja..."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -1487,7 +1367,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 4
+    skipAction: 5
     skipActionActual: {fileID: 1741372832}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -1497,7 +1377,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 761
+    y: 1011
     width: 300
     height: 207
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1591,8 +1471,8 @@ MonoBehaviour:
   isBreakPoint: 0
   nodeRect:
     serializedVersion: 2
-    x: 14
-    y: 304
+    x: 714
+    y: 554
     width: 300
     height: 282
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -1606,7 +1486,7 @@ MonoBehaviour:
   speaker: {fileID: 230498803}
   messageText: "Procur\xE1 no darte dique con las treinta y tres de mano, esper\xE1
     que el otro envide y despu\xE9s lo revid\xE1s, vos sab\xE9s que no es derecho,
-    ni es canchero, ni es humano faroliarle en compadrito cuando al otro lo sobr\xE1s.\n[wait:4]"
+    ni es canchero, ni es humano faroliarle en compadrito cuando al otro lo sobr\xE1s.\n"
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -1783,8 +1663,8 @@ MonoBehaviour:
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
-    skipAction: 24
-    skipActionActual: {fileID: 343679533}
+    skipAction: 25
+    skipActionActual: {fileID: 1845441835}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   isEnabled: 1
@@ -1793,7 +1673,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 571
+    y: 821
     width: 300
     height: 160
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -2545,7 +2425,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 714
-    y: 2751
+    y: 3001
     width: 300
     height: 232
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -2558,7 +2438,7 @@ MonoBehaviour:
   playerID: -1
   speaker: {fileID: 0}
   messageText: "El farolito de la calle en que nac\xED, Fue el centinela de mis promesas
-    de amor Bajo su quieta lucecita yo la via mi pebeta luminosa como un Sol...[wait:4]"
+    de amor Bajo su quieta lucecita yo la via mi pebeta luminosa como un Sol..."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -2684,6 +2564,146 @@ MonoBehaviour:
   compareVariablesConstantID: 0
   placeholderType: 0
   placeholderPopUpLabelDataID: 0
+--- !u!114 &1093077473
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bdaacaae7eb224bd2b2b6d336bb7b1a8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  id: 0
+  isDisplayed: 1
+  showComment: 0
+  comment: 
+  willWait: 0
+  endAction: 0
+  skipAction: -1
+  skipActionActual: {fileID: 0}
+  linkedCutscene: {fileID: 0}
+  linkedAsset: {fileID: 0}
+  endings:
+  - resultAction: 2
+    skipAction: 2
+    skipActionActual: {fileID: 190101031}
+    linkedCutscene: {fileID: 0}
+    linkedAsset: {fileID: 0}
+  - resultAction: 2
+    skipAction: 19
+    skipActionActual: {fileID: 442671414}
+    linkedCutscene: {fileID: 0}
+    linkedAsset: {fileID: 0}
+  isEnabled: 1
+  isAssetFile: 0
+  isBreakPoint: 0
+  nodeRect:
+    serializedVersion: 2
+    x: 364
+    y: 284
+    width: 300
+    height: 240
+  overrideColor: {r: 1, g: 1, b: 1, a: 1}
+  showOutputSockets: 1
+  parentActionListInEditor: {fileID: 0}
+  resultActionTrue: 0
+  skipActionTrue: -1
+  skipActionTrueActual: {fileID: 0}
+  linkedCutsceneTrue: {fileID: 0}
+  linkedAssetTrue: {fileID: 0}
+  resultActionFail: 1
+  skipActionFail: -1
+  skipActionFailActual: {fileID: 0}
+  linkedCutsceneFail: {fileID: 0}
+  linkedAssetFail: {fileID: 0}
+  parameterID: -1
+  variableID: 21
+  variableNumber: 21
+  checkParameterID: -1
+  getVarMethod: 0
+  compareVariableID: 0
+  intValue: 1
+  floatValue: 0
+  intCondition: 0
+  isAdditive: 0
+  boolValue: 1
+  boolCondition: 0
+  stringValue: 
+  checkCase: 1
+  vector3Value: {x: 0, y: 0, z: 0}
+  vectorCondition: 0
+  gameObjectValue: {fileID: 0}
+  unityObjectValue: {fileID: 0}
+  location: 0
+  variables: {fileID: 0}
+  variablesConstantID: 0
+  compareVariables: {fileID: 0}
+  compareVariablesConstantID: 0
+  placeholderType: 1
+  placeholderPopUpLabelDataID: 0
+--- !u!114 &1105955662
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed656dc9f403a441f8fe89408c7a7189, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  id: 0
+  isDisplayed: 0
+  showComment: 0
+  comment: 
+  willWait: 0
+  endAction: 0
+  skipAction: -1
+  skipActionActual: {fileID: 0}
+  linkedCutscene: {fileID: 0}
+  linkedAsset: {fileID: 0}
+  endings:
+  - resultAction: 2
+    skipAction: 21
+    skipActionActual: {fileID: 2075253550}
+    linkedCutscene: {fileID: 0}
+    linkedAsset: {fileID: 0}
+  isEnabled: 1
+  isAssetFile: 0
+  isBreakPoint: 0
+  nodeRect:
+    serializedVersion: 2
+    x: 714
+    y: 1745
+    width: 300
+    height: 21
+  overrideColor: {r: 1, g: 1, b: 1, a: 1}
+  showOutputSockets: 1
+  parentActionListInEditor: {fileID: 1822388512924592010}
+  constantID: 0
+  parameterID: -1
+  messageParameterID: -1
+  isPlayer: 1
+  playerID: -1
+  speaker: {fileID: 0}
+  messageText: Muchas gracias, es usted un grosero.
+  lineID: -1
+  multiLineIDs: 
+  isBackground: 0
+  noAnimation: 0
+  headClip: {fileID: 0}
+  mouthClip: {fileID: 0}
+  play2DHeadAnim: 0
+  headClip2D: 
+  headLayer: 0
+  play2DMouthAnim: 0
+  mouthClip2D: 
+  mouthLayer: 0
+  waitTimeOffset: 0
 --- !u!114 &1127585504
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2708,13 +2728,13 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 18
+    skipAction: 19
     skipActionActual: {fileID: 442671414}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
     skipAction: 1
-    skipActionActual: {fileID: 190101031}
+    skipActionActual: {fileID: 1093077473}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   isEnabled: 1
@@ -2949,17 +2969,17 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 12
+    skipAction: 13
     skipActionActual: {fileID: 340515622}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
-    skipAction: 15
+    skipAction: 16
     skipActionActual: {fileID: 1030276334}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
-    skipAction: 14
+    skipAction: 15
     skipActionActual: {fileID: 293676017}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -2969,7 +2989,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 2493
+    y: 2743
     width: 300
     height: 228
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3020,7 +3040,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 1064
-    y: 2102
+    y: 2383
     width: 300
     height: 152
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3507,7 +3527,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 21
+    skipAction: 22
     skipActionActual: {fileID: 1228366490}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -3517,7 +3537,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 1064
-    y: 1785
+    y: 2066
     width: 300
     height: 287
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3531,7 +3551,7 @@ MonoBehaviour:
   speaker: {fileID: 230498803}
   messageText: "Para amparar tu desplantes y mis rantes convicciones, el bul\xEDn
     resulta chico, yo me quedo y vos te vas... Es preciso que te vayas y que jam\xE1s
-    en tu vida, en el piso de este cuarto volv\xE1s tus pies a poner. [wait:4]"
+    en tu vida, en el piso de este cuarto volv\xE1s tus pies a poner. "
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -3638,7 +3658,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 23
+    skipAction: 24
     skipActionActual: {fileID: 1765969482}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -3647,8 +3667,8 @@ MonoBehaviour:
   isBreakPoint: 0
   nodeRect:
     serializedVersion: 2
-    x: 580
-    y: 3515
+    x: 714
+    y: 3752
     width: 300
     height: 172
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3838,7 +3858,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 2291
+    y: 2541
     width: 300
     height: 172
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3898,7 +3918,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 1495
+    y: 1745
     width: 300
     height: 232
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -3912,7 +3932,7 @@ MonoBehaviour:
   speaker: {fileID: 0}
   messageText: "Ir\xE9 al grano, vengo a pedirle ayuda. Quiero saber si tiene alguna
     herramienta que me pueda ayudar a arreglar el Radio-tel\xE9fono. Necesito pedir
-    ayuda al exterior. [wait:04]"
+    ayuda al exterior."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -3950,7 +3970,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 19
+    skipAction: 20
     skipActionActual: {fileID: 1464895034}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -3960,7 +3980,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 714
-    y: 3280
+    y: 3530
     width: 300
     height: 192
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4041,7 +4061,7 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 5
+    skipAction: 6
     skipActionActual: {fileID: 1921512101}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -4051,7 +4071,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 998
+    y: 1248
     width: 300
     height: 257
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4063,8 +4083,8 @@ MonoBehaviour:
   isPlayer: 0
   playerID: -1
   speaker: {fileID: 230498803}
-  messageText: "No digas una palabra, ev\xEDtate explicaciones,  [wait:2]\ncuando
-    la acci\xF3n habla claro, la palabra est\xE1 dem\xE1s.  [wait:2]"
+  messageText: "No digas una palabra, ev\xEDtate explicaciones,  \ncuando la acci\xF3n
+    habla claro, la palabra est\xE1 dem\xE1s. "
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -4149,8 +4169,8 @@ MonoBehaviour:
   isBreakPoint: 0
   nodeRect:
     serializedVersion: 2
-    x: 1003.74207
-    y: 3546
+    x: 714
+    y: 3954
     width: 300
     height: 132
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4230,6 +4250,66 @@ Transform:
   m_Father: {fileID: 1745808239}
   m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1845441835
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed656dc9f403a441f8fe89408c7a7189, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  id: 0
+  isDisplayed: 1
+  showComment: 0
+  comment: 
+  willWait: 0
+  endAction: 0
+  skipAction: -1
+  skipActionActual: {fileID: 0}
+  linkedCutscene: {fileID: 0}
+  linkedAsset: {fileID: 0}
+  endings:
+  - resultAction: 1
+    skipAction: 18
+    skipActionActual: {fileID: 1692470349}
+    linkedCutscene: {fileID: 0}
+    linkedAsset: {fileID: 0}
+  isEnabled: 1
+  isAssetFile: 0
+  isBreakPoint: 0
+  nodeRect:
+    serializedVersion: 2
+    x: 714
+    y: 1011
+    width: 300
+    height: 187
+  overrideColor: {r: 1, g: 1, b: 1, a: 1}
+  showOutputSockets: 1
+  parentActionListInEditor: {fileID: 1822388512924592010}
+  constantID: 0
+  parameterID: -1
+  messageParameterID: -1
+  isPlayer: 1
+  playerID: -1
+  speaker: {fileID: 0}
+  messageText: "Est\xE1 bien, perdona por molestarte. No era mi intenci\xF3n."
+  lineID: -1
+  multiLineIDs: 
+  isBackground: 0
+  noAnimation: 0
+  headClip: {fileID: 0}
+  mouthClip: {fileID: 0}
+  play2DHeadAnim: 0
+  headClip2D: 
+  headLayer: 0
+  play2DMouthAnim: 0
+  mouthClip2D: 
+  mouthLayer: 0
+  waitTimeOffset: 0
 --- !u!114 &1917240853
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4296,13 +4376,13 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 7
+    skipAction: 8
     skipActionActual: {fileID: 1650287131}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
-    skipAction: 25
-    skipActionActual: {fileID: 383272840}
+    skipAction: 26
+    skipActionActual: {fileID: 1105955662}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   isEnabled: 1
@@ -4311,7 +4391,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 364
-    y: 1285
+    y: 1535
     width: 300
     height: 180
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4481,12 +4561,12 @@ MonoBehaviour:
   linkedAsset: {fileID: 0}
   endings:
   - resultAction: 2
-    skipAction: 22
+    skipAction: 23
     skipActionActual: {fileID: 156853083}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
   - resultAction: 2
-    skipAction: 6
+    skipAction: 7
     skipActionActual: {fileID: 1379945212}
     linkedCutscene: {fileID: 0}
     linkedAsset: {fileID: 0}
@@ -4496,7 +4576,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 714
-    y: 1495
+    y: 1796
     width: 300
     height: 240
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4793,7 +4873,7 @@ MonoBehaviour:
   nodeRect:
     serializedVersion: 2
     x: 714
-    y: 3013
+    y: 3263
     width: 300
     height: 237
   overrideColor: {r: 1, g: 1, b: 1, a: 1}
@@ -4806,7 +4886,7 @@ MonoBehaviour:
   playerID: -1
   speaker: {fileID: 230498803}
   messageText: "Que hermoso verso. Bien hecho muchacho. Ten\xE9s un lindo talento
-    como compositor. Aqu\xED ten\xE9s lo que te hab\xEDa prometido.[wait:4]"
+    como compositor. Aqu\xED ten\xE9s lo que te hab\xEDa prometido."
   lineID: -1
   multiLineIDs: 
   isBackground: 0
@@ -5404,6 +5484,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   actions:
   - {fileID: 1127585504}
+  - {fileID: 1093077473}
   - {fileID: 190101031}
   - {fileID: 528589783}
   - {fileID: 407757391}
@@ -5427,8 +5508,8 @@ MonoBehaviour:
   - {fileID: 1228366490}
   - {fileID: 156853083}
   - {fileID: 1765969482}
-  - {fileID: 343679533}
-  - {fileID: 383272840}
+  - {fileID: 1845441835}
+  - {fileID: 1105955662}
   isSkippable: 1
   triggerTime: 0
   autosaveAfter: 0
